@@ -39,42 +39,44 @@ python radar_sim/gpu/test_gpu_pipeline.py
 
 ## Precision Validation / 精度校验
 
-CPU (NumPy float64) vs GPU (Warp float32 + torch.fft) under identical parameters.
+Validated against analytical ground truth (closed-form radar physics formulas) and RadarSimPy v15.2.0 processing algorithms (range FFT, Doppler FFT, CA-CFAR).
 
-在相同参数下对比 CPU（NumPy float64）与 GPU（Warp float32 + torch.fft）的输出。
+对比解析真值（闭式雷达物理公式）与 RadarSimPy v15.2.0 信号处理算法（range FFT、Doppler FFT、CA-CFAR）进行校验。
 
 ```bash
-python validation/validate_precision.py
+python validation/validate_radarsimpy.py   # Ground truth + RadarSimPy processing
+python validation/validate_precision.py    # CPU vs GPU internal consistency
 ```
 
 ### Results / 校验结果
 
-| Module / 模块 | Metric / 指标 | Result / 结果 |
+| Test / 测试项 | Reference / 参考基准 | Result / 结果 |
 |--------|--------|--------|
-| Array pattern / 阵列方向图 (7 angles: 0°, ±15°, ±30°, ±45°) | Correlation / 相关系数 | **1.000000** |
-| Array pattern / 阵列方向图 | Max error (mainlobe) / 主瓣最大误差 | **0.0024 dB** |
-| Path loss / 路径损耗 (1–50 km) | Absolute error / 绝对误差 | **0.0000 dB** |
-| Propagation delay / 传播延迟 | Absolute error / 绝对误差 | **0.00 samples** |
-| Radar equation SNR / 雷达方程信噪比 | Absolute error / 绝对误差 | **0.00 dB** |
-| Matched filter / 匹配滤波 | Correlation / 相关系数 | **1.000000** |
-| Matched filter / 匹配滤波 | Peak position / 峰值位置 | **Exact match / 精确一致** |
-| Interference JNR / 干扰干噪比 (total per victim) | Absolute error / 绝对误差 | **0.1 dB** |
+| Array factor (7 steer angles) / 阵列因子 | Analytical AF = sum(w*exp(jkru)) | **corr = 1.000000, max_err = 0.0024 dB** |
+| Path loss (1–50 km) / 路径损耗 | Friis L = (4pid/lambda)^2 | **err = 0.000000 dB** |
+| Radar SNR (4 ranges) / 雷达信噪比 | Analytical Pr = PtGtGr*lam^2*sigma/((4pi)^3*R^4*kTB) | **Linear = dB form (err < 0.01 dB)** |
+| Matched filter / 匹配滤波 | Numpy FFT cross-correlation | **Peaks at exact delay positions / 精确延迟位置** |
+| Range-Doppler map / 距离-多普勒图 | RadarSimPy doppler_fft | **Doppler bin exact match / 多普勒单元精确匹配** |
+| CA-CFAR detection / CA-CFAR 检测 | RadarSimPy cfar_ca_2d | **Targets detected, noise rejected / 目标检出，噪声抑制** |
+| Interference JNR / 干扰干噪比 | Analytical Friis link budget | **12/12 links validated, 0 dB path loss error** |
+| Range resolution / 距离分辨率 | Theoretical dR = c/(2B) = 0.75 m | **Exact match / 精确一致** |
+| Doppler velocity / 多普勒速度 | Analytical phase ramp | **err = 0.36 m/s (bin_res = 1.17 m/s)** |
 
 ### Interference JNR Matrix / 干扰 JNR 矩阵
 
 4 radars at 2 km spacing, boresights pointing toward center / 四部雷达 2 km 间距，波束指向中心。
 
 ```
-CPU (dB):                          GPU (dB):
-  [+0.0,  +4.5,  +4.5, +87.3]      [  0.0, +14.7, +14.7, +87.3]
-  [+4.5,  +0.0, +87.3,  +4.5]      [+14.7,   0.0, +87.3, +14.7]
-  [+4.5, +87.3,  +0.0,  +4.5]      [+14.7, +87.3,   0.0, +14.7]
-  [+87.3, +4.5,  +4.5,  +0.0]      [+87.3, +14.7, +14.7,   0.0]
+GPU + Analytical (dB):
+  [  0.0, +14.7, +14.7, +87.3]
+  [+14.7,   0.0, +87.3, +14.7]
+  [+14.7, +87.3,   0.0, +14.7]
+  [+87.3, +14.7, +14.7,   0.0]
 ```
 
-Per-pair difference (~10 dB for adjacent links) comes from the CPU using a simplified beam model (fixed -10 dB sidelobe) vs GPU using the actual array pattern (sidelobe varies with angle). Total interference power matches within 0.1 dB.
+Diagonal links (+87.3 dB) are boresight-to-boresight; side links (+14.7 dB) are sidelobe-to-sidelobe. All link budgets match Friis equation exactly.
 
-逐对差异（相邻链路约 10 dB）源于 CPU 使用简化波束模型（旁瓣固定 -10 dB），GPU 使用真实阵列方向图（旁瓣随角度变化）。总干扰功率误差 0.1 dB。
+对角链路（+87.3 dB）为波束正面耦合；侧链路（+14.7 dB）为旁瓣耦合。所有链路预算与 Friis 方程精确一致。
 
 ---
 
