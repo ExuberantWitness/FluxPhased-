@@ -1,65 +1,35 @@
-"""GPU-accelerated IQ-level cross-radar interference simulation using Warp.
+"""GPU-accelerated cross-radar interference simulation.
 
-Computes the actual interfering IQ signal that each radar receives from
-every other radar (not just dB-level power). This is the key differentiator
-from the existing interference.py which only computes JNR in dB.
+Computes the interfering IQ signal that each radar receives from every
+other radar using the radar equation link budget:
 
-For 4 radars: 4×4 - 4 = 12 interference links to compute.
-Each link: TX waveform → TX beam pattern → channel → RX beam pattern → victim RX.
+  P_rx = P_tx + G_tx(θ) + G_rx(θ') - L_path - L_pol
+
+For 4 radars: 4×4 - 4 = 12 interference links.
+IQ signals are generated with correct amplitude from the link budget,
+then distributed across the victim's antenna elements for downstream
+receiver processing (matched filter, CFAR, etc.).
 """
 
 import numpy as np
-import warp as wp
 import torch
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List
 
 from .array_gpu import PhasedArrayGPU
 from .channel_gpu import ChannelGPU
 
 SPEED_OF_LIGHT = 299792458.0
-
-
-@wp.kernel
-def _accumulate_interference_kernel(
-    # Interfering signal from one source [n_elem, 2*n_samples] (interleaved)
-    interference: wp.array2d(dtype=wp.float32),
-    # Victim's accumulated interference [n_elem, 2*n_samples]
-    accumulated: wp.array2d(dtype=wp.float32),
-    n_samples: wp.int32,
-):
-    """Add interfering signal to victim's accumulated interference buffer."""
-    e = wp.tid()
-    for s in range(n_samples):
-        accumulated[e, 2 * s] += interference[e, 2 * s]
-        accumulated[e, 2 * s + 1] += interference[e, 2 * s + 1]
-
-
-@wp.kernel
-def _compute_frequency_overlap_kernel(
-    freq_overlap: wp.float32,
-    # Signal [n_elem, 2*n_samples]
-    signal_in: wp.array2d(dtype=wp.float32),
-    signal_out: wp.array2d(dtype=wp.float32),
-    n_samples: wp.int32,
-):
-    """Scale signal by frequency overlap factor."""
-    e = wp.tid()
-    for s in range(n_samples):
-        signal_out[e, 2 * s] = signal_in[e, 2 * s] * freq_overlap
-        signal_out[e, 2 * s + 1] = signal_in[e, 2 * s + 1] * freq_overlap
+POLARIZATION_LOSS_DB = 3.0
 
 
 class InterferenceEngineGPU:
     """IQ-level mutual interference between phased array radars on GPU.
 
-    For each pair (i, j) where i ≠ j:
-    1. Generate TX signal from radar i (per-element, with TX beamforming)
-    2. Apply propagation channel from radar i to radar j (delay, path loss, fading)
-    3. The interfering signal arrives at each element of radar j
-    4. Sum all interfering signals into victim j's receive buffer
-
-    The total interference at radar j = sum of signals from i=0,1,2,3 (i≠j)
-    after channel propagation and frequency overlap filtering.
+    For each pair (i, j) where i != j:
+    1. Compute link budget: TX gain + RX gain - path loss
+    2. Generate interference IQ signal with correct amplitude
+    3. Apply propagation delay (sample shift)
+    4. Distribute across victim's antenna elements
     """
 
     def __init__(
@@ -88,6 +58,24 @@ class InterferenceEngineGPU:
             return 0.0
         return min((overlap_hi - overlap_lo) / bw2_hz, 1.0)
 
+    def _compute_link_geometry(self, tx_pos, rx_pos):
+        """Compute distance and relative angles between two radars."""
+        dx = rx_pos[0] - tx_pos[0]
+        dy = rx_pos[1] - tx_pos[1]
+        distance = float(np.sqrt(dx ** 2 + dy ** 2))
+        if distance < 1.0:
+            distance = 1.0
+        # Global azimuth from TX to RX
+        az_global_tx_to_rx = np.degrees(np.arctan2(dy, dx))
+        # Global azimuth from RX to TX (opposite direction)
+        az_global_rx_to_tx = np.degrees(np.arctan2(-dy, -dx))
+        return distance, az_global_tx_to_rx, az_global_rx_to_tx
+
+    def _relative_angle(self, az_global, boresight_deg):
+        """Compute angle relative to array boresight, wrapped to [-180, 180]."""
+        rel = az_global - boresight_deg
+        return ((rel + 180) % 360) - 180
+
     def compute_interference_matrix(
         self,
         radar_states: List[dict],
@@ -95,6 +83,9 @@ class InterferenceEngineGPU:
         n_samples: int,
     ) -> Dict[int, torch.Tensor]:
         """Compute IQ-level interference at each radar from all others.
+
+        Uses the radar equation link budget to set correct signal amplitude,
+        then applies propagation delay and distributes across RX elements.
 
         Args:
             radar_states: List of per-radar state dicts with keys:
@@ -109,7 +100,8 @@ class InterferenceEngineGPU:
         Returns:
             {victim_id: [n_elem, n_samples] complex64 total interference}
         """
-        n_elem = self.arrays[0].n_elem if 0 in self.arrays else 625
+        array_0 = self.arrays[0] if 0 in self.arrays else list(self.arrays.values())[0]
+        n_elem = array_0.n_elem
 
         # Initialize per-radar interference accumulators
         interference = {}
@@ -118,54 +110,83 @@ class InterferenceEngineGPU:
                 n_elem, n_samples, dtype=torch.complex64, device=self.device,
             )
 
-        # Compute pairwise interference
+        # Compute pairwise interference using radar equation
         for i in range(self.n_radars):
             for j in range(self.n_radars):
                 if i == j:
                     continue
 
-                # TX signal from radar i (per-element, beamformed)
-                tx_signal = self.arrays[i].beamform_tx(i, waveforms[i])  # [n_elem, n_samples]
-
-                # Apply TX power scaling
-                tx_power_w = radar_states[i].get("tx_power_w", 1.0)
-                tx_scale = np.sqrt(tx_power_w)
-                tx_signal = tx_signal * tx_scale
-
-                # Propagation channel from i to j
-                channel_params = self.channel.compute_channel_params(
-                    tx_pos=np.array(radar_states[i]["pos"]),
-                    rx_pos=np.array(radar_states[j]["pos"]),
-                    tx_vel=np.array(radar_states[i].get("vel", [0, 0, 0])),
-                    rx_vel=np.array(radar_states[j].get("vel", [0, 0, 0])),
+                # Link geometry
+                distance, az_to_rx, az_to_tx = self._compute_link_geometry(
+                    radar_states[i]["pos"], radar_states[j]["pos"],
                 )
 
-                # Apply channel effects (delay, path loss, fading)
-                rx_interference = self.channel.apply_channel(
-                    tx_signal, channel_params, doppler_spread=0.0,
-                )
+                # TX antenna gain in victim direction
+                tx_boresight = radar_states[i].get("array_az_deg", 0.0)
+                tx_rel_az = self._relative_angle(az_to_rx, tx_boresight)
+                tx_gain_db = self.arrays[i].get_gain_at_angle(i, tx_rel_az)
 
-                # Apply frequency overlap scaling
+                # RX antenna gain in interferer direction
+                rx_boresight = radar_states[j].get("array_az_deg", 0.0)
+                rx_rel_az = self._relative_angle(az_to_tx, rx_boresight)
+                rx_gain_db = self.arrays[j].get_gain_at_angle(j, rx_rel_az)
+
+                # Path loss (one-way)
+                path_loss_db = self.channel.compute_path_loss_db(distance)
+
+                # Frequency overlap
                 freq_overlap = self.compute_frequency_overlap(
                     radar_states[i]["freq_hz"], radar_states[i]["bandwidth_hz"],
                     radar_states[j]["freq_hz"], radar_states[j]["bandwidth_hz"],
                 )
-                rx_interference *= freq_overlap
+                if freq_overlap <= 0:
+                    continue
+                freq_overlap_db = 10.0 * np.log10(freq_overlap)
 
-                # Apply victim's RX antenna gain in direction of interferer
-                victim_az = self._angle_to_interferer(
-                    radar_states[j]["pos"], radar_states[i]["pos"],
-                    radar_states[j].get("array_az_deg", 0.0),
+                # TX power in dBm
+                tx_power_w = radar_states[i].get("tx_power_w", 1.0)
+                tx_power_dbm = 10.0 * np.log10(tx_power_w * 1000.0)
+
+                # Received interference power (dBm) via Friis equation
+                rx_power_dbm = (
+                    tx_power_dbm
+                    + tx_gain_db
+                    + rx_gain_db
+                    - path_loss_db
+                    - POLARIZATION_LOSS_DB
+                    + freq_overlap_db
                 )
-                # Simple gain model: mainlobe = directivity, sidelobe = -20dB
-                if abs(victim_az) < 5.0:
-                    rx_gain = 1.0
-                else:
-                    rx_gain = 0.1 ** (abs(victim_az) / 60.0)  # rolloff
-                rx_interference *= rx_gain
 
-                # Accumulate into victim j's interference buffer
-                interference[j] += rx_interference
+                # Convert to linear amplitude (V into 50 ohm)
+                rx_power_w = 10.0 ** ((rx_power_dbm - 30.0) / 10.0)
+                rx_amplitude = np.sqrt(rx_power_w)
+
+                # Propagation delay in samples
+                delay_samples = int(distance / SPEED_OF_LIGHT * self.channel.fs)
+
+                # Generate per-element interference signal
+                # Distribute the received signal across elements with RX phase
+                # (far-field: all elements see same signal, different phase)
+                waveform = waveforms[i]  # [n_samples]
+                if waveform.shape[0] < n_samples:
+                    padded = torch.zeros(n_samples, dtype=torch.complex64, device=self.device)
+                    padded[:waveform.shape[0]] = waveform
+                    waveform = padded
+
+                # Apply delay: shift waveform by delay_samples
+                delayed = torch.zeros(n_samples, dtype=torch.complex64, device=self.device)
+                src_end = min(n_samples, waveform.shape[0])
+                dst_start = min(delay_samples, n_samples)
+                dst_end = min(dst_start + src_end, n_samples)
+                copy_len = dst_end - dst_start
+                if copy_len > 0:
+                    delayed[dst_start:dst_end] = waveform[:copy_len]
+
+                # Scale by received amplitude
+                delayed = delayed * rx_amplitude
+
+                # Distribute across elements (uniform for far-field)
+                interference[j] += delayed.unsqueeze(0).expand(n_elem, -1)
 
         return interference
 
@@ -173,16 +194,11 @@ class InterferenceEngineGPU:
         self,
         interference: Dict[int, torch.Tensor],
     ) -> np.ndarray:
-        """Compute per-radar total interference power in dBm.
-
-        Returns:
-            [n_radars] array of interference power in dBm
-        """
+        """Compute per-radar total interference power in dBm."""
         power_dbm = np.zeros(self.n_radars)
         for j in range(self.n_radars):
             total_power = torch.sum(torch.abs(interference[j]) ** 2).item()
             if total_power > 0:
-                # Convert to dBm (assuming 50 ohm load)
                 power_dbm[j] = 10.0 * np.log10(total_power * 1000.0)
             else:
                 power_dbm[j] = -200.0
@@ -195,17 +211,19 @@ class InterferenceEngineGPU:
     ) -> np.ndarray:
         """Compute JNR (Jam-to-Noise Ratio) per radar in dB.
 
-        Args:
-            interference: {radar_id: [n_elem, n_samples] complex64}
-            noise_power_linear: noise power per sample (linear)
-        Returns:
-            [n_radars] JNR in dB
+        After RX beamforming (coherent sum across elements), noise reduces
+        by N (incoherent averaging) while signal is preserved.
         """
         jnr_db = np.zeros(self.n_radars)
         for j in range(self.n_radars):
-            jam_power = torch.mean(torch.abs(interference[j]) ** 2).item()
-            if jam_power > 0 and noise_power_linear > 0:
-                jnr_db[j] = 10.0 * np.log10(jam_power / noise_power_linear)
+            # Beamformed interference: average across elements
+            beamformed = torch.mean(interference[j], dim=0)
+            jam_power = torch.mean(torch.abs(beamformed) ** 2).item()
+            # Noise after beamforming: reduced by N elements
+            n_elem = interference[j].shape[0]
+            noise_bf = noise_power_linear / n_elem
+            if jam_power > 0 and noise_bf > 0:
+                jnr_db[j] = 10.0 * np.log10(jam_power / noise_bf)
             else:
                 jnr_db[j] = -200.0
         return jnr_db

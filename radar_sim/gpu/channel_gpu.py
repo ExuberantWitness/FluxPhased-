@@ -45,8 +45,8 @@ def _apply_delay_doppler_kernel(
     d_frac = delay_samples[e] - wp.float32(d_int)
 
     for s in range(n_samples):
-        # Delay: shift sample index
-        src = s + d_int
+        # Delay: output[s] = input[s - delay]
+        src = s - d_int
         if src >= 0 and src < n_samples:
             s_re = signal_in[e, 2 * src]
             s_im = signal_in[e, 2 * src + 1]

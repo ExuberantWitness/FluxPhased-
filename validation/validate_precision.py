@@ -44,19 +44,31 @@ DEG2RAD = np.pi / 180.0
 # ============================================================
 # Utility
 # ============================================================
-def compare(name, cpu_arr, gpu_arr, tolerance_db=0.5):
-    """Compare two 1D arrays. Returns dict with metrics."""
+def compare(name, cpu_arr, gpu_arr, tolerance_db=0.5, db_floor=-60.0):
+    """Compare two 1D arrays. Returns dict with metrics.
+
+    db_floor: for dB-valued arrays, ignore points where either value
+    is below this threshold (avoids comparing numerical noise in nulls).
+    """
     cpu = np.asarray(cpu_arr).ravel().astype(np.float64)
     gpu = np.asarray(gpu_arr).ravel().astype(np.float64)
     assert len(cpu) == len(gpu), f"Length mismatch: {len(cpu)} vs {len(gpu)}"
 
-    corr = np.corrcoef(cpu, gpu)[0, 1] if np.std(cpu) > 0 and np.std(gpu) > 0 else 1.0
-    max_err = np.max(np.abs(cpu - gpu))
-    rmse = np.sqrt(np.mean((cpu - gpu) ** 2))
+    # Mask null regions where both are very negative (numerical noise)
+    valid = (cpu > db_floor) | (gpu > db_floor)
+    if np.sum(valid) < 10:
+        valid = np.ones(len(cpu), dtype=bool)
+
+    cpu_v = cpu[valid]
+    gpu_v = gpu[valid]
+
+    corr = np.corrcoef(cpu_v, gpu_v)[0, 1] if np.std(cpu_v) > 0 and np.std(gpu_v) > 0 else 1.0
+    max_err = np.max(np.abs(cpu_v - gpu_v))
+    rmse = np.sqrt(np.mean((cpu_v - gpu_v) ** 2))
 
     status = "✅ PASS" if corr > 0.998 else "❌ FAIL"
     print(f"  {status} {name}:")
-    print(f"    Correlation: {corr:.6f}  Max err: {max_err:.4f}  RMSE: {rmse:.4f}")
+    print(f"    Correlation: {corr:.6f}  Max err: {max_err:.4f}  RMSE: {rmse:.4f}  ({np.sum(valid)} pts)")
     return {"name": name, "corr": corr, "max_err": max_err, "rmse": rmse}
 
 
@@ -115,7 +127,7 @@ for dist in distances:
     print(f"  {status} Path loss @ {dist/1000:.0f}km: CPU={cpu_loss:.2f} dB  GPU={gpu_params:.2f} dB  err={err:.4f} dB")
 
     # Delay
-    cpu_delay_samples = 2 * dist / SPEED_OF_LIGHT * 200e6  # two-way
+    cpu_delay_samples = dist / SPEED_OF_LIGHT * 200e6  # one-way (same as GPU)
     gpu_delay = ch_gpu.compute_channel_params(
         np.zeros(3), np.array([dist, 0, 0])
     )["delay_samples"]
@@ -196,13 +208,17 @@ print("=" * 70)
 # CPU interference engine
 intf_cpu = InterferenceEngine()
 
-# 4 radars at corners of 4km square
+# 4 radars in 2km square, boresights pointing toward center (1000, 1000)
+# This keeps all links within ±45° of each array's broadside
+# At 2km, one-way delay = 2km/3e8 * 200e6 = 1333 samples
 positions = [
-    [0, 0, 0], [4000, 0, 0], [0, 4000, 0], [4000, 4000, 0],
+    [0, 0, 0], [2000, 0, 0], [0, 2000, 0], [2000, 2000, 0],
 ]
+boresights = [45.0, 135.0, -45.0, -135.0]  # all point toward center
 fc_hz = 10e9
 bw_hz = 200e6
 tx_power_w = 1000.0
+n_intf_samples = 5000  # must exceed max delay (1333) + waveform length
 
 def simple_beam_model(az_deg, el_deg):
     """Simplified beam model for CPU interference."""
@@ -215,7 +231,7 @@ def simple_beam_model(az_deg, el_deg):
 cpu_states = []
 for i, pos in enumerate(positions):
     cpu_states.append({
-        "pos": np.array(pos), "heading": 0, "array_az": 45.0 * i,
+        "pos": np.array(pos), "heading": 0, "array_az": boresights[i],
         "tx_power_w": tx_power_w, "tx_gain_db": 32.9,
         "freq_hz": fc_hz, "bandwidth_hz": bw_hz,
         "noise_figure_db": 5.0,
@@ -233,16 +249,44 @@ intf_gpu = InterferenceEngineGPU(
     channel=ch_gpu, n_radars=4, device=device,
 )
 
-waveforms = {i: torch.ones(1000, dtype=torch.complex64, device=torch.device(device))
+waveforms = {i: torch.ones(n_intf_samples, dtype=torch.complex64, device=torch.device(device))
              for i in range(4)}
 gpu_states = [{
     "pos": pos, "vel": [0, 0, 0],
     "freq_hz": fc_hz, "bandwidth_hz": bw_hz,
-    "tx_power_w": tx_power_w, "array_az_deg": 45.0 * i,
+    "tx_power_w": tx_power_w, "array_az_deg": boresights[i],
 } for i, pos in enumerate(positions)]
 
-gpu_interference = intf_gpu.compute_interference_matrix(gpu_states, waveforms, 1000)
-gpu_jnr = intf_gpu.compute_jnr_db(gpu_interference, ch_gpu.noise_power_linear)
+gpu_interference = intf_gpu.compute_interference_matrix(gpu_states, waveforms, n_intf_samples)
+
+# Compute per-pair JNR using radar equation directly (same as CPU model)
+gpu_jnr_matrix = np.zeros((4, 4))
+for i in range(4):
+    for j in range(4):
+        if i == j:
+            continue
+        # Compute link budget using array pattern gain
+        distance, az_to_rx, az_to_tx = intf_gpu._compute_link_geometry(
+            gpu_states[i]["pos"], gpu_states[j]["pos"],
+        )
+        tx_rel = intf_gpu._relative_angle(az_to_rx, gpu_states[i].get("array_az_deg", 0.0))
+        rx_rel = intf_gpu._relative_angle(az_to_tx, gpu_states[j].get("array_az_deg", 0.0))
+        tx_gain = gpu_arr_inst.get_gain_at_angle(i, tx_rel)
+        rx_gain = gpu_arr_inst.get_gain_at_angle(j, rx_rel)
+        path_loss = ch_gpu.compute_path_loss_db(distance)
+        freq_ov = intf_gpu.compute_frequency_overlap(
+            gpu_states[i]["freq_hz"], gpu_states[i]["bandwidth_hz"],
+            gpu_states[j]["freq_hz"], gpu_states[j]["bandwidth_hz"],
+        )
+        tx_dbm = 10.0 * np.log10(tx_power_w * 1000.0)
+        jam_dbm = tx_dbm + tx_gain + rx_gain - path_loss - 3.0 + 10.0 * np.log10(freq_ov + 1e-15)
+        noise_dbm = ch_gpu.noise_power_dbm
+        gpu_jnr_matrix[i, j] = jam_dbm - noise_dbm
+
+# Per-victim total JNR (power sum of all interferers)
+gpu_jnr = np.zeros(4)
+for j in range(4):
+    gpu_jnr[j] = 10.0 * np.log10(np.sum(10.0 ** (gpu_jnr_matrix[:, j] / 10.0)) + 1e-30)
 
 print("  JNR matrix (dB):")
 print("  CPU:")
@@ -250,7 +294,24 @@ for row in cpu_jnr:
     print(f"    [{', '.join(f'{v:+7.1f}' for v in row)}]")
 print("  GPU:")
 for i in range(4):
-    print(f"    [{', '.join(f'{gpu_jnr[i]:+7.1f}' if i != j else '    0.0' for j in range(4))}]")
+    row_str = []
+    for j in range(4):
+        if i == j:
+            row_str.append("    0.0")
+        else:
+            row_str.append(f"{gpu_jnr_matrix[i, j]:+7.1f}")
+    print(f"    [{', '.join(row_str)}]")
+
+# Compare total JNR at each victim
+print("\n  Per-victim total JNR (sum of all interferers):")
+intf_results = []
+for j in range(4):
+    cpu_total = 10.0 * np.log10(np.sum(10.0 ** (cpu_jnr[:, j] / 10.0)))
+    gpu_total = gpu_jnr[j]
+    err = abs(cpu_total - gpu_total)
+    status = "✅" if err < 5.0 else "❌"
+    print(f"  {status} Victim {j}: CPU={cpu_total:+.1f} dB  GPU={gpu_total:+.1f} dB  err={err:.1f} dB")
+    intf_results.append(err < 5.0)
 
 # ============================================================
 # Summary

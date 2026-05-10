@@ -264,6 +264,31 @@ class PhasedArrayGPU:
 
         return pattern_db
 
+    def get_gain_at_angle(self, radar_id: int, az_deg: float,
+                          el_deg: float = 0.0) -> float:
+        """Get antenna gain (dB) at a specific angle for a radar.
+
+        Uses the same normalization as compute_pattern: peak = directivity_db.
+        """
+        w = self.get_weights(radar_id)
+        w_np = w.numpy()
+        w_complex = w_np[0::2] + 1j * w_np[1::2]
+
+        az_rad = az_deg * DEG2RAD
+        el_rad = el_deg * DEG2RAD
+        u = np.sin(az_rad) * np.cos(el_rad)
+        v = np.sin(el_rad)
+
+        phase = self.k * (self.elem_x_np * u + self.elem_y_np * v)
+        af = np.abs(np.sum(w_complex * np.exp(1j * phase)))
+
+        el_pat = np.cos(np.clip(abs(az_rad), -np.pi / 2, np.pi / 2)) ** 1.5
+
+        gain_linear = af * el_pat * np.sqrt(4.0 * np.pi * self.rows * self.cols * 0.5 * 0.5)
+        if gain_linear > 0:
+            return 20.0 * np.log10(gain_linear)
+        return -200.0
+
     @property
     def directivity_db(self) -> float:
         """Approximate directivity in dB."""
