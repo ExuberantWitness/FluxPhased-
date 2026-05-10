@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /e/DATA/vscode/raid show d2433a3:artifacts/env/__init__.py)",
+      "Bash(git -C /e/DATA/vscode/raid show d2433a3:artifacts/agents/__init__.py)",
+      "Bash(git checkout *)",
+      "Bash(pip show *)",
+      "Bash(where python *)",
+      "Bash(python -m pip show radarsimpy)",
+      "Read(//c/Users/zhang/anaconda3/**)",
+      "Bash(/c/Users/zhang/anaconda3/python.exe -m pip show radarsimpy)",
+      "Read(//c/Users/zhang/miniconda3/**)",
+      "Bash(/c/Users/zhang/miniconda3/python.exe -m pip show radarsimpy)",
+      "Bash(ls -la /c/Users/zhang/AppData/Local/Programs/Python/ 2>/dev/null || echo \"no Python programs dir\")",
+      "Read(//c/Users/zhang/AppData/Local/Programs/**)",
+      "Read(//c/ProgramData/anaconda3/**)",
+      "Read(//c/ProgramData/miniconda3/**)",
+      "Bash(ls /c/Python*/python.exe)",
+      "Bash(/c/ProgramData/anaconda3/python.exe --version)",
+      "Bash(/c/ProgramData/anaconda3/python.exe -m pip show radarsimpy)",
+      "Bash(/c/ProgramData/anaconda3/python.exe -m pip list)",
+      "Bash(/c/ProgramData/anaconda3/python.exe -m pip install radarsimpy pettingzoo -q)",
+      "WebFetch(domain:pypi.org)",
+      "WebFetch(domain:github.com)",
+      "WebSearch",
+      "Bash(/c/ProgramData/anaconda3/python.exe -c ' *)",
+      "WebFetch(domain:raw.githubusercontent.com)"
+    ]
+  }
+}
