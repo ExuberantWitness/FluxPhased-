@@ -32,8 +32,8 @@ def _steer_beam_kernel(
     u0 = wp.sin(az_rad) * wp.cos(el_rad)
     v0 = wp.sin(el_rad)
     phase = -k * (elem_x[i] * u0 + elem_y[i] * v0)
-    weights_out[2 * i] = taper[i] * wp.cos(phase)  # re
-    weights_out[2 * i + 1] = -taper[i] * wp.sin(phase)  # im
+    weights_out[2 * i] = taper[i] * wp.cos(phase)  # re = taper * cos(-k*pos·u0)
+    weights_out[2 * i + 1] = taper[i] * wp.sin(phase)  # im = taper * sin(-k*pos·u0)
 
 
 @wp.kernel
