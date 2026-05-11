@@ -84,7 +84,7 @@ Diagonal links (+87.3 dB) are boresight-to-boresight; side links (+14.7 dB) are 
 
 10 km 四雷达场景的 publication-quality 可视化，由 `validation/generate_plots.py` 生成。
 
-6 张已完成的效果图位于 `validation/figures/`：
+17 张效果图位于 `validation/figures/`：
 
 ### 01 — Array Beam Pattern Overlay / 阵列方向图叠加
 ![01](validation/figures/01_array_pattern_overlay.png)
@@ -265,6 +265,15 @@ Diagonal links (+87.3 dB) are boresight-to-boresight; side links (+14.7 dB) are 
 **说明的能力：** 相控阵可以通过改变每个阵元的幅度加权来**精确控制波束形状**。均匀加权的主瓣最窄但旁瓣最高（−13 dB）；Taylor/Chebyshev 加权压低旁瓣至 −25~−30 dB，代价是主瓣展宽约 40%；Hamming 加权折中处理。这种"用波束宽度换取旁瓣抑制"的能力是相控阵独有的设计自由度——传统抛物面天线的照射函数由馈源物理结构决定，无法动态调整。
 
 **合理性：** 均匀加权的 −13.3 dB 第一旁瓣是 sinc 函数的自然结果。Taylor/Chebyshev 加权通过边缘渐削实现更低的旁瓣，符合 Woodward-Lawson 综合理论。主瓣展宽比例与旁瓣抑制量近似满足 `BW_ratio ≈ 1 + SLL_suppression/20` 的经验关系。
+
+### 17 — 4-Radar Cooperative Illumination / 四雷达协同照射
+![17](validation/figures/17_cooperative_illumination.png)
+
+**条件：** 4 部 25×25 相控阵雷达正方形部署于 (0,0)、(10km,0)、(0,10km)、(10km,10km)，波束分别指向中心目标 (5km,5km,0)。每部雷达独立计算指向角 (45°/135°/−45°/−135°)，阵列方向图在战场平面上投影。
+
+**说明的能力：** 该图展示了多部相控阵雷达协同探测的完整空间场景。左上子图为 10km×10km 战场俯视图，4 个雷达的波束（彩色扇区）同时照射中心目标，波束足迹随距离扩展呈现自然的锥形扩散。右上子图从目标视角以极坐标展示 4 个雷达的来波方向和相对增益强度。下方子图以柱状图定量对比 4 部雷达在目标处的等效照射功率（含阵列增益和路径损耗），体现各雷达因距离和偏轴角不同而产生的功率差异。这是传统单雷达无法实现的——4 部雷达的同时照射提供了空间分集增益，显著提升了对隐身目标的检测概率。
+
+**合理性：** 4 部雷达到中心目标距离均为 7.07 km（对角线），但因波束指向偏转角不同（最大 45°），各雷达在目标处的等效增益因 scan loss（~1/cos(θ) 波束展宽）略有差异。偏转角度越大的雷达，目标处增益略低，这在柱状图中得到体现。波束足迹宽度与距离·波束宽度的乘积一致（7.07 km × 4.6° ≈ 0.57 km 半宽），符合远场方向图投影规律。
 
 ---
 
