@@ -301,3 +301,19 @@ Diagonal links (+87.3 dB) are boresight-to-boresight; side links (+14.7 dB) are 
 | Steer kernel sign error / 导向核符号错误 | `array_gpu.py` | `-taper*sin(phase)` → `+taper*sin(phase)` (pattern peak was at -az / 方向图峰值偏移至 -az) |
 | Channel delay direction / 信道延迟方向反转 | `channel_gpu.py` | `src = s + d_int` → `s - d_int` (was time-advance, not delay / 实现为时间超前而非延迟) |
 | Missing TX directivity / 缺少发射空间指向性 | `interference_gpu.py` | Rewrote to use Friis link budget with antenna gains / 重写为 Friis 链路预算，加入天线增益 |
+
+---
+
+## Author / 作者
+
+**张明昊** / Zhang Minghao
+
+西安工业大学 交叉创新研究院 / Interdisciplinary Innovation Institute, Xi'an Technological University
+
+## Acknowledgments / 致谢
+
+感谢团队与开源社区的支持与贡献。
+
+感谢深度求索（DeepSeek）提供的大模型技术支持。
+
+感谢 Xiaomi MiMo Orbit 百万亿 Token 创造者激励计划。
