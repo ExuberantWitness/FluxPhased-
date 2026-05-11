@@ -32,8 +32,110 @@ radar_sim/
 
 ```bash
 conda activate env_isaacsim  # requires warp, torch with CUDA
-python radar_sim/gpu/test_gpu_pipeline.py
+python radar_sim/gpu/test_gpu_pipeline.py        # single-CPI pipeline test
+python radar_sim/gpu/test_vec_env.py             # vectorized env (smoke + benchmark)
+python radar_sim/gpu/test_2env_25.py             # 2-env precision + usability on 25x25
 ```
+
+> Windows GBK 控制台请使用 `PYTHONIOENCODING=utf-8` 前缀执行，否则脚本中的 emoji 会触发 `UnicodeEncodeError`。
+
+---
+
+## Environment / 环境依赖
+
+### Key Libraries / 关键库
+
+| Library / 库 | Version (tested) / 测试版本 | Purpose / 用途 |
+|--------------|----------------------------|----------------|
+| **Python** | 3.10 | Runtime / 运行时 |
+| **PyTorch** | 2.5.1 + CUDA 12.1 | GPU tensor ops + `torch.fft` (cuFFT) |
+| **NVIDIA Warp** | 1.7.2 | Custom CUDA kernels (beam steering, delay/Doppler, CA-CFAR) |
+| **NumPy** | ≥ 1.24 | CPU baseline / 主机端基线 |
+| **CUDA Toolkit** | 12.1+ runtime, 12.6+ driver | GPU compute / GPU 计算 |
+
+### Optional / 可选
+
+| Library / 库 | Purpose / 用途 |
+|--------------|----------------|
+| **RadarSimPy** v15.2.0 | Level-2 cross-validation against industry simulator. Free for personal use at https://radarsimx.com/product/radarsimpy/ |
+| **Matplotlib** | `validation/generate_plots.py` 可视化 |
+| **PettingZoo** | `radar_sim/env/` 多智能体战场环境 |
+
+### Hardware / 硬件要求
+
+- **GPU**: NVIDIA with sm_70+ and ≥ 4 GB VRAM (tested on RTX 2060 6.4 GB)
+- **CPU**: any modern x86_64; baseline CPU path only runs `radar_sim/physics/*`
+
+### Install / 安装示例
+
+```bash
+conda create -n env_isaacsim python=3.10 -y
+conda activate env_isaacsim
+pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu121
+pip install warp-lang==1.7.2 numpy matplotlib
+```
+
+---
+
+## Parallel Environments / 并行环境仿真
+
+GPU 端实现了 `RadarSimVecEnv`（[radar_sim/gpu/vec_env.py](radar_sim/gpu/vec_env.py)）——参考 Newton/IsaacLab 架构的批量化雷达仿真，所有 Warp 内核按 `dim = num_envs × n_radars × n_elem` 平铺启动，PyTorch 端用 `wp.from_torch` 零拷贝共享显存。一次 `step()` 完成全部环境的 CPI（波束导向 → TX/RX 波形 → 信道延迟/多普勒/增益 → 互干扰 → 匹配滤波 → Doppler FFT → CA-CFAR）。
+
+### Per-Env VRAM Footprint / 单环境显存占用
+
+针对 4 部 25×25 阵列 + 32 脉冲 + PRF=10 kHz + BW=200 MHz（n_samples=20000）的标称配置：
+
+| Buffer / 缓冲区 | Shape | Size / 单 env |
+|-----------------|-------|---------------|
+| `_buf_rx_signal` | [E, R, N, S] complex64 | **400 MB** |
+| `_buf_tx`        | [E, R, N, S] complex64 | 400 MB |
+| `_buf_noise`     | [E, R, N, S] complex64 | 400 MB |
+| `_buf_intf`      | [E, R, N, S] complex64 | 400 MB |
+| `channel._out_buf` | [E·R·N, 2·S] float32 | 400 MB |
+| `_buf_pulse_train` | [E, R, P, S] complex64 | 20 MB |
+| Receiver FFT 中间张量 | sig_fft / range_profile / rd_map | ~400 MB peak |
+| **Total per env / 单环境合计** | | **≈ 2.4 GB peak** |
+
+E=1 实测：pre-allocated 2024 MB，step 峰值 2425 MB（与理论一致）。
+
+### RTX 2060 (6.4 GB) Measured Results / RTX 2060 实测
+
+25×25 阵 / 4 雷达 / 32 脉冲配置：
+
+| num_envs | step 耗时 | 峰值 VRAM | 状态 |
+|----------|-----------|-----------|------|
+| **1** | **1.8 s** | **2436 MB** | OK |
+| **2** | **11.2 s** | **4864 MB** | OK |
+| 3 | 240+ s | 7294 MB | ⚠️ 超 VRAM，CUDA mempool 回退至系统内存，**实际不可用** |
+
+**结论 / Conclusion**：RTX 2060 上 4×(25×25) + 32 脉冲配置最多 **2 个并行 env**。10 env + 25×25 + 32 脉冲约需 24 GB 显存，建议在 RTX 3090/4090 (24 GB) 或 A100 (40/80 GB) 上运行。
+
+### Smaller Configs / 较小配置（10×10 阵 / 4 雷达 / 16 脉冲，快速验证）
+
+| num_envs | step 耗时 | 峰值 VRAM |
+|----------|-----------|-----------|
+| 1 | 365 ms | 403 MB |
+| 4 | 707 ms | 1621 MB |
+| **10** | **1504 ms** | **4067 MB** |
+
+### Precision & Usability at E=2 / 双环境精度与可用性
+
+`test_2env_25.py` 在 4×(25×25) + 32 脉冲下执行 5 项回归：
+
+| 测试 | 指标 / Metric | 结果 |
+|------|--------------|------|
+| A. 统计等价性（双 env 同 setup） | RMS 比 = 1.0003, 峰值比 = 1.0591 | ✅ |
+| B. 独立性（不同 beam） | env 间相对 L1 差 = 1.41（独立 RNG） | ✅ |
+| C. 内存稳定性（连续 5 步） | 峰值始终 4864 MB，漂移 +0 MB | ✅ 无泄漏 |
+| D. 数值健康度 | 无 NaN / Inf | ✅ |
+| E. Reset 可用性 | reset 后状态完全不同 | ✅ |
+
+### Notes on Mixing Warp + PyTorch / Warp 与 PyTorch 混合架构
+
+- Warp 负责逐阵元不规则计算（波束相位、信道延迟+多普勒、CA-CFAR）
+- PyTorch 负责 batched FFT（cuFFT 后端）和 broadcasting 操作
+- `wp.from_torch` 零拷贝共享 GPU 显存，消除 `cpu().numpy()` 往返
+- 所有大缓冲在 `__init__` 一次性分配，`step()` 原地覆写
 
 ---
 
@@ -301,6 +403,7 @@ Diagonal links (+87.3 dB) are boresight-to-boresight; side links (+14.7 dB) are 
 | Steer kernel sign error / 导向核符号错误 | `array_gpu.py` | `-taper*sin(phase)` → `+taper*sin(phase)` (pattern peak was at -az / 方向图峰值偏移至 -az) |
 | Channel delay direction / 信道延迟方向反转 | `channel_gpu.py` | `src = s + d_int` → `s - d_int` (was time-advance, not delay / 实现为时间超前而非延迟) |
 | Missing TX directivity / 缺少发射空间指向性 | `interference_gpu.py` | Rewrote to use Friis link budget with antenna gains / 重写为 Friis 链路预算，加入天线增益 |
+| Float32 `cos(π/2)**1.5` → NaN at 90° geometry / 90° 几何下浮点 NaN | `vec_interference.py` | Clamp `cos(theta)` to ≥ 0 before fractional power (fixes corner-radar setups) / 分数次幂前 clamp cos ≥ 0 |
 
 ---
 
