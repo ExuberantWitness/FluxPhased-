@@ -80,6 +80,45 @@ Diagonal links (+87.3 dB) are boresight-to-boresight; side links (+14.7 dB) are 
 
 ---
 
+## Visualization / 可视化效果图
+
+10 km 四雷达场景的 publication-quality 可视化，由 `validation/generate_plots.py` 生成。
+
+6 张已完成的效果图位于 `validation/figures/`：
+
+### 01 — Array Beam Pattern Overlay / 阵列方向图叠加
+7 个指向角（0°, ±15°, ±30°, ±45°）的波束方向图，标注 3 dB 波束宽度与峰值方向性增益。
+![01](validation/figures/01_array_pattern_overlay.png)
+
+### 02 — Battlefield Top-Down View / 战场俯视图
+10 km × 10 km 四雷达正方形部署，波束覆盖扇区，目标位置与距离标注。
+![02](validation/figures/02_battlefield_topdown.png)
+
+### 03 — Interference JNR Heatmap / 干扰干噪比热力图
+4 × 4 互干扰 JNR 矩阵，基于 Friis 链路预算 + 阵列方向图增益计算 12 条链路。
+![03](validation/figures/03_jnr_heatmap.png)
+
+### 04 — Matched Filter Range Profile / 匹配滤波距离像
+LFM 脉冲压缩，3 个目标（3 km / 6 km / 9 km），标注距离分辨率。
+![04](validation/figures/04_matched_filter_range_profile.png)
+
+### 08 — Waveform Comparison / 波形对比
+6 种波形（LFM, Barker-13, Frank-16, Costas-16, NLFM, P4）的自相关（脉压）响应对比。
+![08](validation/figures/08_waveform_comparison.png)
+
+### 09 — JNR vs Distance / 干噪比-距离曲线
+主瓣↔主瓣、旁瓣↔主瓣、旁瓣↔旁瓣三条 JNR 曲线，标注 10 km 工作范围与检测门限。
+![09](validation/figures/09_jnr_vs_distance.png)
+
+### 待完成 / In Progress
+| Figure / 图号 | Content / 内容 | Status / 状态 |
+|------|------|------|
+| 05 | Range-Doppler Map / 距离-多普勒图 | Colormap scaling fix / 色标范围修正中 |
+| 06 | CFAR Detection / CFAR 检测标记 | Colormap scaling fix / 色标范围修正中 |
+| 07 | Interference Comparison / 干扰对比 | Colormap scaling fix / 色标范围修正中 |
+
+---
+
 ## Tech Stack / 技术栈
 
 - **NVIDIA Warp 1.7.2** — Custom CUDA kernels for per-element signal processing / 逐元素信号处理的自定义 CUDA 内核
