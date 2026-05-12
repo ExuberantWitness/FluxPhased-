@@ -409,8 +409,6 @@ Diagonal links (+87.3 dB) are boresight-to-boresight; side links (+14.7 dB) are 
 
 ## Author / 作者
 
-**张明昊** / Zhang Minghao
-
 西安工业大学 交叉创新研究院 / Interdisciplinary Innovation Institute, Xi'an Technological University
 
 ## Acknowledgments / 致谢
