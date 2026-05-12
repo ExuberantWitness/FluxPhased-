@@ -21,6 +21,7 @@ from .vec_channel import VecChannel
 from .vec_interference import VecInterference
 from .vec_element_processor import VecElementProcessor
 from .vec_battlefield import VecBattlefield
+from .vec_missile import swerling_gain_multiplier
 
 SPEED_OF_LIGHT = 299792458.0
 DEG2RAD = np.pi / 180.0
@@ -155,6 +156,8 @@ class MFARVecEnv:
             fs=self.fs, symbol_rate=symbol_rate, device=device,
             num_input_length=num_input_length,
             num_output_length=num_output_length,
+            rcs_nose_dbsm=-5.0, rcs_side_dbsm=12.0, rcs_tail_dbsm=3.0,
+            swerling_model=3,
         )
 
     @property
@@ -285,6 +288,17 @@ class MFARVecEnv:
         waveform_refs = self._build_waveform_refs(task_ids, wf_types, detect_params, comm_params)
 
         missile = self.battlefield.missile
+
+        # Pre-compute aspect RCS correction [E, n_teams, R] (constant within CPI)
+        aspect_correction = missile.compute_aspect_rcs_correction(self.radar_pos)
+
+        # Pre-compute slow Swerling multiplier (constant within CPI)
+        swerling_slow = None
+        if missile.swerling_model in (1, 3):
+            swerling_slow = swerling_gain_multiplier(
+                (E, self.n_teams, R), missile.swerling_model, dev,
+            )
+
         for p in range(P):
             self._buf_rx_signal.zero_()
 
@@ -302,7 +316,7 @@ class MFARVecEnv:
                 )
                 self._buf_rx_signal += target_return
 
-            # Missile targets (in-flight missiles visible to all radars)
+            # Missile targets (in-flight, with aspect RCS + Swerling)
             for team_idx in range(self.n_teams):
                 flying = missile.in_flight[:, team_idx]
                 if not flying.any():
@@ -315,7 +329,19 @@ class MFARVecEnv:
                     rcs_dbsm=missile.rcs_dbsm,
                     array_directivity_db=self.array.directivity_db,
                 )
+                # Aspect RCS correction
+                gain = gain * aspect_correction[:, team_idx]
+                # Swerling fluctuation
+                if swerling_slow is not None:
+                    gain = gain * swerling_slow[:, team_idx]
+                elif missile.swerling_model in (2, 4):
+                    fast_mult = swerling_gain_multiplier(
+                        (E, R), missile.swerling_model, dev,
+                    )
+                    gain = gain * fast_mult
+                # Flying mask
                 gain = gain * flying.float().unsqueeze(1)
+
                 target_return = self.channel.apply_batch(
                     tx_signal, delay_s, doppler_hz, gain,
                 )

@@ -50,6 +50,10 @@ class VecBattlefield:
         speed_ms: float = 244.4,
         kill_radius_m: float = 500.0,
         missile_rcs_dbsm: float = 10.0,
+        rcs_nose_dbsm: float = -5.0,
+        rcs_side_dbsm: float = 12.0,
+        rcs_tail_dbsm: float = 3.0,
+        swerling_model: int = 3,
         red_launch_pos=(0.0, -10000.0),
         blue_launch_pos=(0.0, 10000.0),
         fs: float = 200e6,
@@ -98,6 +102,8 @@ class VecBattlefield:
             num_envs=num_envs, n_teams=n_teams,
             speed_ms=speed_ms, kill_radius_m=kill_radius_m,
             rcs_dbsm=missile_rcs_dbsm, device=device,
+            rcs_nose_dbsm=rcs_nose_dbsm, rcs_side_dbsm=rcs_side_dbsm,
+            rcs_tail_dbsm=rcs_tail_dbsm, swerling_model=swerling_model,
         )
 
         # Game state

@@ -94,11 +94,19 @@ class MissileConfig:
     """Cruise missile parameters."""
     speed_ms: float = 244.4            # 880 km/h in m/s
     kill_radius_m: float = 500.0       # lethal radius (m)
-    rcs_dbsm: float = 10.0             # non-stealthy cylinder body RCS (dBsm)
+    rcs_dbsm: float = 10.0             # average RCS (dBsm), used as radar equation reference
     red_launch_pos: Tuple[float, float] = (0.0, -10000.0)   # red baseline center
     blue_launch_pos: Tuple[float, float] = (0.0, 10000.0)   # blue baseline center
     max_per_team: int = 1              # only 1 missile per team at a time
     interceptable: bool = False        # cannot be intercepted
+
+    # Aspect-angle dependent RCS model
+    rcs_nose_dbsm: float = -5.0        # nose-on (head-on, θ≈180°): ~0.3 m²
+    rcs_side_dbsm: float = 12.0        # broadside (θ≈90°): fuselage+wings ~16 m²
+    rcs_tail_dbsm: float = 3.0         # tail-on (chasing, θ≈0°): engine+tail ~2 m²
+
+    # Swerling fluctuation model: 0=none, 1=slow exp, 2=fast exp, 3=slow χ²(4), 4=fast χ²(4)
+    swerling_model: int = 3            # cruise missile: 1 dominant + many small scatterers
 
     # Hierarchical agent latent dimensions
     num_input_length: int = 32         # radar encoder → commander (uplink latent width)
