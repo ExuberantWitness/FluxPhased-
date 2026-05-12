@@ -1,4 +1,5 @@
-"""GPU waveform generation: LFM, Barker, Frank, Costas, NLFM, P-code families.
+"""GPU waveform generation: LFM, Barker, Frank, Costas, NLFM, P-code families,
+BPSK modulation/demodulation, noise jamming, DRFM retransmission.
 
 All outputs are torch tensors on GPU, complex64.
 """
@@ -94,6 +95,188 @@ def generate_p4(n_stages, pulse_width, fs, device):
     return signal
 
 
+# ---------------------------------------------------------------------------
+# BPSK modulation / demodulation (communication waveform)
+# ---------------------------------------------------------------------------
+
+def encode_bpsk(data_x: float, data_y: float, n_bits: int = 14) -> torch.Tensor:
+    """Encode two floats into 32-bit BPSK payload (14+14 bits + 4-bit CRC).
+
+    Layout: [X:14bits | Y:14bits | CRC:4bits]
+    Args:
+        data_x, data_y: values in [-1, 1], linearly mapped to 14-bit unsigned.
+    Returns:
+        bits: [32] float32 tensor with values {0, 1}
+    """
+    x_int = int(max(0, min(2**14 - 1, (data_x + 1.0) / 2.0 * (2**14 - 1))))
+    y_int = int(max(0, min(2**14 - 1, (data_y + 1.0) / 2.0 * (2**14 - 1))))
+    # Data for CRC: X(14) + Y(14) = 28 bits = 7 nibbles
+    data_28 = (x_int << 14) | y_int
+    crc = 0
+    val = data_28
+    for _ in range(7):
+        crc ^= (val & 0xF)
+        val >>= 4
+    word = (x_int << 18) | (y_int << 4) | (crc & 0xF)
+    bits = torch.zeros(32, dtype=torch.float32)
+    for i in range(32):
+        bits[i] = float((word >> (31 - i)) & 1)
+    return bits
+
+
+def decode_bpsk(bits: torch.Tensor):
+    """Decode 32-bit BPSK payload back to (data_x, data_y).
+
+    Layout: [X:14bits | Y:14bits | CRC:4bits]
+    Returns:
+        (data_x, data_y) floats in [-1, 1], or (0.0, 0.0) on CRC failure.
+    """
+    if bits.numel() < 32:
+        return 0.0, 0.0
+    b = (bits[:32] > 0.5).int()
+    word = 0
+    for i in range(32):
+        word = (word << 1) | int(b[i].item())
+    # Extract fields
+    x_int = (word >> 18) & ((1 << 14) - 1)
+    y_int = (word >> 4) & ((1 << 14) - 1)
+    crc_received = word & 0xF
+    # CRC over X(14) + Y(14) = 28 bits = 7 nibbles
+    data_28 = (x_int << 14) | y_int
+    crc_computed = 0
+    val = data_28
+    for _ in range(7):
+        crc_computed ^= (val & 0xF)
+        val >>= 4
+    if (crc_computed & 0xF) != crc_received:
+        return 0.0, 0.0
+    data_x = x_int / (2**14 - 1) * 2.0 - 1.0
+    data_y = y_int / (2**14 - 1) * 2.0 - 1.0
+    return data_x, data_y
+
+
+def modulate_bpsk(bits: torch.Tensor, n_samples: int, fs: float,
+                  symbol_rate: float, device) -> torch.Tensor:
+    """BPSK modulate a bit sequence into baseband IQ waveform.
+
+    Args:
+        bits: [n_bits] float32 tensor with values {0, 1}
+        n_samples: total output length
+        fs: sampling rate (Hz)
+        symbol_rate: symbols per second (Hz)
+        device: torch device
+    Returns:
+        [n_samples] complex64 BPSK waveform
+    """
+    n_bits = bits.shape[0]
+    samples_per_symbol = max(1, int(fs / symbol_rate))
+    n = n_samples
+    symbols = (2.0 * bits - 1.0).to(torch.complex64)  # BPSK: 0→-1, 1→+1
+    # Upsample: repeat each symbol
+    signal = symbols.repeat_interleave(samples_per_symbol)[:n]
+    if signal.shape[0] < n:
+        pad = torch.zeros(n - signal.shape[0], dtype=torch.complex64, device=signal.device)
+        signal = torch.cat([signal, pad])
+    norm = signal.norm()
+    if norm > 0:
+        signal = signal / norm
+    return signal
+
+
+def demodulate_bpsk(received: torch.Tensor, symbol_rate: float,
+                    fs: float, n_bits: int = 32) -> torch.Tensor:
+    """BPSK demodulate received IQ waveform to bits.
+
+    Args:
+        received: [n_samples] complex64 baseband after matched filtering
+        symbol_rate: symbols per second
+        fs: sampling rate
+        n_bits: number of bits to decode
+    Returns:
+        [n_bits] float32 tensor with values {0, 1}
+    """
+    sps = max(1, int(fs / symbol_rate))
+    # Sample at center of each symbol period
+    indices = torch.arange(n_bits, device=received.device) * sps + sps // 2
+    indices = indices.clamp(max=received.shape[0] - 1)
+    symbols = received[indices]
+    # Hard decision: Re > 0 → bit 1, else bit 0
+    bits = (symbols.real > 0).float()
+    return bits
+
+
+# ---------------------------------------------------------------------------
+# Noise jamming waveforms
+# ---------------------------------------------------------------------------
+
+def generate_noise_broadband(n_samples: int, power: float, device) -> torch.Tensor:
+    """Broadband noise jamming waveform.
+
+    Args:
+        n_samples: output length
+        power: relative power factor [0, 1]
+        device: torch device
+    Returns:
+        [n_samples] complex64 noise waveform
+    """
+    signal = torch.randn(n_samples, dtype=torch.complex64, device=device)
+    signal = signal / signal.norm() * (power ** 0.5)
+    return signal
+
+
+def generate_noise_spot(n_samples: int, center_freq: float, bandwidth: float,
+                        fs: float, power: float, device) -> torch.Tensor:
+    """Spot (narrowband) noise jamming centered at a frequency.
+
+    Args:
+        n_samples: output length
+        center_freq: center frequency offset from carrier (Hz)
+        bandwidth: noise bandwidth (Hz)
+        fs: sampling rate
+        power: relative power factor [0, 1]
+        device: torch device
+    Returns:
+        [n_samples] complex64 narrowband noise
+    """
+    noise = torch.randn(n_samples, dtype=torch.complex64, device=device)
+    # Filter to desired bandwidth via frequency domain
+    spectrum = torch.fft.fft(noise)
+    freqs = torch.fft.fftfreq(n_samples, 1.0 / fs, device=device)
+    mask = (torch.abs(freqs - center_freq) < bandwidth / 2.0).float()
+    spectrum = spectrum * mask
+    signal = torch.fft.ifft(spectrum)
+    norm = signal.norm()
+    if norm > 0:
+        signal = signal / norm * (power ** 0.5)
+    return signal
+
+
+def generate_drfm(captured: torch.Tensor, freq_shift: float, fs: float,
+                  delay_samples: int = 0) -> torch.Tensor:
+    """DRFM: frequency-shifted retransmission of captured signal.
+
+    Args:
+        captured: [n_samples] complex64 captured enemy signal
+        freq_shift: frequency offset to apply (Hz)
+        fs: sampling rate
+        delay_samples: number of samples to delay (0 = no delay)
+    Returns:
+        [n_samples] complex64 retransmitted signal
+    """
+    n = captured.shape[0]
+    t = torch.arange(n, dtype=torch.float32, device=captured.device) / fs
+    shifted = captured * torch.exp(1j * 2.0 * np.pi * freq_shift * t)
+    if delay_samples > 0 and delay_samples < n:
+        shifted = torch.cat([
+            torch.zeros(delay_samples, dtype=torch.complex64, device=captured.device),
+            shifted[:-delay_samples],
+        ])
+    norm = shifted.norm()
+    if norm > 0:
+        shifted = shifted / norm
+    return shifted
+
+
 class WaveformGeneratorGPU:
     def __init__(self, rf: RFConfig, wf_cfg: WaveformConfig, cpi: CPIConfig, device):
         self.rf = rf
@@ -107,6 +290,7 @@ class WaveformGeneratorGPU:
         pw = params.get("pulse_width", 50e-6)
         bw = params.get("bandwidth", self.rf.bandwidth)
         dev = self.device
+        n_samples = params.get("n_samples", max(1, int(pw * fs)))
 
         gens = {
             "lfm_up": lambda: generate_lfm(pw, bw, fs, dev, "up"),
@@ -116,6 +300,11 @@ class WaveformGeneratorGPU:
             "costas_16": lambda: generate_costas(4, pw, fs, dev),
             "nlfm": lambda: generate_nlfm(pw, bw, fs, dev),
             "p4_code": lambda: generate_p4(4, pw, fs, dev),
+            "noise_broadband": lambda: generate_noise_broadband(
+                n_samples, params.get("power", 1.0), dev),
+            "noise_spot": lambda: generate_noise_spot(
+                n_samples, params.get("center_freq", 0.0), bw * 0.1,
+                fs, params.get("power", 1.0), dev),
         }
         return gens.get(waveform_type, gens["lfm_up"])()
 

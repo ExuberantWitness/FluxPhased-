@@ -1,6 +1,6 @@
 """Batched phased array for num_envs parallel environments.
 
-Warp kernel for beam steering (batched across env×radar) + pure torch beamforming.
+Warp kernel for beam steering (batched across env×radar) + per-element steering.
 Uses wp.from_torch for zero-copy GPU memory sharing.
 """
 
@@ -33,6 +33,32 @@ def _steer_beam_batched(
 
     u0 = wp.sin(az_rad[er_idx]) * wp.cos(el_rad[er_idx])
     v0 = wp.sin(el_rad[er_idx])
+    phase = -k * (elem_x[i] * u0 + elem_y[i] * v0)
+    weights_out[er_idx, 2 * i] = taper[i] * wp.cos(phase)
+    weights_out[er_idx, 2 * i + 1] = taper[i] * wp.sin(phase)
+
+
+@wp.kernel
+def _steer_per_element(
+    elem_x: wp.array1d(dtype=wp.float32),
+    elem_y: wp.array1d(dtype=wp.float32),
+    k: wp.float32,
+    az_rad: wp.array1d(dtype=wp.float32),       # [E*R*N]
+    el_rad: wp.array1d(dtype=wp.float32),       # [E*R*N]
+    taper: wp.array1d(dtype=wp.float32),        # [N]
+    n_elem: wp.int32,
+    weights_out: wp.array2d(dtype=wp.float32),  # [E*R, 2*N]
+):
+    """Per-element beam steering — each element gets independent (az, el).
+
+    flat = wp.tid() in [0, E*R*N).
+    """
+    flat = wp.tid()
+    er_idx = flat // n_elem
+    i = flat % n_elem
+
+    u0 = wp.sin(az_rad[flat]) * wp.cos(el_rad[flat])
+    v0 = wp.sin(el_rad[flat])
     phase = -k * (elem_x[i] * u0 + elem_y[i] * v0)
     weights_out[er_idx, 2 * i] = taper[i] * wp.cos(phase)
     weights_out[er_idx, 2 * i + 1] = taper[i] * wp.sin(phase)
@@ -84,6 +110,14 @@ class VecArray:
         self._az_flat = torch.zeros(ER, dtype=torch.float32, device=torch.device(device))
         self._el_flat = torch.zeros(ER, dtype=torch.float32, device=torch.device(device))
 
+        # Per-element steering buffers
+        self._az_per_elem = torch.zeros(
+            ER * self.n_elem, dtype=torch.float32, device=torch.device(device),
+        )
+        self._el_per_elem = torch.zeros(
+            ER * self.n_elem, dtype=torch.float32, device=torch.device(device),
+        )
+
     def steer_all(self, az_deg: torch.Tensor, el_deg: torch.Tensor) -> torch.Tensor:
         """Compute beam steering weights for all envs and radars.
 
@@ -124,6 +158,49 @@ class VecArray:
         weights_3d = self._weights_buf.reshape(E * R, self.n_elem, 2)
         weights_complex = torch.view_as_complex(weights_3d.contiguous())
         return weights_complex.reshape(E, R, self.n_elem)
+
+    def steer_per_element(
+        self, az_deg: torch.Tensor, el_deg: torch.Tensor,
+    ) -> torch.Tensor:
+        """Per-element beam steering — each of N elements gets independent (az, el).
+
+        Args:
+            az_deg: [E, R, N] azimuth in degrees per element
+            el_deg: [E, R, N] elevation in degrees per element
+        Returns:
+            weights: [E, R, N] complex64 (view into pre-allocated buffer)
+        """
+        E, R = self.num_envs, self.n_radars
+        N = self.n_elem
+
+        az_rad = torch.clamp(az_deg, -90.0, 90.0) * DEG2RAD
+        el_rad = torch.clamp(el_deg, -90.0, 90.0) * DEG2RAD
+
+        self._az_per_elem.copy_(az_rad.reshape(-1))
+        self._el_per_elem.copy_(el_rad.reshape(-1))
+        self._weights_buf.zero_()
+
+        az_wp = wp.from_torch(self._az_per_elem)
+        el_wp = wp.from_torch(self._el_per_elem)
+        weights_wp = wp.from_torch(self._weights_buf)
+
+        wp.launch(
+            _steer_per_element,
+            dim=E * R * N,
+            inputs=[
+                self._elem_x, self._elem_y,
+                wp.float32(self.k),
+                az_wp, el_wp,
+                self._taper,
+                N,
+                weights_wp,
+            ],
+            device=self.device,
+        )
+
+        weights_3d = self._weights_buf.reshape(E * R, N, 2)
+        weights_complex = torch.view_as_complex(weights_3d.contiguous())
+        return weights_complex.reshape(E, R, N)
 
     def beamform_tx(
         self, weights: torch.Tensor, baseband: torch.Tensor,

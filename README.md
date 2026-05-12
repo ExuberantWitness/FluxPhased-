@@ -23,8 +23,19 @@ radar_sim/
 │   ├── receiver_gpu.py  # torch.fft: matched filter + Warp: 2D CA-CFAR
 │   ├── interference_gpu.py  # Radar equation link budget + IQ-level interference / 雷达方程链路预算
 │   ├── pipeline_gpu.py  # Full 4-radar CPI orchestrator / 四雷达 CPI 编排器
-│   ├── waveform_gpu.py  # PyTorch GPU waveform generation / GPU 波形生成
-│   └── test_gpu_pipeline.py  # Validation test suite / 功能测试套件
+│   ├── waveform_gpu.py  # PyTorch GPU waveform generation + BPSK + noise jamming + DRFM
+│   ├── vec_array.py     # Batched beam steering + per-element independent steering / 批量+逐阵元波束导向
+│   ├── vec_channel.py   # Batched per-element channel / 批量逐阵元信道
+│   ├── vec_receiver.py  # Batched matched filter + Doppler FFT + CFAR / 批量接收机
+│   ├── vec_interference.py  # Batched cross-radar interference / 批量互干扰
+│   ├── vec_env.py       # Original vectorized radar env / 原始向量化雷达环境
+│   ├── vec_mfar_env.py  # MFAR orchestrator: per-element 4-task control / MFAR 四任务逐阵元控制
+│   ├── vec_element_processor.py  # Element self-consistent algorithm / 阵面自洽算法
+│   ├── openevolve_search.py  # Neural architecture search for RL agent / RL agent 架构搜索
+│   ├── test_gpu_pipeline.py  # Validation test suite / 功能测试套件
+│   ├── test_vec_env.py  # Vectorized env tests / 向量化环境测试
+│   ├── test_2env_25.py  # 2-env 25×25 precision tests / 双环境精度测试
+│   └── test_mfar.py     # MFAR full chain tests / MFAR 全链路测试
 └── env/                 # Multi-agent battlefield environment / 多智能体战场环境 (PettingZoo)
 ```
 
@@ -35,9 +46,114 @@ conda activate env_isaacsim  # requires warp, torch with CUDA
 python radar_sim/gpu/test_gpu_pipeline.py        # single-CPI pipeline test
 python radar_sim/gpu/test_vec_env.py             # vectorized env (smoke + benchmark)
 python radar_sim/gpu/test_2env_25.py             # 2-env precision + usability on 25x25
+python radar_sim/gpu/test_mfar.py                # MFAR 4-task per-element control tests
 ```
 
 > Windows GBK 控制台请使用 `PYTHONIOENCODING=utf-8` 前缀执行，否则脚本中的 emoji 会触发 `UnicodeEncodeError`。
+
+---
+
+## MFAR Multi-Task Per-Element Control / MFAR 多任务逐阵元控制
+
+FluxPhased 升级为积木式相控阵（ELDA，Element-Level Digital Array）：625 个阵元完全独立控制，RL 学习阵元组织策略。支持 4 种任务：侦察（Reconnaissance）、探测（Detection）、干扰（Jamming）、通信（Communication）。
+
+### Hierarchical Control / 层级控制架构
+
+```
+200MHz  IQ 环      ADC/DAC 采样               ← 固定硬件
+  ↓
+10kHz   脉冲环     匹配滤波 / FFT             ← 固定算法
+  ↓
+312Hz   阵元环     FFT → 完整幅度谱 [N_bins]   ← 阵面自洽算法（纯 FFT，无任务分支）
+  ↓
+312Hz   RL 决策    CNN/Transformer 特征提取    ← RL 策略（自动融合探测/侦察）
+```
+
+**核心设计**: 探测与侦察共享完全相同的 FFT 处理链——侦察就是不发射的探测。通信走独立成熟 BPSK 路径。
+
+### State / 状态空间（每雷达 agent）
+
+| 组成 | 维度 | 说明 |
+|------|------|------|
+| 逐阵元 FFT 幅度谱 | 625 × P × N_bins | 时空频 3D 张量，P=脉冲数 |
+| 通信解码数据 | 625 × 2 | BPSK 解调 (X,Y)，非通信阵元为 0 |
+| 车辆状态 | 5 | x, y, heading, speed, array_rotation |
+| 指挥官 latent | L | 可配置（指挥官级 latent space 通信） |
+| **总计** | **625×(P×N_bins+2) + 5 + L** | |
+
+> N_bins = FFT 大小（典型 1024-4096），取决于带宽和频率分辨率需求。
+> 625×P×N_bins 的 3D 张量 reshape 为 [625, P, N_bins] 供 CNN/3D-CNN 处理。
+
+### Action / 动作空间（每雷达 agent）
+
+**总维度: 13753** = 625 阵元 × 22 维/阵元 + 3 维车辆控制
+
+每阵元 22 维动作布局:
+
+| 偏移 | 维度 | 含义 |
+|------|------|------|
+| [0:4] | 4 | 任务分配 frac (recon, detect, jam, comm)，argmax 选任务 |
+| [4:12] | 8 | 波束指向 (az, el) × 4 任务，按分配到的任务取对应组 |
+| [12:15] | 3 | 探测 TX: carrier_freq, BW, pulse_width |
+| [15:18] | 3 | 干扰 TX: BW, power, freq_shift |
+| [18:22] | 4 | 通信 TX: carrier_freq, symbol_rate, data_X, data_Y |
+
+车辆控制 3 维: speed, heading_change, array_rotation
+
+### Decision Downlink / 决策下行（TX 侧）
+
+三步固定流程，TX 侧零学习:
+
+```
+                    ┌─ 通信模式 ─→ BPSK(data_X, data_Y, symbol_rate)
+                    │
+action → 模式选择 ─┼─ 探测模式 ─→ LFM/Barker/Frank/Costas/NLFM/P4 (7种选一)
+                    │
+                    ├─ 干扰模式 ─→ 宽带噪声 / 窄带噪声 / DRFM转发
+                    │
+                    └─ 侦察模式 ─→ 无 TX，输出零
+
+所有模式统一: waveform × weight(az, el, elem_pos) → DAC
+```
+
+### Perception Uplink / 感知上行（RX 侧）
+
+阵面自洽算法只做 FFT + 取模，不做人造特征提取:
+
+```
+每个阵元每脉冲:
+  ADC → FFT → |FFT|² 幅度谱 [N_bins]
+  （探测: 先做匹配滤波 = FFT × conj(FFT(ref))，再做幅度）
+  （侦察: 直接 FFT → 幅度，无匹配滤波）
+  （干扰: TX-only，输出全零）
+  （通信: 同探测路径，额外走 BPSK 解调）
+
+跨 P 脉冲: 堆叠 P 个幅度谱 → [P, N_bins] → 送入 CNN
+```
+
+### Waveform Library / 波形库
+
+| 任务 | 波形类型 | 数量 |
+|------|---------|------|
+| 探测 | LFM up/down, Barker-13, Frank-16, Costas-16, NLFM, P4 | 7 种 |
+| 干扰 | 宽带噪声, 窄带噪声, DRFM 转发 | 3 种 |
+| 通信 | BPSK (14bit+14bit+4bit CRC = 32bit) | 1 种 |
+| 侦察 | 无 TX | — |
+
+### MFAR Test Results / MFAR 测试结果
+
+RTX 2060, 2 env × 2 radars × 5×5 阵列, 4 脉冲, FFT=64:
+
+| 测试 | 结果 |
+|------|------|
+| 默认步进（全部探测） | state [2,2,6455], spectrum [2,2,25,4,64], 无 NaN/Inf |
+| 混合任务分配 | detect=48 elem, recon=52 elem 正确分配 |
+| BPSK 往返 | encode→decode 误差 0.0, BER=0.0 (无噪声) |
+| FFT 频谱正确性 | 注入 tone@bin100, 峰值检测@bin100 |
+| 波形库完整性 | 10 种波形全部生成 OK, 无 NaN/Inf |
+| 逐阵元波束导向 | 与 steer_all 完全一致, 不同方向产生不同相位 |
+
+**全部 6/6 测试通过。原始 vec_env 3/3 和 2env_25 5/5 测试也全部通过，向后兼容。**
 
 ---
 
