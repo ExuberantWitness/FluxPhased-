@@ -137,34 +137,49 @@ def test_env_step_with_commander():
     """
     from radar_sim.gpu.vec_mfar_env import MFARVecEnv
 
+    N_in, N_out = 8, 4  # small latent dims for test
     env = MFARVecEnv(
         num_envs=1, n_radars=4, rows=5, cols=5,
         pulses_per_cpi=8, bandwidth=10e6, prf=10e3,
+        num_input_length=N_in, num_output_length=N_out,
         device="cuda",
     )
     env.reset()
 
     actions = torch.zeros(1, 4, env.action_dim, device="cuda")
 
-    # Commander: launch both team missiles
-    commander_actions = torch.zeros(1, 2, 3, device="cuda")
+    # Commander action: [launch_flag, target_x, target_y, inst_0..., inst_1...]
+    cmd_dim = 3 + 2 * N_out  # = 11
+    commander_actions = torch.zeros(1, 2, cmd_dim, device="cuda")
     commander_actions[:, 0, 0] = 1.0  # Red launch
     commander_actions[:, 0, 1] = 0.0  # target x=0
     commander_actions[:, 0, 2] = 0.5  # target y=+5000
     commander_actions[:, 1, 0] = 1.0  # Blue launch
     commander_actions[:, 1, 2] = -0.5
 
-    result = env.step(actions, commander_actions=commander_actions)
+    # Provide radar latents for commander obs
+    radar_latents = torch.randn(1, 4, N_in, device="cuda")
+
+    result = env.step(actions, commander_actions=commander_actions,
+                      radar_latents=radar_latents)
 
     assert result["missile_pos"].shape == (1, 2, 3)
     assert result["dones"].shape == (1,)
-    assert result["commander_obs"].shape == (1, 2, 31)
+    assert result["commander_obs"].shape == (1, 2, 4 + 2 * N_in), \
+        f"Expected (1, 2, {4 + 2 * N_in}), got {result['commander_obs'].shape}"
+    assert result["radar_instructions"].shape == (1, 4, N_out), \
+        f"Expected (1, 4, {N_out}), got {result['radar_instructions'].shape}"
     assert result["radar_rewards"].shape == (1, 4)
     assert result["commander_rewards"].shape == (1, 2)
     assert result["kills"].shape == (1, 2, 2)
 
     assert env.battlefield.missile.in_flight[:, 0].all()
     assert env.battlefield.missile.in_flight[:, 1].all()
+
+    # Verify instructions were extracted correctly
+    inst = result["radar_instructions"]
+    # Red radar 0 instruction should match commander_actions[:, 0, 3:3+N_out]
+    assert torch.allclose(inst[0, 0], commander_actions[0, 0, 3:3 + N_out])
 
     print("[PASS] test_env_step_with_commander")
     return True
@@ -219,25 +234,29 @@ def test_backward_compat():
     assert not torch.isnan(result["state"]).any()
     assert not torch.isinf(result["state"]).any()
     assert not result["dones"].any(), "No kills expected without missiles"
+    assert result["commander_obs"].shape[2] == env.battlefield.commander_obs_dim
+    assert result["radar_instructions"].shape[2] == env.num_output_length
 
     print("[PASS] test_backward_compat")
     return True
 
 
 def test_state_dim():
-    """Test 8: state_dim includes missile awareness (12 extra dims)."""
+    """Test 8: state_dim includes missile awareness + commander instruction."""
     from radar_sim.gpu.vec_mfar_env import MFARVecEnv
 
+    N_out = 8
     env = MFARVecEnv(
         num_envs=1, n_radars=4, rows=5, cols=5,
         pulses_per_cpi=8, bandwidth=10e6, prf=10e3,
+        num_output_length=N_out,
         device="cuda",
     )
 
     N = env.n_elem
     P = env.n_pulses
     B = env.n_bins
-    expected = N * (P * B + 2) + 5 + 6 + env.n_teams * 3
+    expected = N * (P * B + 2) + 5 + 6 + env.n_teams * 3 + N_out
     assert env.state_dim == expected, f"Expected {expected}, got {env.state_dim}"
 
     env.reset()

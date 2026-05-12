@@ -6,9 +6,10 @@ reconnaissance, detection, jamming, communication.
 Architecture: E parallel environments × R radars × N elements × 4 tasks.
 Each element independently chooses its task, beam direction, and waveform.
 
-State  = [E, R, 625×(32×N_bins+2) + 5 + 12 + L]  (FFT spectra + comm + vehicle + missile)
+State  = [E, R, 625×(32×N_bins+2) + 5 + 12 + N_out]  (FFT spectra + comm + vehicle + missile + commander instruction)
 Action = [E, R, 13753]                              (per-element 22-dim + vehicle 3-dim)
-Commander action = [E, n_teams, 3]                   (launch_flag, target_x, target_y)
+Commander obs   = [E, n_teams, 4 + 2*N_in]          (positions + radar latents)
+Commander action = [E, n_teams, 3 + 2*N_out]         (launch + target + radar instructions)
 """
 
 import time
@@ -47,7 +48,8 @@ class MFARVecEnv:
         n_targets: int = 1, tx_power_w: float = 1.0,
         target_rcs_dbsm: float = 20.0,
         fft_size: int = 0, symbol_rate: float = 1e6,
-        commander_latent_dim: int = 0,
+        num_input_length: int = 32,
+        num_output_length: int = 16,
         n_teams: int = 2,
         device: str = "cuda",
     ):
@@ -65,7 +67,8 @@ class MFARVecEnv:
         self.prf = prf
         self.tx_power_w = tx_power_w
         self.target_rcs_dbsm = target_rcs_dbsm
-        self.commander_latent_dim = commander_latent_dim
+        self.num_input_length = num_input_length
+        self.num_output_length = num_output_length
         self.device = device
 
         self.pri = 1.0 / prf
@@ -128,9 +131,9 @@ class MFARVecEnv:
         self.target_pos = torch.zeros(E, n_targets, 3, device=dev_torch)
         self.target_vel = torch.zeros(E, n_targets, 3, device=dev_torch)
 
-        # Commander latent (set externally)
-        self.commander_latent = torch.zeros(
-            E, R, commander_latent_dim, device=dev_torch,
+        # Commander instruction buffer (set from commander action each step)
+        self._commander_instructions = torch.zeros(
+            E, R, num_output_length, device=dev_torch,
         )
 
         # Element positions (shared, computed from array geometry)
@@ -150,12 +153,15 @@ class MFARVecEnv:
         self.battlefield = VecBattlefield(
             num_envs=num_envs, n_radars=n_radars, n_teams=n_teams,
             fs=self.fs, symbol_rate=symbol_rate, device=device,
+            num_input_length=num_input_length,
+            num_output_length=num_output_length,
         )
 
     @property
     def state_dim(self) -> int:
         missile_dims = 6 + self.n_teams * 3  # own missile 6 + all missiles awareness 6
-        return self.n_elem * (self.n_pulses * self.n_bins + 2) + 5 + missile_dims + self.commander_latent_dim
+        return (self.n_elem * (self.n_pulses * self.n_bins + 2)
+                + 5 + missile_dims + self.num_output_length)
 
     @property
     def action_dim(self) -> int:
@@ -199,16 +205,21 @@ class MFARVecEnv:
         self.battlefield.reset(env_ids)
 
     def step(self, actions: torch.Tensor = None,
-             commander_actions: torch.Tensor = None) -> dict:
+             commander_actions: torch.Tensor = None,
+             radar_latents: torch.Tensor = None) -> dict:
         """Run one CPI for all envs.
 
         Args:
             actions: [E, R, action_dim] float32. If None, uses default (all detect).
-            commander_actions: [E, n_teams, 3] float32. If None, no missile launch.
+            commander_actions: [E, n_teams, commander_action_dim] float32.
+                Layout: [launch_flag, target_x, target_y, inst_0..., inst_1...]
+                If None, no missile launch.
+            radar_latents: [E, R, num_input_length] float32 from radar NN encoder.
+                If None, commander_obs will be zero-filled.
         Returns:
             dict with keys: state, spectrum, comm_data, task_ids, timing, tx_signal,
-                            commander_obs, radar_rewards, commander_rewards, dones, winners,
-                            missile_pos, kills
+                            commander_obs, radar_instructions, radar_rewards,
+                            commander_rewards, dones, winners, missile_pos, kills
         """
         E, R, N = self.num_envs, self.n_radars, self.n_elem
         S, P = self.n_samples, self.n_pulses
@@ -216,11 +227,16 @@ class MFARVecEnv:
 
         t0 = time.perf_counter()
 
-        # --- Phase 0: Commander actions (missile launch) ---
+        # --- Phase 0: Commander actions (missile launch + radar instructions) ---
         if commander_actions is not None:
             self.battlefield.process_commander_actions(
                 commander_actions, self.radar_pos,
             )
+            self._commander_instructions = self.battlefield.extract_radar_instructions(
+                commander_actions,
+            )
+        else:
+            self._commander_instructions.zero_()
 
         # --- Phase 1: Decode radar actions ---
         if actions is not None:
@@ -374,10 +390,15 @@ class MFARVecEnv:
 
         # --- Phase 7: Assemble state ---
         state = self._assemble_state(spectrum, comm_data)
-        commander_obs = self.battlefield.get_commander_observation(
-            spectrum, comm_data, self.radar_pos, self.radar_vel,
-            self.radar_heading, self.radar_speed,
-        )
+
+        if radar_latents is not None:
+            commander_obs = self.battlefield.get_commander_observation(
+                self.radar_pos, radar_latents,
+            )
+        else:
+            commander_obs = torch.zeros(
+                E, self.n_teams, self.battlefield.commander_obs_dim, device=dev,
+            )
 
         timing = {
             "action_ms": (t_action - t0) * 1000,
@@ -394,13 +415,14 @@ class MFARVecEnv:
             "spectrum": spectrum,
             "comm_data": comm_data,
             "task_ids": task_ids,
-            "commander_obs": commander_obs,          # [E, n_teams, 31]
-            "radar_rewards": rewards["radar_rewards"],       # [E, R]
-            "commander_rewards": rewards["commander_rewards"],  # [E, n_teams]
-            "dones": dones,                           # [E] bool
-            "winners": winners,                       # [E] long
-            "missile_pos": missile.missile_pos,       # [E, n_teams, 3]
-            "kills": kills,                           # [E, n_teams, n_enemy]
+            "commander_obs": commander_obs,
+            "radar_instructions": self._commander_instructions,
+            "radar_rewards": rewards["radar_rewards"],
+            "commander_rewards": rewards["commander_rewards"],
+            "dones": dones,
+            "winners": winners,
+            "missile_pos": missile.missile_pos,
+            "kills": kills,
             "timing": timing,
             "tx_signal": tx_signal,
         }
@@ -518,8 +540,8 @@ class MFARVecEnv:
         missile_state = self._build_missile_state_per_radar()
 
         parts = [spec_flat, comm_flat, vehicle, missile_state]
-        if self.commander_latent_dim > 0:
-            parts.append(self.commander_latent)
+        if self.num_output_length > 0:
+            parts.append(self._commander_instructions)
 
         return torch.cat(parts, dim=-1)
 

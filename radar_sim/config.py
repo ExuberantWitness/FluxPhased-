@@ -100,6 +100,10 @@ class MissileConfig:
     max_per_team: int = 1              # only 1 missile per team at a time
     interceptable: bool = False        # cannot be intercepted
 
+    # Hierarchical agent latent dimensions
+    num_input_length: int = 32         # radar encoder → commander (uplink latent width)
+    num_output_length: int = 16        # commander → radar decoder (downlink instruction width)
+
 
 @dataclass
 class CPIConfig:

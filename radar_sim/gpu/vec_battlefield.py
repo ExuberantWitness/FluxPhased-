@@ -19,8 +19,6 @@ TEAM_BLUE = 1
 # Task IDs (must match vec_element_processor)
 TASK_COMM = 3
 
-COMMANDER_OBS_DIM = 31
-
 
 class VecBattlefield:
     """Vectorized battlefield: team structure + missile combat + win conditions.
@@ -28,6 +26,19 @@ class VecBattlefield:
     Team layout (for R=4 radars):
       radar 0,1 → team 0 (Red)
       radar 2,3 → team 1 (Blue)
+
+    Commander obs: 4 + 2 * num_input_length
+      [0:2]            own radar 0 position (x, y) / half_map
+      [2:4]            own radar 1 position (x, y) / half_map
+      [4:4+N_in]       radar 0 latent (from radar NN encoder)
+      [4+N_in:4+2*N_in] radar 1 latent
+
+    Commander action: 3 + 2 * num_output_length
+      [0]              launch_flag (>0.5 triggers launch)
+      [1]              target_x (normalized -1..1)
+      [2]              target_y (normalized -1..1)
+      [3:3+N_out]      instruction to radar 0
+      [3+N_out:3+2*N_out] instruction to radar 1
     """
 
     def __init__(
@@ -43,6 +54,8 @@ class VecBattlefield:
         blue_launch_pos=(0.0, 10000.0),
         fs: float = 200e6,
         symbol_rate: float = 1e6,
+        num_input_length: int = 32,
+        num_output_length: int = 16,
         device: str = "cuda",
     ):
         self.num_envs = num_envs
@@ -52,6 +65,10 @@ class VecBattlefield:
         self.fs = fs
         self.symbol_rate = symbol_rate
         self.device = device
+        self.num_input_length = num_input_length
+        self.num_output_length = num_output_length
+        self.commander_obs_dim = 4 + 2 * num_input_length
+        self.commander_action_dim = 3 + 2 * num_output_length
 
         dev = torch.device(device)
 
@@ -107,10 +124,10 @@ class VecBattlefield:
         commander_actions: torch.Tensor,
         radar_pos: torch.Tensor,
     ):
-        """Process commander launch decisions.
+        """Process commander launch decisions (first 3 dims of commander action).
 
         Args:
-            commander_actions: [E, n_teams, 3]
+            commander_actions: [E, n_teams, commander_action_dim]
                 [..., 0] = launch_flag (>0.5 triggers launch)
                 [..., 1] = target_x (normalized -1..1 → map coords)
                 [..., 2] = target_y (normalized -1..1 → map coords)
@@ -142,6 +159,34 @@ class VecBattlefield:
             target[:, 2] = 0.0
 
             self.missile.launch(env_ids, t, start, target)
+
+    def extract_radar_instructions(
+        self,
+        commander_actions: torch.Tensor,
+    ) -> torch.Tensor:
+        """Extract per-radar instruction vectors from commander actions.
+
+        Args:
+            commander_actions: [E, n_teams, commander_action_dim]
+        Returns:
+            instructions: [E, R, num_output_length]
+        """
+        E = self.num_envs
+        dev = torch.device(self.device)
+        N_out = self.num_output_length
+        result = torch.zeros(E, self.n_radars, N_out, device=dev)
+
+        for t in range(self.n_teams):
+            own_idx = self.team_radar_indices[t]
+            n_own = own_idx.shape[0]
+            inst_start = 3
+            inst_end = inst_start + N_out
+
+            result[:, own_idx[0]] = commander_actions[:, t, inst_start:inst_end]
+            if n_own > 1:
+                result[:, own_idx[1]] = commander_actions[:, t, inst_end:inst_end + N_out]
+
+        return result
 
     # ------------------------------------------------------------------
     # Missile BPSK communication
@@ -313,50 +358,34 @@ class VecBattlefield:
 
     def get_commander_observation(
         self,
-        spectrum: torch.Tensor,
-        comm_data: torch.Tensor,
         radar_pos: torch.Tensor,
-        radar_vel: torch.Tensor,
-        radar_heading: torch.Tensor,
-        radar_speed: torch.Tensor,
+        radar_latents: torch.Tensor,
     ) -> torch.Tensor:
-        """Build commander observation [E, n_teams, 31].
+        """Build commander observation [E, n_teams, 4 + 2*N_in].
 
         Layout per team:
-          [0:2]   own radar 0 position (x, y) / half_map
-          [2:4]   own radar 1 position
-          [4:6]   own radar 0 heading/360, speed/max_speed
-          [6:8]   own radar 1 heading/360, speed/max_speed
-          [8:10]  own missile position (x, y) / half_map
-          [10:12] own missile target (x, y) / half_map
-          [12]    own missile in_flight
-          [13]    own missile launched
-          [14:16] enemy radar 0 estimated pos / half_map
-          [16:18] enemy radar 1 estimated pos / half_map
-          [18:20] own radar 0 spectrum summary (mean, max power)
-          [20:22] own radar 1 spectrum summary
-          [22:24] own radar 0 comm data (X, Y)
-          [24:26] own radar 1 comm data (X, Y)
-          [26:28] own radars alive
-          [28:30] enemy radars alive
-          [30]    step_count / max_steps
+          [0:2]            own radar 0 position (x, y) / half_map
+          [2:4]            own radar 1 position (x, y) / half_map
+          [4:4+N_in]       radar 0 latent
+          [4+N_in:4+2*N_in] radar 1 latent
+
+        Args:
+            radar_pos: [E, R, 3]
+            radar_latents: [E, R, num_input_length] from radar NN encoder
         """
         E = self.num_envs
         dev = torch.device(self.device)
+        N_in = self.num_input_length
         half_x = self.map_size[0] / 2.0
         half_y = self.map_size[1] / 2.0
-        max_steps = 10000.0
 
-        obs = torch.zeros(E, self.n_teams, COMMANDER_OBS_DIM, device=dev)
+        obs = torch.zeros(E, self.n_teams, self.commander_obs_dim, device=dev)
 
         for t in range(self.n_teams):
             own_idx = self.team_radar_indices[t]
-            enemy_team = 1 - t
-            enemy_idx = self.team_radar_indices[enemy_team]
             n_own = own_idx.shape[0]
-            n_enemy = enemy_idx.shape[0]
 
-            # Own radar positions [0:4] — use index 0, pad if only 1 radar
+            # Own radar positions [0:4]
             obs[:, t, 0] = radar_pos[:, own_idx[0], 0] / half_x
             obs[:, t, 1] = radar_pos[:, own_idx[0], 1] / half_y
             if n_own > 1:
@@ -366,62 +395,10 @@ class VecBattlefield:
                 obs[:, t, 2] = obs[:, t, 0]
                 obs[:, t, 3] = obs[:, t, 1]
 
-            # Own radar heading/speed [4:8]
-            obs[:, t, 4] = radar_heading[:, own_idx[0]] / 360.0
-            obs[:, t, 5] = radar_speed[:, own_idx[0]] / 8.33
+            # Radar latents [4:4+2*N_in]
+            obs[:, t, 4:4 + N_in] = radar_latents[:, own_idx[0]]
             if n_own > 1:
-                obs[:, t, 6] = radar_heading[:, own_idx[1]] / 360.0
-                obs[:, t, 7] = radar_speed[:, own_idx[1]] / 8.33
-            else:
-                obs[:, t, 6] = obs[:, t, 4]
-                obs[:, t, 7] = obs[:, t, 5]
-
-            # Own missile [8:14]
-            m = self.missile
-            obs[:, t, 8] = m.missile_pos[:, t, 0] / half_x
-            obs[:, t, 9] = m.missile_pos[:, t, 1] / half_y
-            obs[:, t, 10] = m.target_pos[:, t, 0] / half_x
-            obs[:, t, 11] = m.target_pos[:, t, 1] / half_y
-            obs[:, t, 12] = m.in_flight[:, t].float()
-            obs[:, t, 13] = m.launched[:, t].float()
-
-            # Enemy radar positions [14:18]
-            obs[:, t, 14] = radar_pos[:, enemy_idx[0], 0] / half_x
-            obs[:, t, 15] = radar_pos[:, enemy_idx[0], 1] / half_y
-            if n_enemy > 1:
-                obs[:, t, 16] = radar_pos[:, enemy_idx[1], 0] / half_x
-                obs[:, t, 17] = radar_pos[:, enemy_idx[1], 1] / half_y
-            else:
-                obs[:, t, 16] = obs[:, t, 14]
-                obs[:, t, 17] = obs[:, t, 15]
-
-            # Spectrum summary [18:22]
-            if spectrum is not None:
-                for j in range(min(2, n_own)):
-                    ri = own_idx[j]
-                    s = spectrum[:, ri, :, :, :]
-                    flat = s.reshape(E, -1)
-                    obs[:, t, 18 + j * 2] = flat.mean(dim=-1)
-                    obs[:, t, 19 + j * 2] = flat.max(dim=-1)[0]
-
-            # Comm data [22:26]
-            if comm_data is not None:
-                for j in range(min(2, n_own)):
-                    ri = own_idx[j]
-                    cd = comm_data[:, ri, :, :]
-                    obs[:, t, 22 + j * 2] = cd[:, :, 0].mean(dim=-1)
-                    obs[:, t, 23 + j * 2] = cd[:, :, 1].mean(dim=-1)
-
-            # Alive flags [26:30]
-            obs[:, t, 26] = self.alive[:, own_idx[0]].float()
-            obs[:, t, 27] = (self.alive[:, own_idx[1]].float()
-                             if n_own > 1 else obs[:, t, 26])
-            obs[:, t, 28] = self.alive[:, enemy_idx[0]].float()
-            obs[:, t, 29] = (self.alive[:, enemy_idx[1]].float()
-                             if n_enemy > 1 else obs[:, t, 28])
-
-            # Step progress [30]
-            obs[:, t, 30] = self.step_count.float() / max_steps
+                obs[:, t, 4 + N_in:4 + 2 * N_in] = radar_latents[:, own_idx[1]]
 
         return obs
 

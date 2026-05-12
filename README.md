@@ -84,9 +84,10 @@ FluxPhased 升级为积木式相控阵（ELDA，Element-Level Digital Array）�
 | 车辆状态 | 5 | x, y, heading, speed, array_rotation |
 | 己方导弹状态 | 6 | pos_x, pos_y, pos_z, in_flight, target_x, target_y |
 | 全局导弹感知 | n_teams × 3 | 每队导弹 pos_x, pos_y, in_flight（含己方+敌方） |
-| **总计** | **625×(P×N_bins+2) + 5 + 6 + n_teams×3** | |
+| **总计** | **625×(P×N_bins+2) + 5 + 6 + n_teams×3 + num_output_length** | |
 
-> n_teams=2 时总计 = 625×(P×N_bins+2) + 17。N_bins = FFT 大小（典型 1024-4096）。
+> n_teams=2 时总计 = 625×(P×N_bins+2) + 17 + num_output_length。
+> N_bins = FFT 大小（典型 1024-4096）。
 > 625×P×N_bins 的 3D 张量 reshape 为 [625, P, N_bins] 供 CNN/3D-CNN 处理。
 > 全局导弹感知中，敌方导弹位置为真实坐标（简化假设），后续可改为从频谱估计。
 
@@ -196,7 +197,7 @@ Red Team (t=0)                          Blue Team (t=1)
 
 #### State / 观测空间
 
-维度：`625 × (P × N_bins + 2) + 17`
+维度：`625 × (P × N_bins + 2) + 17 + num_output_length`
 
 | 组成 | 维度 | 说明 |
 |------|------|------|
@@ -205,6 +206,7 @@ Red Team (t=0)                          Blue Team (t=1)
 | 车辆状态 | 5 | x, y, heading, speed, array_rotation（归一化） |
 | 己方导弹状态 | 6 | pos_x, pos_y, pos_z, in_flight, target_x, target_y（归一化） |
 | 全局导弹感知 | 6 | 每队 (pos_x, pos_y, in_flight)，含己方和敌方导弹 |
+| 指挥官指令 | `num_output_length` | 指挥官 agent 下发的高层指令 latent vector |
 
 #### Action / 动作空间
 
@@ -216,40 +218,51 @@ Red Team (t=0)                          Blue Team (t=1)
 
 #### State / 观测空间
 
-维度：`31`
+维度：`4 + 2 × num_input_length`
+
+指挥官不接收原始频谱或系统状态标志。所有感知信息通过雷达 agent 的 latent vector 传递。
 
 | 偏移 | 维度 | 含义 |
 |------|------|------|
 | [0:2] | 2 | 己方雷达 0 位置 (x, y) / half_map |
 | [2:4] | 2 | 己方雷达 1 位置 (x, y) / half_map |
-| [4:6] | 2 | 己方雷达 0 heading/360, speed/max_speed |
-| [6:8] | 2 | 己方雷达 1 heading/360, speed/max_speed |
-| [8:10] | 2 | 己方导弹位置 (x, y) / half_map |
-| [10:12] | 2 | 己方导弹目标 (x, y) / half_map |
-| [12] | 1 | 己方导弹 in_flight (0/1) |
-| [13] | 1 | 己方导弹 launched (0/1) |
-| [14:16] | 2 | 敌方雷达 0 估计位置 (x, y) / half_map |
-| [16:18] | 2 | 敌方雷达 1 估计位置 (x, y) / half_map |
-| [18:20] | 2 | 己方雷达 0 频谱摘要 (mean, max power) |
-| [20:22] | 2 | 己方雷达 1 频谱摘要 (mean, max power) |
-| [22:24] | 2 | 己方雷达 0 通信数据 (X, Y) |
-| [24:26] | 2 | 己方雷达 1 通信数据 (X, Y) |
-| [26:28] | 2 | 己方雷达 alive 状态 |
-| [28:30] | 2 | 敌方雷达 alive 状态 |
-| [30] | 1 | step_count / max_steps 时间进度 |
+| [4:4+N_in] | `num_input_length` | 雷达 0 latent（雷达 NN 编码器输出） |
+| [4+N_in:4+2×N_in] | `num_input_length` | 雷达 1 latent（雷达 NN 编码器输出） |
+
+> 设计哲学：指挥官只知道自己雷达的位置 + 雷达 NN 编码器压缩后的感知信息。敌方坐标估计、频谱分析等低层感知完全由雷达 agent 负责，通过 latent space 传递。系统标志位（in_flight, alive, step_count）通过 action mask 和奖励函数处理，不进入神经网络。
 
 #### Action / 动作空间
 
-维度：`3`（连续）
+维度：`3 + 2 × num_output_length`
 
 | 偏移 | 维度 | 含义 |
 |------|------|------|
-| [0] | 1 | launch_flag: > 0.5 触发导弹发射 |
+| [0] | 1 | launch_flag: > 0.5 触发导弹发射（action mask 防止重复发射） |
 | [1] | 1 | target_x: 归一化 [-1, 1] → 地图 x 坐标 [-10000, 10000] |
 | [2] | 1 | target_y: 归一化 [-1, 1] → 地图 y 坐标 [-10000, 10000] |
+| [3:3+N_out] | `num_output_length` | 指令 latent → 雷达 0 |
+| [3+N_out:3+2×N_out] | `num_output_length` | 指令 latent → 雷达 1 |
 
-> 指挥官通过 BPSK 通信链路获取雷达 agent 估计的敌方坐标（observation [22:26]），决策何时发射、打击何处。
-> 已在飞行中的导弹不可重复发射；目标更新由雷达 comm 阵元实时完成。
+> 指挥官是真正的层级控制器：一方面决策导弹发射（何时打、打哪里），另一方面通过 instruction latent 向雷达 agent 下达高层指令（如"重点搜索某区域"、"切换干扰模式"）。雷达 agent 将 instruction 作为观测的一部分，结合频谱数据执行具体的阵元级控制。
+
+### Latent Communication / 层级通信
+
+```
+频谱 [625, P, N_bins]
+  → 雷达 CNN/Transformer 编码器
+  → latent [num_input_length] ──────────→ 指挥官 obs
+                                           ↓
+                          指挥官 policy ← positions (4) + latents (2×N_in)
+                                           ↓
+                    ┌── launch_flag + target_x/y → 导弹发射
+                    └── instruction [num_output_length] × 2 → 各雷达 obs
+                                                            ↓
+                              雷达 policy ← spectrum + vehicle + missile + instruction
+                                                            ↓
+                                              13753-dim 阵元级动作
+```
+
+`num_input_length` 和 `num_output_length` 为可配置参数（默认 32 / 16），控制层级间通信带宽。
 
 ### Missile System / 导弹系统
 
