@@ -90,6 +90,18 @@ class ArtilleryConfig:
 
 
 @dataclass
+class MissileConfig:
+    """Cruise missile parameters."""
+    speed_ms: float = 244.4            # 880 km/h in m/s
+    kill_radius_m: float = 500.0       # lethal radius (m)
+    rcs_dbsm: float = 10.0             # non-stealthy cylinder body RCS (dBsm)
+    red_launch_pos: Tuple[float, float] = (0.0, -10000.0)   # red baseline center
+    blue_launch_pos: Tuple[float, float] = (0.0, 10000.0)   # blue baseline center
+    max_per_team: int = 1              # only 1 missile per team at a time
+    interceptable: bool = False        # cannot be intercepted
+
+
+@dataclass
 class CPIConfig:
     """CPI-level timing parameters."""
     cpi_duration: float = 0.05    # 50ms per CPI
@@ -104,21 +116,21 @@ class CPIConfig:
 @dataclass
 class BattlefieldConfig:
     """Battlefield scenario configuration."""
-    map_size: Tuple[float, float] = (10000.0, 10000.0)  # 10km x 10km
+    map_size: Tuple[float, float] = (20000.0, 20000.0)  # 20km x 20km, origin at center
 
-    # Red team initial positions
+    # Red team initial positions (y < 0 half)
     red_positions: List[Tuple[float, float]] = field(default_factory=lambda: [
-        (2000.0, 5000.0),  # red radar 0
-        (3000.0, 5000.0),  # red radar 1
-        (2500.0, 7000.0),  # red artillery
+        (-2000.0, -5000.0),   # red radar 0
+        (-1000.0, -3000.0),   # red radar 1
+        (-1500.0, -7000.0),   # red artillery
     ])
     red_headings: List[float] = field(default_factory=lambda: [0.0, 0.0])
 
-    # Blue team initial positions
+    # Blue team initial positions (y > 0 half)
     blue_positions: List[Tuple[float, float]] = field(default_factory=lambda: [
-        (8000.0, 5000.0),  # blue radar 0
-        (7000.0, 5000.0),  # blue radar 1
-        (7500.0, 3000.0),  # blue artillery
+        (2000.0, 5000.0),     # blue radar 0
+        (1000.0, 3000.0),     # blue radar 1
+        (1500.0, 7000.0),     # blue artillery
     ])
     blue_headings: List[float] = field(default_factory=lambda: [180.0, 180.0])
 
@@ -134,6 +146,7 @@ class EnvConfig:
     waveform: WaveformConfig = field(default_factory=WaveformConfig)
     vehicle: VehicleConfig = field(default_factory=VehicleConfig)
     artillery: ArtilleryConfig = field(default_factory=ArtilleryConfig)
+    missile: MissileConfig = field(default_factory=MissileConfig)
     cpi: CPIConfig = field(default_factory=CPIConfig)
     battlefield: BattlefieldConfig = field(default_factory=BattlefieldConfig)
 

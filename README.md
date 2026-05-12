@@ -1,8 +1,8 @@
 # FluxPhased
 
-GPU-accelerated IQ-level signal simulation for mutual interference between four 25×25 phased array radars (200MHz bandwidth) using NVIDIA Warp + PyTorch.
+GPU-accelerated IQ-level signal simulation for mutual interference between four 25×25 phased array radars (200MHz bandwidth) using NVIDIA Warp + PyTorch, with cruise missile combat and multi-agent adversarial battlefield.
 
-基于 NVIDIA Warp + PyTorch 的四部 25×25 相控阵雷达（200MHz 带宽）IQ 级互干扰信号 GPU 仿真。
+基于 NVIDIA Warp + PyTorch 的四部 25×25 相控阵雷达（200MHz 带宽）IQ 级互干扰信号 GPU 仿真，含巡航导弹作战与多智能体对抗战场。
 
 ---
 
@@ -30,12 +30,15 @@ radar_sim/
 │   ├── vec_interference.py  # Batched cross-radar interference / 批量互干扰
 │   ├── vec_env.py       # Original vectorized radar env / 原始向量化雷达环境
 │   ├── vec_mfar_env.py  # MFAR orchestrator: per-element 4-task control / MFAR 四任务逐阵元控制
+│   ├── vec_missile.py   # GPU-vectorized cruise missile physics / GPU 向量化巡航导弹物理
+│   ├── vec_battlefield.py  # Team combat state + BPSK comm + kill/win / 团队作战状态+通信+胜负
 │   ├── vec_element_processor.py  # Element self-consistent algorithm / 阵面自洽算法
 │   ├── openevolve_search.py  # Neural architecture search for RL agent / RL agent 架构搜索
 │   ├── test_gpu_pipeline.py  # Validation test suite / 功能测试套件
 │   ├── test_vec_env.py  # Vectorized env tests / 向量化环境测试
 │   ├── test_2env_25.py  # 2-env 25×25 precision tests / 双环境精度测试
 │   └── test_mfar.py     # MFAR full chain tests / MFAR 全链路测试
+│   └── test_missile_env.py  # Missile combat tests / 导弹作战测试
 └── env/                 # Multi-agent battlefield environment / 多智能体战场环境 (PettingZoo)
 ```
 
@@ -47,6 +50,7 @@ python radar_sim/gpu/test_gpu_pipeline.py        # single-CPI pipeline test
 python radar_sim/gpu/test_vec_env.py             # vectorized env (smoke + benchmark)
 python radar_sim/gpu/test_2env_25.py             # 2-env precision + usability on 25x25
 python radar_sim/gpu/test_mfar.py                # MFAR 4-task per-element control tests
+python radar_sim/gpu/test_missile_env.py          # Missile combat + multi-agent tests
 ```
 
 > Windows GBK 控制台请使用 `PYTHONIOENCODING=utf-8` 前缀执行，否则脚本中的 emoji 会触发 `UnicodeEncodeError`。
@@ -78,11 +82,13 @@ FluxPhased 升级为积木式相控阵（ELDA，Element-Level Digital Array）�
 | 逐阵元 FFT 幅度谱 | 625 × P × N_bins | 时空频 3D 张量，P=脉冲数 |
 | 通信解码数据 | 625 × 2 | BPSK 解调 (X,Y)，非通信阵元为 0 |
 | 车辆状态 | 5 | x, y, heading, speed, array_rotation |
-| 指挥官 latent | L | 可配置（指挥官级 latent space 通信） |
-| **总计** | **625×(P×N_bins+2) + 5 + L** | |
+| 己方导弹状态 | 6 | pos_x, pos_y, pos_z, in_flight, target_x, target_y |
+| 全局导弹感知 | n_teams × 3 | 每队导弹 pos_x, pos_y, in_flight（含己方+敌方） |
+| **总计** | **625×(P×N_bins+2) + 5 + 6 + n_teams×3** | |
 
-> N_bins = FFT 大小（典型 1024-4096），取决于带宽和频率分辨率需求。
+> n_teams=2 时总计 = 625×(P×N_bins+2) + 17。N_bins = FFT 大小（典型 1024-4096）。
 > 625×P×N_bins 的 3D 张量 reshape 为 [625, P, N_bins] 供 CNN/3D-CNN 处理。
+> 全局导弹感知中，敌方导弹位置为真实坐标（简化假设），后续可改为从频谱估计。
 
 ### Action / 动作空间（每雷达 agent）
 
@@ -154,6 +160,159 @@ RTX 2060, 2 env × 2 radars × 5×5 阵列, 4 脉冲, FFT=64:
 | 逐阵元波束导向 | 与 steer_all 完全一致, 不同方向产生不同相位 |
 
 **全部 6/6 测试通过。原始 vec_env 3/3 和 2env_25 5/5 测试也全部通过，向后兼容。**
+
+---
+
+## Multi-Agent Combat System / 多智能体对抗系统
+
+20 km × 20 km 战场（原点在中心）上的红蓝双方对抗博弈。每方由 2 部雷达 agent + 1 个指挥官 agent 组成，操控巡航导弹攻击敌方雷达。
+
+### Team Structure / 阵营结构
+
+```
+Red Team (t=0)                          Blue Team (t=1)
+┌─────────────────────┐                ┌─────────────────────┐
+│ Commander Agent     │                │ Commander Agent     │
+│ obs=31, action=3    │                │ obs=31, action=3    │
+│                     │                │                     │
+│ Radar Agent 0       │                │ Radar Agent 2       │
+│ obs=625×(P×B+2)+17  │                │ obs=625×(P×B+2)+17  │
+│ action=13753        │                │ action=13753        │
+│                     │                │                     │
+│ Radar Agent 1       │                │ Radar Agent 3       │
+│ obs=625×(P×B+2)+17  │                │ obs=625×(P×B+2)+17  │
+│ action=13753        │                │ action=13753        │
+│                     │                │                     │
+│ Missile × 1         │                │ Missile × 1         │
+│ launch: (0,-10000)  │                │ launch: (0,+10000)  │
+└─────────────────────┘                └─────────────────────┘
+```
+
+- R=4 部雷达：radar 0,1 ∈ Red，radar 2,3 ∈ Blue
+- 每方同时最多 1 枚巡航导弹在飞行中
+- 终止条件：任意敌方雷达被摧毁 → 对方获胜
+
+### Agent 1: Radar Agent（每方 ×2，共 ×4）
+
+#### State / 观测空间
+
+维度：`625 × (P × N_bins + 2) + 17`
+
+| 组成 | 维度 | 说明 |
+|------|------|------|
+| 逐阵元 FFT 幅度谱 | 625 × P × N_bins | 时空频 3D 张量（可见敌方雷达回波、导弹回波、干扰） |
+| 逐阵元通信解码 | 625 × 2 | BPSK 解调 (X, Y)，非通信阵元为 0 |
+| 车辆状态 | 5 | x, y, heading, speed, array_rotation（归一化） |
+| 己方导弹状态 | 6 | pos_x, pos_y, pos_z, in_flight, target_x, target_y（归一化） |
+| 全局导弹感知 | 6 | 每队 (pos_x, pos_y, in_flight)，含己方和敌方导弹 |
+
+#### Action / 动作空间
+
+维度：`625 × 22 + 3 = 13753`
+
+与上方 MFAR 动作空间完全一致（每阵元 22 维 + 3 维车辆控制）。雷达 agent 通过分配 comm 任务阵元并设置 data_X/data_Y 参数，将估计的敌方坐标经 BPSK 链路发送至己方导弹。
+
+### Agent 2: Commander Agent（每方 ×1，共 ×2）
+
+#### State / 观测空间
+
+维度：`31`
+
+| 偏移 | 维度 | 含义 |
+|------|------|------|
+| [0:2] | 2 | 己方雷达 0 位置 (x, y) / half_map |
+| [2:4] | 2 | 己方雷达 1 位置 (x, y) / half_map |
+| [4:6] | 2 | 己方雷达 0 heading/360, speed/max_speed |
+| [6:8] | 2 | 己方雷达 1 heading/360, speed/max_speed |
+| [8:10] | 2 | 己方导弹位置 (x, y) / half_map |
+| [10:12] | 2 | 己方导弹目标 (x, y) / half_map |
+| [12] | 1 | 己方导弹 in_flight (0/1) |
+| [13] | 1 | 己方导弹 launched (0/1) |
+| [14:16] | 2 | 敌方雷达 0 估计位置 (x, y) / half_map |
+| [16:18] | 2 | 敌方雷达 1 估计位置 (x, y) / half_map |
+| [18:20] | 2 | 己方雷达 0 频谱摘要 (mean, max power) |
+| [20:22] | 2 | 己方雷达 1 频谱摘要 (mean, max power) |
+| [22:24] | 2 | 己方雷达 0 通信数据 (X, Y) |
+| [24:26] | 2 | 己方雷达 1 通信数据 (X, Y) |
+| [26:28] | 2 | 己方雷达 alive 状态 |
+| [28:30] | 2 | 敌方雷达 alive 状态 |
+| [30] | 1 | step_count / max_steps 时间进度 |
+
+#### Action / 动作空间
+
+维度：`3`（连续）
+
+| 偏移 | 维度 | 含义 |
+|------|------|------|
+| [0] | 1 | launch_flag: > 0.5 触发导弹发射 |
+| [1] | 1 | target_x: 归一化 [-1, 1] → 地图 x 坐标 [-10000, 10000] |
+| [2] | 1 | target_y: 归一化 [-1, 1] → 地图 y 坐标 [-10000, 10000] |
+
+> 指挥官通过 BPSK 通信链路获取雷达 agent 估计的敌方坐标（observation [22:26]），决策何时发射、打击何处。
+> 已在飞行中的导弹不可重复发射；目标更新由雷达 comm 阵元实时完成。
+
+### Missile System / 导弹系统
+
+| 参数 | 值 |
+|------|-----|
+| 速度 | 244.4 m/s（880 km/h，典型巡航导弹） |
+| 杀伤半径 | 500 m |
+| RCS | 10 dBsm（非隐身圆柱体） |
+| 飞行模型 | 直线飞行 + 实时航向修正 |
+| 每队最大数量 | 1 枚同时飞行 |
+| 红方发射位置 | (0, -10000) — 南侧底线中点 |
+| 蓝方发射位置 | (0, +10000) — 北侧底线中点 |
+| 可拦截 | 否 |
+
+### BPSK Communication Link / BPSK 通信链路
+
+雷达 → 导弹的坐标更新链路（32-bit BPSK）：
+
+```
+雷达 RL 分配 comm 阵元 → BPSK 编码 (X:14, Y:14, CRC:4)
+  → 己方雷达 comm 信号相干合并
+  → 单程信道 (路径损耗 + 噪声)
+  → BPSK 解调 → CRC 校验 → 通过则更新导弹目标
+```
+
+- 两部雷达同时发 comm 时，CRC 自然选择 SNR 更高的信号（"先到先得"）
+- 导弹飞行中可持续接收目标更新（实时航向修正）
+- 通信链路质量取决于雷达→导弹距离、comm 阵元数量和敌方干扰
+
+### Reward Structure / 奖励结构
+
+**雷达 Agent:**
+
+| 事件 | 奖励 |
+|------|------|
+| 敌方雷达被己方导弹摧毁 | +1.0 |
+| 己方雷达被敌方导弹摧毁 | -1.0 |
+| 每步发射代价 | -0.001 |
+
+**指挥官 Agent:**
+
+| 事件 | 奖励 |
+|------|------|
+| 敌方雷达被摧毁 | +10.0 |
+| 己方雷达被摧毁 | -10.0 |
+| 导弹未发射催促（每步） | -0.01 |
+
+### Missile Combat Tests / 导弹作战测试
+
+RTX 2060, 1 env × 4 radars × 5×5 阵列, 8 脉冲, FFT=64:
+
+| 测试 | 结果 |
+|------|------|
+| 导弹物理：发射 → 直线飞行 | 244m/s 精确, 1s 后 ~244m ✅ |
+| 杀伤判定：<500m 击杀, >500m 不击杀 | ✅ |
+| 航向修正：飞行中更新目标 → 转向 | vx 从 0 → >100 m/s ✅ |
+| BPSK 批量编解码：4 env 并行 | 误差 < 0.01, CRC 全通过 ✅ |
+| 指挥官接口：step(commander_actions) | 形状正确, 双方发射成功 ✅ |
+| 胜负判定：击杀 → 回合终止 | done=True, winner=Red ✅ |
+| 向后兼容：无 commander_actions | 原有行为不变 ✅ |
+| 状态维度：含导弹感知 12 维 | state_dim 正确 ✅ |
+
+**全部 8/8 测试通过。原始 MFAR 6/6 测试仍然通过，向后兼容。**
 
 ---
 

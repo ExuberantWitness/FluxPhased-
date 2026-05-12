@@ -205,6 +205,48 @@ def demodulate_bpsk(received: torch.Tensor, symbol_rate: float,
     return bits
 
 
+def demodulate_bpsk_batch(received: torch.Tensor, symbol_rate: float,
+                          fs: float, n_bits: int = 32) -> torch.Tensor:
+    """Batched BPSK demodulate for [E, S] complex64 → [E, n_bits] float32."""
+    sps = max(1, int(fs / symbol_rate))
+    indices = torch.arange(n_bits, device=received.device) * sps + sps // 2
+    indices = indices.clamp(max=received.shape[-1] - 1)
+    # received: [E, S] → gather at indices → [E, n_bits]
+    symbols = received[:, indices]
+    bits = (symbols.real > 0).float()
+    return bits
+
+
+def decode_bpsk_batch(bits: torch.Tensor):
+    """Vectorized BPSK decode for [E, 32] bits → (data_x, data_y, crc_ok).
+
+    Returns:
+        data_x: [E] float32 in [-1, 1], 0 on CRC fail
+        data_y: [E] float32 in [-1, 1], 0 on CRC fail
+        crc_ok: [E] bool
+    """
+    # Use long arithmetic to avoid float32 precision loss on 32-bit words
+    powers = 2 ** torch.arange(31, -1, -1, dtype=torch.long, device=bits.device)
+    words = (bits.long() * powers).sum(dim=-1)  # [E] long
+
+    x_int = (words >> 18) & ((1 << 14) - 1)
+    y_int = (words >> 4) & ((1 << 14) - 1)
+    crc_received = words & 0xF
+
+    data_28 = (x_int << 14) | y_int
+    crc_computed = torch.zeros_like(data_28)
+    for shift in range(7):
+        crc_computed ^= ((data_28 >> (shift * 4)) & 0xF)
+    crc_ok = (crc_computed & 0xF) == crc_received
+
+    data_x = x_int.float() / (2**14 - 1) * 2.0 - 1.0
+    data_y = y_int.float() / (2**14 - 1) * 2.0 - 1.0
+    data_x = data_x * crc_ok.float()
+    data_y = data_y * crc_ok.float()
+
+    return data_x, data_y, crc_ok
+
+
 # ---------------------------------------------------------------------------
 # Noise jamming waveforms
 # ---------------------------------------------------------------------------

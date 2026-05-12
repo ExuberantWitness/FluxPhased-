@@ -217,3 +217,85 @@ class VecChannel:
         noise_view[..., 0].normal_()
         noise_view[..., 1].normal_()
         noise_view.mul_(self.noise_std * inv_sqrt2)
+
+    def compute_params_one_way(
+        self,
+        tx_pos: torch.Tensor,
+        rx_pos: torch.Tensor,
+        tx_vel: torch.Tensor = None,
+        rx_vel: torch.Tensor = None,
+        tx_power_w: float = 1.0,
+        directivity_db: float = 44.0,
+        system_loss_db: float = 3.0,
+    ):
+        """One-way channel parameters (radar → missile comm link).
+
+        Args:
+            tx_pos: [E, 3] transmitter position
+            rx_pos: [E, 3] receiver position
+            tx_vel: [E, 3] (optional)
+            rx_vel: [E, 3] (optional)
+            tx_power_w: transmit power in watts
+            directivity_db: TX antenna directivity (dB)
+            system_loss_db: system losses (dB)
+        Returns:
+            delay_samples: [E] float32 (one-way)
+            doppler_hz:    [E] float32 (one-way)
+            gain_linear:   [E] float32 (one-way path gain)
+        """
+        rel = rx_pos - tx_pos  # [E, 3]
+        distance = rel.norm(dim=-1).clamp(min=1.0)  # [E]
+
+        # One-way delay
+        delay_s = distance / SPEED_OF_LIGHT
+        delay_samples = delay_s * self.fs
+
+        # One-way Doppler (no factor of 2)
+        if tx_vel is not None and rx_vel is not None:
+            rel_vel = tx_vel - rx_vel
+            radial_vel = (rel_vel * rel).sum(dim=-1) / distance
+            doppler_hz = radial_vel * self.fc / SPEED_OF_LIGHT
+        else:
+            doppler_hz = torch.zeros_like(distance)
+
+        # One-way path loss
+        one_way_pl_db = 20.0 * torch.log10(
+            4.0 * np.pi * distance / self.wavelength + 1e-10,
+        )
+
+        rx_power_dbm = (
+            10.0 * np.log10(tx_power_w * 1000.0)
+            + directivity_db
+            - one_way_pl_db
+            - system_loss_db
+        )
+        rx_power_w = 10.0 ** ((rx_power_dbm - 30.0) / 10.0)
+        gain_linear = torch.sqrt(rx_power_w.clamp(min=0.0))
+
+        return delay_samples, doppler_hz, gain_linear
+
+    def apply_one_way(
+        self,
+        signal: torch.Tensor,
+        gain_linear: torch.Tensor,
+        doppler_hz: torch.Tensor = None,
+    ) -> torch.Tensor:
+        """Apply one-way channel to [E, S] signal (pure torch, no Warp).
+
+        Simplified: gain scaling + optional Doppler phase. Delay omitted
+        because BPSK matched filter handles timing.
+
+        Args:
+            signal: [E, S] complex64
+            gain_linear: [E] float32
+            doppler_hz: [E] float32 (optional)
+        Returns:
+            [E, S] complex64
+        """
+        result = signal * gain_linear.unsqueeze(-1)
+        if doppler_hz is not None and doppler_hz.abs().max() > 0:
+            S = signal.shape[-1]
+            t = torch.arange(S, dtype=torch.float32, device=signal.device) / self.fs
+            phase = 2.0 * np.pi * doppler_hz.unsqueeze(-1) * t.unsqueeze(0)
+            result = result * torch.exp(1j * phase)
+        return result
