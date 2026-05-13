@@ -6,7 +6,25 @@
 
 ---
 
-## Architecture / 系统架构
+## Quick Start / 快速开始
+
+```bash
+conda activate env_isaacsim  # requires warp, torch with CUDA
+python radar_sim/gpu/test_gpu_pipeline.py        # single-CPI pipeline test
+python radar_sim/gpu/test_vec_env.py             # vectorized env (smoke + benchmark)
+python radar_sim/gpu/test_2env_25.py             # 2-env precision + usability on 25x25
+python radar_sim/gpu/test_mfar.py                # MFAR 4-task per-element control tests
+python radar_sim/gpu/test_missile_env.py          # Missile combat + multi-agent tests
+python radar_sim/pz_gpu/test_pettingzoo.py         # PettingZoo Parallel API tests
+python radar_sim/evaluation/test_evaluation.py     # Effectiveness evaluation metrics tests
+```
+
+> Windows GBK 控制台请使用 `PYTHONIOENCODING=utf-8` 前缀执行，否则脚本中的 emoji 会触发 `UnicodeEncodeError`。
+
+---
+
+<details>
+<summary><b>Architecture / 系统架构</b></summary>
 
 ```
 radar_sim/
@@ -57,24 +75,12 @@ radar_sim/
 │   └── test_evaluation.py  # 13-test validation suite / 测试套件
 ```
 
-## Quick Start / 快速开始
-
-```bash
-conda activate env_isaacsim  # requires warp, torch with CUDA
-python radar_sim/gpu/test_gpu_pipeline.py        # single-CPI pipeline test
-python radar_sim/gpu/test_vec_env.py             # vectorized env (smoke + benchmark)
-python radar_sim/gpu/test_2env_25.py             # 2-env precision + usability on 25x25
-python radar_sim/gpu/test_mfar.py                # MFAR 4-task per-element control tests
-python radar_sim/gpu/test_missile_env.py          # Missile combat + multi-agent tests
-python radar_sim/pz_gpu/test_pettingzoo.py         # PettingZoo Parallel API tests
-python radar_sim/evaluation/test_evaluation.py     # Effectiveness evaluation metrics tests
-```
-
-> Windows GBK 控制台请使用 `PYTHONIOENCODING=utf-8` 前缀执行，否则脚本中的 emoji 会触发 `UnicodeEncodeError`。
+</details>
 
 ---
 
-## MFAR Multi-Task Per-Element Control / MFAR 多任务逐阵元控制
+<details>
+<summary><b>MFAR Multi-Task Per-Element Control / MFAR 多任务逐阵元控制</b></summary>
 
 FluxPhased 升级为积木式相控阵（ELDA，Element-Level Digital Array）：625 个阵元完全独立控制，RL 学习阵元组织策略。支持 4 种任务：侦察（Reconnaissance）、探测（Detection）、干扰（Jamming）、通信（Communication）。
 
@@ -179,9 +185,12 @@ RTX 2060, 2 env × 2 radars × 5×5 阵列, 4 脉冲, FFT=64:
 
 **全部 6/6 测试通过。原始 vec_env 3/3 和 2env_25 5/5 测试也全部通过，向后兼容。**
 
+</details>
+
 ---
 
-## Multi-Agent Combat System / 多智能体对抗系统
+<details>
+<summary><b>Multi-Agent Combat System / 多智能体对抗系统</b></summary>
 
 20 km × 20 km 战场（原点在中心）上的红蓝双方对抗博弈。每方由 2 部雷达 agent + 1 个指挥官 agent 组成，操控巡航导弹攻击敌方雷达。
 
@@ -374,9 +383,12 @@ RTX 2060, 1 env × 4 radars × 5×5 阵列, 8 脉冲, FFT=64:
 
 **全部 8/8 测试通过。原始 MFAR 6/6 测试仍然通过，向后兼容。**
 
+</details>
+
 ---
 
-## PettingZoo Parallel API / PZ 并行接口
+<details>
+<summary><b>PettingZoo Parallel API / PZ 并行接口</b></summary>
 
 `radar_sim/pz_gpu/` 将 GPU 向量化 MFAR 环境封装为 [PettingZoo ParallelEnv](https://pettingzoo.farama.org/api/parallel/)，可对接 MALib / Ray RLlib / MARLlib / Tianshou 等 MARL 框架。
 
@@ -456,9 +468,12 @@ env = FluxPhasedPZEnv(radar_latents_fn=my_encoder)
 - 红蓝身份交换在 framework 层做 policy 翻转，env 不做随机翻转
 - per-agent reward dict 已包含 team 胜负信号（雷达 ±1.0，指挥官 ±10.0）
 
+</details>
+
 ---
 
-## Effectiveness Evaluation Framework / 效能评估框架
+<details>
+<summary><b>Effectiveness Evaluation Framework / 效能评估框架</b></summary>
 
 `radar_sim/evaluation/` 提供与电磁效应测量与调控技术效能评估方案对齐的 Metrics 体系，覆盖感知、分析、博弈三层评估维度。
 
@@ -541,9 +556,12 @@ report.to_markdown("eval_report.md")
 
 **全部 13/13 测试通过。**
 
+</details>
+
 ---
 
-## Environment / 环境依赖
+<details>
+<summary><b>Environment / 环境依赖</b></summary>
 
 ### Key Libraries / 关键库
 
@@ -579,9 +597,12 @@ pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu121
 pip install warp-lang==1.7.2 numpy matplotlib pettingzoo
 ```
 
+</details>
+
 ---
 
-## Parallel Environments / 并行环境仿真
+<details>
+<summary><b>Parallel Environments / 并行环境仿真</b></summary>
 
 GPU 端实现了 `RadarSimVecEnv`（[radar_sim/gpu/vec_env.py](radar_sim/gpu/vec_env.py)）——参考 Newton/IsaacLab 架构的批量化雷达仿真，所有 Warp 内核按 `dim = num_envs × n_radars × n_elem` 平铺启动，PyTorch 端用 `wp.from_torch` 零拷贝共享显存。一次 `step()` 完成全部环境的 CPI（波束导向 → TX/RX 波形 → 信道延迟/多普勒/增益 → 互干扰 → 匹配滤波 → Doppler FFT → CA-CFAR）。
 
@@ -641,9 +662,12 @@ E=1 实测：pre-allocated 2024 MB，step 峰值 2425 MB（与理论一致）。
 - `wp.from_torch` 零拷贝共享 GPU 显存，消除 `cpu().numpy()` 往返
 - 所有大缓冲在 `__init__` 一次性分配，`step()` 原地覆写
 
+</details>
+
 ---
 
-## Precision Validation / 精度校验
+<details>
+<summary><b>Precision Validation / 精度校验</b></summary>
 
 Validated against analytical ground truth (closed-form radar physics formulas) and RadarSimPy v15.2.0 processing algorithms (range FFT, Doppler FFT, CA-CFAR).
 
@@ -684,13 +708,17 @@ Diagonal links (+87.3 dB) are boresight-to-boresight; side links (+14.7 dB) are 
 
 对角链路（+87.3 dB）为波束正面耦合；侧链路（+14.7 dB）为旁瓣耦合。所有链路预算与 Friis 方程精确一致。
 
+</details>
+
 ---
 
-## Visualization / 可视化效果图
+<details>
+<summary><b>Visualization / 可视化效果图 (17 figures)</b></summary>
 
 10 km 四雷达场景的 publication-quality 可视化，由 `validation/generate_plots.py` 生成。
 
-17 张效果图位于 `validation/figures/`：
+<details>
+<summary><i>01-04: Signal Processing / 信号处理基础</i></summary>
 
 ### 01 — Array Beam Pattern Overlay / 阵列方向图叠加
 ![01](validation/figures/01_array_pattern_overlay.png)
@@ -728,23 +756,10 @@ Diagonal links (+87.3 dB) are boresight-to-boresight; side links (+14.7 dB) are 
 
 **合理性：** 匹配滤波是雷达接收机的核心信号处理环节。该图证明系统的频域脉压实现正确，能够在多个目标同时存在的条件下分辨各目标的距离，且不引入虚假峰值或位置偏移。
 
-### 08 — Waveform Comparison / 波形对比
-![08](validation/figures/08_waveform_comparison.png)
+</details>
 
-**条件：** 6 种雷达波形的自相关（脉压）响应：LFM 线性调频、Barker-13 二相编码、Frank-16 多相编码、Costas-16 跳频、NLFM 非线性调频、P4 多相码，均在相同 TB 积（2000）条件下生成。
-
-**说明的能力：** 系统的 `WaveformGeneratorGPU` 模块能够在 GPU 上生成多种典型雷达波形，并通过匹配滤波展示各自的脉压特性。图中清晰对比了不同波形的旁瓣结构差异：LFM 具有经典的 sinc 型旁瓣（-13.3 dB），Barker-13 具有均匀低旁瓣（-22.3 dB），Frank/Costas/P4 等编码波形展示了各自独特的旁瓣抑制特性。
-
-**合理性：** 波形多样性是电子战与抗干扰研究的关键维度。该图证明系统不仅限于单一 LFM 波形，而是具备在统一框架下生成和评估多种波形脉压性能的能力，为后续波形选择与抗干扰策略研究奠定了基础。
-
-### 09 — JNR vs Distance / 干噪比-距离曲线
-![09](validation/figures/09_jnr_vs_distance.png)
-
-**条件：** 发射功率 1 kW，25×25 阵列（峰值增益 34 dBi），旁瓣增益取 30° 偏轴方向值，扫描距离 0.5–14 km，fc=10 GHz。
-
-**说明的能力：** 该图通过三条曲线（主瓣↔主瓣、旁瓣↔主瓣、旁瓣↔旁瓣）展示了互干扰强度随雷达间距的变化规律。主瓣对主瓣耦合在 1 km 处 JNR 超过 150 dB，即使在 14 km 处仍高于 100 dB——说明近距离主瓣对准是极端干扰场景。旁瓣对旁瓣在 10 km 工作范围处 JNR 约 0 dB，刚好处于检测门限临界点。
-
-**合理性：** JNR 随距离以 20 dB/decade（1/d²）衰减，符合 Friis 自由空间传播规律。10 km 工作线处的 JNR 水平提示：旁瓣间干扰在实际工作距离上可能不会严重恶化检测性能，但主瓣耦合（如对角线部署）必须通过频率规划或波形正交化来规避。这为系统级电磁兼容设计提供了定量参考。
+<details>
+<summary><i>05-07: RDM / CFAR / Interference Comparison / 距离多普勒图与干扰对比</i></summary>
 
 ### 05 — Range-Doppler Map / 距离-多普勒图
 
@@ -807,6 +822,34 @@ Diagonal links (+87.3 dB) are boresight-to-boresight; side links (+14.7 dB) are 
 **说明的能力：** 这组对比实验直接展示了系统的核心应用场景——评估多雷达互干扰对检测性能的影响。系统通过控制干扰雷达的有无，在同一目标条件下生成"干净"和"受干扰"两组 RDM，定量比较底噪抬升和 SNR 退化。干扰信号在 RDM 中呈现沿距离维度扩展的条纹结构，这是因为同频 LFM 干扰经受害雷达的匹配滤波后产生了脉压旁瓣。
 
 **合理性：** 同频同波形干扰经匹配滤波后产生相干脉压输出，其效果等价于在距离维上叠加一个以干扰时延为中心的 sinc 函数，从而在整个距离范围内均匀抬高底噪。这与图中观察到的干扰条纹一致。目标在干扰存在时仍可被 CFAR 检出，说明在当前参数下（2 km 间距，旁瓣间耦合 JNR=14.7 dB）干扰尚未完全遮蔽目标，但随着雷达间距缩短或波束对准程度增加，干扰将显著恶化检测性能。
+
+</details>
+
+<details>
+<summary><i>08-09: Waveforms & JNR Analysis / 波形与干扰分析</i></summary>
+
+### 08 — Waveform Comparison / 波形对比
+![08](validation/figures/08_waveform_comparison.png)
+
+**条件：** 6 种雷达波形的自相关（脉压）响应：LFM 线性调频、Barker-13 二相编码、Frank-16 多相编码、Costas-16 跳频、NLFM 非线性调频、P4 多相码，均在相同 TB 积（2000）条件下生成。
+
+**说明的能力：** 系统的 `WaveformGeneratorGPU` 模块能够在 GPU 上生成多种典型雷达波形，并通过匹配滤波展示各自的脉压特性。图中清晰对比了不同波形的旁瓣结构差异：LFM 具有经典的 sinc 型旁瓣（-13.3 dB），Barker-13 具有均匀低旁瓣（-22.3 dB），Frank/Costas/P4 等编码波形展示了各自独特的旁瓣抑制特性。
+
+**合理性：** 波形多样性是电子战与抗干扰研究的关键维度。该图证明系统不仅限于单一 LFM 波形，而是具备在统一框架下生成和评估多种波形脉压性能的能力，为后续波形选择与抗干扰策略研究奠定了基础。
+
+### 09 — JNR vs Distance / 干噪比-距离曲线
+![09](validation/figures/09_jnr_vs_distance.png)
+
+**条件：** 发射功率 1 kW，25×25 阵列（峰值增益 34 dBi），旁瓣增益取 30° 偏轴方向值，扫描距离 0.5–14 km，fc=10 GHz。
+
+**说明的能力：** 该图通过三条曲线（主瓣↔主瓣、旁瓣↔主瓣、旁瓣↔旁瓣）展示了互干扰强度随雷达间距的变化规律。主瓣对主瓣耦合在 1 km 处 JNR 超过 150 dB，即使在 14 km 处仍高于 100 dB——说明近距离主瓣对准是极端干扰场景。旁瓣对旁瓣在 10 km 工作范围处 JNR 约 0 dB，刚好处于检测门限临界点。
+
+**合理性：** JNR 随距离以 20 dB/decade（1/d²）衰减，符合 Friis 自由空间传播规律。10 km 工作线处的 JNR 水平提示：旁瓣间干扰在实际工作距离上可能不会严重恶化检测性能，但主瓣耦合（如对角线部署）必须通过频率规划或波形正交化来规避。这为系统级电磁兼容设计提供了定量参考。
+
+</details>
+
+<details>
+<summary><i>10-17: Phased Array Features / 相控阵特性</i></summary>
 
 ### 10 — 2D Pencil Beam Pattern / 二维笔形波束方向图
 ![10](validation/figures/10_2d_pencil_beam.png)
@@ -881,9 +924,14 @@ Diagonal links (+87.3 dB) are boresight-to-boresight; side links (+14.7 dB) are 
 
 **合理性：** 4 部雷达到中心目标距离均为 7.07 km（对角线），但因波束指向偏转角不同（最大 45°），各雷达在目标处的等效增益因 scan loss（~1/cos(θ) 波束展宽）略有差异。偏转角度越大的雷达，目标处增益略低，这在柱状图中得到体现。波束足迹宽度与距离·波束宽度的乘积一致（7.07 km × 4.6° ≈ 0.57 km 半宽），符合远场方向图投影规律。
 
+</details>
+
+</details>
+
 ---
 
-## Competitive Landscape / 竞品对比
+<details>
+<summary><b>Competitive Landscape / 竞品对比</b></summary>
 
 FluxPhased **不是**通用 Maxwell 方程求解器（如 CST/HFSS/MEEP），也不只是 dB 级链路预算工具，而是一款定位非常专的 **IQ 信号级相控阵雷达互干扰 GPU 仿真框架**。
 
@@ -936,15 +984,20 @@ FluxPhased **不是**通用 Maxwell 方程求解器（如 CST/HFSS/MEEP），也
 - **平面波远场传播假设** — 近场效应、复杂多径、地杂波建模有限（gprMax 专门为此设计）
 - **早期科研代码** — 社区生态需时间积累
 
+</details>
+
 ---
 
-## Tech Stack / 技术栈
+<details>
+<summary><b>Tech Stack & Specs / 技术栈与系统参数</b></summary>
+
+### Tech Stack / 技术栈
 
 - **NVIDIA Warp 1.7.2** — Custom CUDA kernels for per-element signal processing / 逐元素信号处理的自定义 CUDA 内核
 - **PyTorch 2.5+** — GPU tensor ops and torch.fft (cuFFT backend) / GPU 张量运算与 FFT
 - **Complex numbers / 复数表示**: Interleaved float32 (Warp lacks native complex64) / 交错 float32（Warp 无原生 complex64）
 
-## Specs / 系统参数
+### Specs / 系统参数
 
 | Parameter / 参数 | Value / 值 |
 |-----------|-------|
@@ -953,9 +1006,12 @@ FluxPhased **不是**通用 Maxwell 方程求解器（如 CST/HFSS/MEEP），也
 | Elements total / 总阵元数 | 4 × 625 = 2,500 |
 | GPU memory / 显存占用 | ~1.1 GB / 6.4 GB (RTX 2060) |
 
+</details>
+
 ---
 
-## Bug Fixes / 缺陷修复
+<details>
+<summary><b>Bug Fixes / 缺陷修复</b></summary>
 
 | Bug / 缺陷 | File / 文件 | Fix / 修复 |
 |-----|------|-----|
@@ -964,6 +1020,8 @@ FluxPhased **不是**通用 Maxwell 方程求解器（如 CST/HFSS/MEEP），也
 | Missing TX directivity / 缺少发射空间指向性 | `interference_gpu.py` | Rewrote to use Friis link budget with antenna gains / 重写为 Friis 链路预算，加入天线增益 |
 | Float32 `cos(π/2)**1.5` → NaN at 90° geometry / 90° 几何下浮点 NaN | `vec_interference.py` | Clamp `cos(theta)` to ≥ 0 before fractional power (fixes corner-radar setups) / 分数次幂前 clamp cos ≥ 0 |
 | BPSK encode/modulate CPU tensor / BPSK 编码调制在 CPU 创建张量 | `waveform_gpu.py` | `encode_bpsk` 新增 `device` 参数，`modulate_bpsk` 强制 `.to(device)` / 消除 CPU↔GPU 混合计算 |
+
+</details>
 
 ---
 
