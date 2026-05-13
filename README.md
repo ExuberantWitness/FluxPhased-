@@ -1,8 +1,8 @@
 # FluxPhased
 
-GPU-accelerated IQ-level signal simulation for mutual interference between four 25×25 phased array radars (200MHz bandwidth) using NVIDIA Warp + PyTorch, with cruise missile combat and multi-agent adversarial battlefield.
+**FluxPhased** is a GPU-accelerated, IQ-level multi-function phased array radar (MFAR) simulation benchmark for multi-agent reinforcement learning research. It models four 25×25 element-level digital arrays (ELDA) with full per-element independent control across four tasks — detection, reconnaissance, jamming, and BPSK communication — on a 20 km × 20 km adversarial battlefield with cruise missile combat, aspect-angle RCS with Swerling fluctuation, and hierarchical agent architecture (radar agents + commander agents). All signal processing runs on GPU via NVIDIA Warp custom CUDA kernels and PyTorch FFT. The environment is wrapped as a PettingZoo ParallelEnv (28/28 tests passed) for direct interoperability with MALib, Ray RLlib, MARLlib, Tianshou, and other MARL frameworks.
 
-基于 NVIDIA Warp + PyTorch 的四部 25×25 相控阵雷达（200MHz 带宽）IQ 级互干扰信号 GPU 仿真，含巡航导弹作战与多智能体对抗战场。
+**FluxPhased** 是面向多智能体强化学习研究的 GPU 加速 IQ 级多功能相控阵雷达（MFAR）仿真基准。系统建模四部 25×25 阵元级数字阵列（ELDA），625 个阵元完全独立控制，支持探测、侦察、干扰、BPSK 通信四种任务，在 20 km × 20 km 对抗战场上进行巡航导弹作战。包含视角相关 RCS + Swerling 起伏建模、层级式智能体架构（雷达 agent + 指挥官 agent），全部信号处理在 GPU 上通过 NVIDIA Warp 自定义 CUDA 内核与 PyTorch FFT 完成。环境封装为 PettingZoo ParallelEnv（28/28 测试通过），可直接对接 MALib / Ray RLlib / MARLlib / Tianshou 等 MARL 训练框架，支持 PSRO / League Training 等元博弈算法。
 
 ---
 
