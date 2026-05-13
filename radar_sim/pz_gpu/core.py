@@ -97,6 +97,11 @@ class FluxPhasedPZEnv(ParallelEnv):
     def action_space(self, agent: str) -> spaces.Space:
         return self._act_spaces[agent]
 
+    @property
+    def unwrapped(self):
+        """Access the underlying MFARVecEnv."""
+        return self._env
+
     def reset(
         self,
         seed: Optional[int] = None,
@@ -209,7 +214,8 @@ class FluxPhasedPZEnv(ParallelEnv):
         pass
 
     def close(self):
-        del self._env
+        if hasattr(self, "_env"):
+            del self._env
 
     # ------------------------------------------------------------------
     # Internal helpers

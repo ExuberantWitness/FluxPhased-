@@ -413,18 +413,23 @@ env = FluxPhasedPZEnv(radar_latents_fn=my_encoder)
 
 ### PettingZoo 测试
 
-```
-RTX 2060, 2×2 阵列, 2 脉冲, num_input_length=4, num_output_length=4:
+28 项 benchmark 级验证测试（RTX 2060, 2×2 阵列, 2 脉冲）：
 
-  PASS: agent naming
-  PASS: obs/action shapes
-  PASS: radar_latents callback
-  PASS: commander launch
-  PASS: episode terminated at step 5
-  PASS: parallel_api_test (官方合规测试)
+| 分类 | 测试项 | 结果 |
+|------|--------|------|
+| API 结构 | agent naming, spaces, heterogeneous spaces | ✅ |
+| Reset/Obs | 返回值结构, 形状匹配, 无 NaN/Inf, dtype float32 | ✅ |
+| Step/Reward | 5 dict 返回, 奖励有限, step count, 终止/截断 | ✅ |
+| Agent 生命周期 | agents 单调递减, possible_agents 恒定, reset 恢复 | ✅ |
+| 确定性 | 同 seed 同 obs, 同 seed 同轨迹 (>99% 匹配) | ✅ |
+| radar_latents | 回调注入正确, 无回调零填充 | ✅ |
+| 导弹发射 | 指挥官发射, 重复发射 no-op | ✅ |
+| 稳定性 | 5 episode 无崩溃, GPU 内存增长 <1 MB | ✅ |
+| Action | 采样在界内, 零动作不崩溃 | ✅ |
+| Info | 结构正确 (alive, position, missile, winner, step) | ✅ |
+| 官方合规 | `parallel_api_test` | ✅ |
 
-All tests passed!
-```
+**全部 28/28 测试通过。MFAR 6/6 + 导弹 8/8 也全部通过。**
 
 ### League Training 衔接
 
