@@ -6,6 +6,21 @@
 
 ---
 
+## What's New / 更新进展
+
+**2026-05-13 — YAML Config + Sim2Real Calibration Pipeline**
+- 所有物理仿真参数（阵列几何、射频、导弹、战场、奖励权重等 40+ 参数）现可通过 [configs/physics.yaml](configs/physics.yaml) 配置
+- 算法/训练参数独立到 [configs/algorithm.yaml](configs/algorithm.yaml)
+- 新增 [config_loader.py](radar_sim/config_loader.py) 支持 YAML ↔ dataclass 双向转换
+- 修复 `VecArray.directivity_db` 属性中 dx_wl/dy_wl 硬编码 bug
+- 新增 [radar_sim/calibration/](radar_sim/calibration/) sim2real 参数标定 pipeline：支持 Sobol/网格/随机场景采样、合成参考数据生成、scipy 最小二乘 / 遗传算法 / L-BFGS-B 参数估计、Markdown 报告 + 收敛曲线
+
+**2026-05-13 — README 折叠化重构**
+- 全部大段落改为 `<details>` 可折叠结构，首屏仅显示简介 + Quick Start
+- 合并 Environment + Tech Stack、MFAR + Combat + PZ 等重复段落
+
+---
+
 ## Quick Start / 快速开始
 
 ```bash
