@@ -80,7 +80,7 @@ radar_sim/
 ---
 
 <details>
-<summary><b>MFAR Multi-Task Per-Element Control / MFAR 多任务逐阵元控制</b></summary>
+<summary><b>MFAR Combat & Multi-Agent / 多功能对抗与多智能体</b></summary>
 
 FluxPhased 升级为积木式相控阵（ELDA，Element-Level Digital Array）：625 个阵元完全独立控制，RL 学习阵元组织策略。支持 4 种任务：侦察（Reconnaissance）、探测（Detection）、干扰（Jamming）、通信（Communication）。
 
@@ -185,12 +185,7 @@ RTX 2060, 2 env × 2 radars × 5×5 阵列, 4 脉冲, FFT=64:
 
 **全部 6/6 测试通过。原始 vec_env 3/3 和 2env_25 5/5 测试也全部通过，向后兼容。**
 
-</details>
-
 ---
-
-<details>
-<summary><b>Multi-Agent Combat System / 多智能体对抗系统</b></summary>
 
 20 km × 20 km 战场（原点在中心）上的红蓝双方对抗博弈。每方由 2 部雷达 agent + 1 个指挥官 agent 组成，操控巡航导弹攻击敌方雷达。
 
@@ -383,12 +378,7 @@ RTX 2060, 1 env × 4 radars × 5×5 阵列, 8 脉冲, FFT=64:
 
 **全部 8/8 测试通过。原始 MFAR 6/6 测试仍然通过，向后兼容。**
 
-</details>
-
 ---
-
-<details>
-<summary><b>PettingZoo Parallel API / PZ 并行接口</b></summary>
 
 `radar_sim/pz_gpu/` 将 GPU 向量化 MFAR 环境封装为 [PettingZoo ParallelEnv](https://pettingzoo.farama.org/api/parallel/)，可对接 MALib / Ray RLlib / MARLlib / Tianshou 等 MARL 框架。
 
@@ -561,7 +551,7 @@ report.to_markdown("eval_report.md")
 ---
 
 <details>
-<summary><b>Environment / 环境依赖</b></summary>
+<summary><b>Environment, Tech Stack & Specs / 环境依赖与技术栈</b></summary>
 
 ### Key Libraries / 关键库
 
@@ -596,6 +586,21 @@ conda activate env_isaacsim
 pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu121
 pip install warp-lang==1.7.2 numpy matplotlib pettingzoo
 ```
+
+### Tech Stack / 技术栈
+
+- **NVIDIA Warp 1.7.2** — Custom CUDA kernels for per-element signal processing / 逐元素信号处理的自定义 CUDA 内核
+- **PyTorch 2.5+** — GPU tensor ops and torch.fft (cuFFT backend) / GPU 张量运算与 FFT
+- **Complex numbers / 复数表示**: Interleaved float32 (Warp lacks native complex64) / 交错 float32（Warp 无原生 complex64）
+
+### Specs / 系统参数
+
+| Parameter / 参数 | Value / 值 |
+|-----------|-------|
+| Radars / 雷达数量 | 4 × 25×25 phased arrays / 相控阵 |
+| Bandwidth / 带宽 | 200 MHz (IQ-level / IQ 级) |
+| Elements total / 总阵元数 | 4 × 625 = 2,500 |
+| GPU memory / 显存占用 | ~1.1 GB / 6.4 GB (RTX 2060) |
 
 </details>
 
@@ -717,9 +722,6 @@ Diagonal links (+87.3 dB) are boresight-to-boresight; side links (+14.7 dB) are 
 
 10 km 四雷达场景的 publication-quality 可视化，由 `validation/generate_plots.py` 生成。
 
-<details>
-<summary><i>01-04: Signal Processing / 信号处理基础</i></summary>
-
 ### 01 — Array Beam Pattern Overlay / 阵列方向图叠加
 ![01](validation/figures/01_array_pattern_overlay.png)
 
@@ -755,11 +757,6 @@ Diagonal links (+87.3 dB) are boresight-to-boresight; side links (+14.7 dB) are 
 **说明的能力：** 系统在 GPU 上通过 `torch.fft` 实现频域匹配滤波（脉压），正确完成发射波形与接收信号的互相关运算。图中 3 个目标峰精确出现在对应距离位置，脉压后的距离分辨率为 c/(2B)=0.75 m，与理论值一致。主旁瓣比约 13.3 dB（LFM 均匀加权）也符合理论预期。
 
 **合理性：** 匹配滤波是雷达接收机的核心信号处理环节。该图证明系统的频域脉压实现正确，能够在多个目标同时存在的条件下分辨各目标的距离，且不引入虚假峰值或位置偏移。
-
-</details>
-
-<details>
-<summary><i>05-07: RDM / CFAR / Interference Comparison / 距离多普勒图与干扰对比</i></summary>
 
 ### 05 — Range-Doppler Map / 距离-多普勒图
 
@@ -823,11 +820,6 @@ Diagonal links (+87.3 dB) are boresight-to-boresight; side links (+14.7 dB) are 
 
 **合理性：** 同频同波形干扰经匹配滤波后产生相干脉压输出，其效果等价于在距离维上叠加一个以干扰时延为中心的 sinc 函数，从而在整个距离范围内均匀抬高底噪。这与图中观察到的干扰条纹一致。目标在干扰存在时仍可被 CFAR 检出，说明在当前参数下（2 km 间距，旁瓣间耦合 JNR=14.7 dB）干扰尚未完全遮蔽目标，但随着雷达间距缩短或波束对准程度增加，干扰将显著恶化检测性能。
 
-</details>
-
-<details>
-<summary><i>08-09: Waveforms & JNR Analysis / 波形与干扰分析</i></summary>
-
 ### 08 — Waveform Comparison / 波形对比
 ![08](validation/figures/08_waveform_comparison.png)
 
@@ -845,11 +837,6 @@ Diagonal links (+87.3 dB) are boresight-to-boresight; side links (+14.7 dB) are 
 **说明的能力：** 该图通过三条曲线（主瓣↔主瓣、旁瓣↔主瓣、旁瓣↔旁瓣）展示了互干扰强度随雷达间距的变化规律。主瓣对主瓣耦合在 1 km 处 JNR 超过 150 dB，即使在 14 km 处仍高于 100 dB——说明近距离主瓣对准是极端干扰场景。旁瓣对旁瓣在 10 km 工作范围处 JNR 约 0 dB，刚好处于检测门限临界点。
 
 **合理性：** JNR 随距离以 20 dB/decade（1/d²）衰减，符合 Friis 自由空间传播规律。10 km 工作线处的 JNR 水平提示：旁瓣间干扰在实际工作距离上可能不会严重恶化检测性能，但主瓣耦合（如对角线部署）必须通过频率规划或波形正交化来规避。这为系统级电磁兼容设计提供了定量参考。
-
-</details>
-
-<details>
-<summary><i>10-17: Phased Array Features / 相控阵特性</i></summary>
 
 ### 10 — 2D Pencil Beam Pattern / 二维笔形波束方向图
 ![10](validation/figures/10_2d_pencil_beam.png)
@@ -926,8 +913,6 @@ Diagonal links (+87.3 dB) are boresight-to-boresight; side links (+14.7 dB) are 
 
 </details>
 
-</details>
-
 ---
 
 <details>
@@ -983,28 +968,6 @@ FluxPhased **不是**通用 Maxwell 方程求解器（如 CST/HFSS/MEEP），也
 - **当前验证到 4 雷达 × 2500 阵元** — 扩到组网 16 部或 10000 阵元量级需要进一步显存优化
 - **平面波远场传播假设** — 近场效应、复杂多径、地杂波建模有限（gprMax 专门为此设计）
 - **早期科研代码** — 社区生态需时间积累
-
-</details>
-
----
-
-<details>
-<summary><b>Tech Stack & Specs / 技术栈与系统参数</b></summary>
-
-### Tech Stack / 技术栈
-
-- **NVIDIA Warp 1.7.2** — Custom CUDA kernels for per-element signal processing / 逐元素信号处理的自定义 CUDA 内核
-- **PyTorch 2.5+** — GPU tensor ops and torch.fft (cuFFT backend) / GPU 张量运算与 FFT
-- **Complex numbers / 复数表示**: Interleaved float32 (Warp lacks native complex64) / 交错 float32（Warp 无原生 complex64）
-
-### Specs / 系统参数
-
-| Parameter / 参数 | Value / 值 |
-|-----------|-------|
-| Radars / 雷达数量 | 4 × 25×25 phased arrays / 相控阵 |
-| Bandwidth / 带宽 | 200 MHz (IQ-level / IQ 级) |
-| Elements total / 总阵元数 | 4 × 625 = 2,500 |
-| GPU memory / 显存占用 | ~1.1 GB / 6.4 GB (RTX 2060) |
 
 </details>
 
