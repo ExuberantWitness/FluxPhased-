@@ -116,6 +116,33 @@ class VecElementProcessor:
 
         return torch.abs(spectrum) ** 2
 
+    def process_rx_cpi_unified(
+        self, iq_pulses: torch.Tensor,
+        waveform_refs: dict,
+    ) -> dict:
+        """Single FFT pass with per-task matched filtering.
+
+        Args:
+            iq_pulses: [E, R, N, P, S] complex64
+            waveform_refs: {task_id: ref_waveform_or_None}
+                ref_waveform: broadcastable to [E, R, N, S] complex64
+        Returns:
+            {task_id: [E, R, N, P, n_bins] float32 power spectrum}
+            task_id 0 (recon) with ref=None returns raw |FFT|^2.
+        """
+        raw_fft = torch.fft.fft(iq_pulses, n=self.fft_size, dim=-1)
+
+        results = {}
+        for task_id, ref in waveform_refs.items():
+            if ref is None:
+                results[task_id] = torch.abs(raw_fft) ** 2
+            else:
+                ref_spectrum = torch.fft.fft(ref, n=self.fft_size, dim=-1)
+                mf = raw_fft * torch.conj(ref_spectrum.unsqueeze(-2))
+                results[task_id] = torch.abs(mf) ** 2
+
+        return results
+
     def process_rx_comm(
         self, iq_pulses: torch.Tensor, waveform_ref: torch.Tensor,
     ) -> torch.Tensor:
@@ -333,7 +360,7 @@ class VecElementProcessor:
             if not mask.any():
                 continue
             # Apply weight × waveform where mask is True
-            mask_expanded = mask.unsqueeze(-1).expand_as(tx_out)  # [E,R,N,S]
+            mask_expanded = mask.unsqueeze(-1)  # [E,R,N,1]
             weighted = weights.unsqueeze(-1) * wf.view(1, 1, 1, -1)  # [E,R,N,S]
             tx_out = torch.where(mask_expanded, weighted, tx_out)
 

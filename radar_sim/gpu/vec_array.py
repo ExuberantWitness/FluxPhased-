@@ -158,7 +158,8 @@ class VecArray:
 
         # [E*R, 2*N] → [E*R, N, 2] → complex [E*R, N] → [E, R, N]
         weights_3d = self._weights_buf.reshape(E * R, self.n_elem, 2)
-        weights_complex = torch.view_as_complex(weights_3d.contiguous())
+        assert weights_3d.is_contiguous()
+        weights_complex = torch.view_as_complex(weights_3d)
         return weights_complex.reshape(E, R, self.n_elem)
 
     def steer_per_element(
@@ -201,7 +202,8 @@ class VecArray:
         )
 
         weights_3d = self._weights_buf.reshape(E * R, N, 2)
-        weights_complex = torch.view_as_complex(weights_3d.contiguous())
+        assert weights_3d.is_contiguous()
+        weights_complex = torch.view_as_complex(weights_3d)
         return weights_complex.reshape(E, R, N)
 
     def beamform_tx(

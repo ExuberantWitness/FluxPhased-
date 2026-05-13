@@ -29,6 +29,7 @@ python radar_sim/evaluation/test_evaluation.py     # Effectiveness evaluation me
 ```
 radar_sim/
 ├── config.py            # System configuration / 系统配置 (25x25 阵列, 射频, 波形, 战场)
+├── config_loader.py     # YAML ↔ dataclass loader / YAML 配置加载器
 ├── gpu/                 # GPU-accelerated simulation / GPU 加速仿真 (Warp + PyTorch)
 │   ├── array_gpu.py     # Warp: beam steering, array factor, per-element beamforming
 │   ├── channel_gpu.py   # Warp: per-element delay/Doppler/fading / 逐元素延迟/多普勒/衰落
@@ -73,6 +74,16 @@ radar_sim/
 │   ├── reporting/
 │   │   └── report.py    # Structured report (dict/JSON/Markdown) / 结构化报告
 │   └── test_evaluation.py  # 13-test validation suite / 测试套件
+├── calibration/         # Sim2Real parameter calibration / 仿真-实测参数标定
+│   ├── pipeline.py      # CalibrationPipeline orchestrator / 标定流程编排器
+│   ├── estimator.py     # ParameterEstimator (LS/DE/L-BFGS-B) / 参数估计器
+│   ├── scenario_selector.py  # ScenarioSelector (Sobol/grid/random) / 场景选择器
+│   ├── reference_data.py     # ReferenceDataLoader (synthetic/real) / 参考数据加载
+│   ├── runner.py        # CalibrationRunner (sim override + residuals) / 标定运行器
+│   └── report.py        # CalibrationReport (Markdown + convergence plot) / 标定报告
+configs/                 # YAML configuration files / YAML 配置文件
+├── physics.yaml         # All physical simulation parameters / 物理仿真参数
+└── algorithm.yaml       # Algorithm/training parameters / 算法训练参数
 ```
 
 </details>
@@ -976,7 +987,34 @@ FluxPhased **不是**通用 Maxwell 方程求解器（如 CST/HFSS/MEEP），也
 <details>
 <summary><b>Updates & Bug Fixes / 更新进展与缺陷修复</b></summary>
 
-### 2026-05-13
+### 2026-05-13 (2)
+
+**GPU Performance Optimization / GPU 性能优化**
+
+对 GPU 仿真管线进行 6 项优化，在不改变任何数值结果的前提下降低显存峰值和计算开销：
+
+| 优化项 | 影响文件 | 效果 |
+|--------|----------|------|
+| Spectrum/comm_data 预分配 | `vec_mfar_env.py` | 消除每步 ~6.25 GB 临时分配（25×25 默认配置） |
+| 消除 `.expand_as()` 广播 | `vec_mfar_env.py`, `vec_element_processor.py` | 消除 3×6.25 GB 临时 mask（PyTorch 原生广播替代） |
+| 干扰计算向量化 | `vec_interference.py` | 消除 48 次 GPU→CPU `.item()` 同步，按唯一延迟值分组 |
+| CPI 信道参数提升至循环外 | `vec_mfar_env.py` | 消除 P×(targets+teams) 次冗余信道计算（脉冲循环内位置不变） |
+| 单次 FFT 替代三路 RX 处理 | `vec_element_processor.py`, `vec_mfar_env.py` | 新增 `process_rx_cpi_unified` 方法，一次 FFT 完成所有任务的匹配滤波 |
+| 消除不必要的 `.contiguous()` | `vec_channel.py`, `vec_array.py` | 4 处安全守卫改为 assert（预分配 buffer 保证连续） |
+
+**基线记录**: 新增 [baselines/benchmark_5x5.py](baselines/benchmark_5x5.py) 基线性能记录脚本，记录显存占用、各阶段耗时、数值指纹至 JSON 文件。
+
+5×5 配置基准测试（RTX 2060, E=2, R=2, 4 脉冲, FFT=64）：
+
+| 指标 | 基线 | 优化后 |
+|------|------|--------|
+| pulses_ms | 45.7 ms | 6.3 ms（-86%） |
+| total_ms | 63.2 ms | 61.0 ms |
+| 数值指纹 | — | 完全一致 |
+
+全部 19 测试通过（MFAR 6/6 + Evaluation 13/13），数值结果无回归。
+
+### 2026-05-13 (1)
 
 **YAML Config + Sim2Real Calibration Pipeline**
 - 所有物理仿真参数（阵列几何、射频、导弹、战场、奖励权重等 40+ 参数）现可通过 [configs/physics.yaml](configs/physics.yaml) 配置

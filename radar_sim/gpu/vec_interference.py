@@ -158,19 +158,30 @@ class VecInterference:
         rx_amplitude = torch.sqrt(rx_power_w.clamp(min=0.0))  # [E, R_tx, R_rx]
 
         # Build IQ interference signal into pre-allocated buffer
+        # Vectorized: group by unique delay values to eliminate per-env .item() syncs
         out.zero_()
+        # Pre-compute all delays: [E, R, R]
+        delay_all = (dist / SPEED_OF_LIGHT * self.fs).long().clamp(max=S - 1)
+
         for i in range(R):
             for j in range(R):
                 if i == j:
                     continue
-                delay_samples = (dist[:, i, j] / SPEED_OF_LIGHT * self.fs).long()
-                amp = rx_amplitude[:, i, j]  # [E]
+                d = delay_all[:, i, j]  # [E] int64, stays on GPU
+                a = rx_amplitude[:, i, j]  # [E] float32, stays on GPU
 
-                for e in range(E):
-                    d = int(delay_samples[e].item())
-                    if d >= S:
+                # Skip pairs where all amplitudes are negligible (GPU-side check)
+                active = a > 1e-15  # [E] bool, no sync
+                if not active.any():
+                    continue
+
+                # Group by unique delay values (few unique values typically)
+                for d_val in d[active].unique():
+                    d_int = int(d_val.item())  # single sync per unique delay
+                    if d_int >= S:
                         continue
-                    a = float(amp[e].item())
-                    if a < 1e-15:
-                        continue
-                    out[e, j, :, d:] += a * baseband[:S - d].unsqueeze(0)
+                    env_mask = (d == d_val) & active  # [E] bool
+                    idx = torch.where(env_mask)[0]
+                    scale = a[env_mask].unsqueeze(1).unsqueeze(2)  # [n_active, 1, 1]
+                    shifted = baseband[:S - d_int].unsqueeze(0).unsqueeze(0)  # [1, 1, S-d]
+                    out[idx, j, :, d_int:] += scale * shifted

@@ -148,6 +148,14 @@ class MFARVecEnv:
             E, R, N, self.n_pulses, S, dtype=torch.complex64, device=dev_torch,
         )
 
+        # Spectrum and comm output buffers (pre-allocated, reused each step)
+        self._buf_spectrum = torch.zeros(
+            E, R, N, self.n_pulses, self.n_bins, dtype=torch.float32, device=dev_torch,
+        )
+        self._buf_comm_data = torch.zeros(
+            E, R, N, 2, dtype=torch.float32, device=dev_torch,
+        )
+
         # --- State tensors ---
         self.radar_pos = torch.zeros(E, R, 3, device=dev_torch)
         self.radar_vel = torch.zeros(E, R, 3, device=dev_torch)
@@ -346,57 +354,67 @@ class MFARVecEnv:
                 (E, self.n_teams, R), missile.swerling_model, dev,
             )
 
+        # Pre-compute channel params outside the pulse loop (positions constant within CPI)
+        static_params = []
+        for t_idx in range(self.n_targets):
+            delay_s, doppler_hz, gain = self.channel.compute_params_batch(
+                self.radar_pos, self.radar_vel,
+                self.target_pos[:, t_idx], self.target_vel[:, t_idx],
+                tx_power_w=self.tx_power_w,
+                rcs_dbsm=self.target_rcs_dbsm,
+                array_directivity_db=self.array.directivity_db,
+            )
+            static_params.append((delay_s, doppler_hz, gain))
+
+        missile_params = []
+        for team_idx in range(self.n_teams):
+            flying = missile.in_flight[:, team_idx]
+            if not flying.any():
+                missile_params.append(None)
+                continue
+            m_pos = missile.missile_pos[:, team_idx]
+            m_vel = missile.missile_vel[:, team_idx]
+            delay_s, doppler_hz, gain = self.channel.compute_params_batch(
+                self.radar_pos, self.radar_vel, m_pos, m_vel,
+                tx_power_w=self.tx_power_w,
+                rcs_dbsm=missile.rcs_dbsm,
+                array_directivity_db=self.array.directivity_db,
+            )
+            gain = gain * aspect_correction[:, team_idx]
+            if swerling_slow is not None:
+                gain = gain * swerling_slow[:, team_idx]
+            gain = gain * flying.float().unsqueeze(1)
+            missile_params.append((delay_s, doppler_hz, gain))
+
         # Track last-computed channel params for evaluation
         last_channel_params = None
+        if static_params:
+            last_channel_params = {
+                "delay_samples": static_params[0][0].detach(),
+                "doppler_hz": static_params[0][1].detach(),
+                "gain_linear": static_params[0][2].detach(),
+            }
 
         for p in range(P):
             self._buf_rx_signal.zero_()
 
-            # Static targets
-            for t_idx in range(self.n_targets):
-                delay_s, doppler_hz, gain = self.channel.compute_params_batch(
-                    self.radar_pos, self.radar_vel,
-                    self.target_pos[:, t_idx], self.target_vel[:, t_idx],
-                    tx_power_w=self.tx_power_w,
-                    rcs_dbsm=self.target_rcs_dbsm,
-                    array_directivity_db=self.array.directivity_db,
-                )
+            # Static targets (use pre-computed params)
+            for delay_s, doppler_hz, gain in static_params:
                 target_return = self.channel.apply_batch(
                     tx_signal, delay_s, doppler_hz, gain,
                 )
                 self._buf_rx_signal += target_return
-                if p == 0 and t_idx == 0:
-                    last_channel_params = {
-                        "delay_samples": delay_s.detach(),
-                        "doppler_hz": doppler_hz.detach(),
-                        "gain_linear": gain.detach(),
-                    }
 
-            # Missile targets (in-flight, with aspect RCS + Swerling)
-            for team_idx in range(self.n_teams):
-                flying = missile.in_flight[:, team_idx]
-                if not flying.any():
+            # Missile targets (pre-computed params, Swerling 2/4 re-draw per pulse)
+            for team_idx, params in enumerate(missile_params):
+                if params is None:
                     continue
-                m_pos = missile.missile_pos[:, team_idx]
-                m_vel = missile.missile_vel[:, team_idx]
-                delay_s, doppler_hz, gain = self.channel.compute_params_batch(
-                    self.radar_pos, self.radar_vel, m_pos, m_vel,
-                    tx_power_w=self.tx_power_w,
-                    rcs_dbsm=missile.rcs_dbsm,
-                    array_directivity_db=self.array.directivity_db,
-                )
-                # Aspect RCS correction
-                gain = gain * aspect_correction[:, team_idx]
-                # Swerling fluctuation
-                if swerling_slow is not None:
-                    gain = gain * swerling_slow[:, team_idx]
-                elif missile.swerling_model in (2, 4):
+                delay_s, doppler_hz, gain = params
+                if missile.swerling_model in (2, 4):
                     fast_mult = swerling_gain_multiplier(
                         (E, R), missile.swerling_model, dev,
                     )
                     gain = gain * fast_mult
-                # Flying mask
-                gain = gain * flying.float().unsqueeze(1)
 
                 target_return = self.channel.apply_batch(
                     tx_signal, delay_s, doppler_hz, gain,
@@ -410,46 +428,39 @@ class MFARVecEnv:
 
         t_pulses = time.perf_counter()
 
-        # --- Phase 4: RX processing (unchanged) ---
-        spectrum = torch.zeros(
-            E, R, N, P, self.n_bins, dtype=torch.float32, device=dev,
-        )
-        comm_data = torch.zeros(E, R, N, 2, dtype=torch.float32, device=dev)
+        # --- Phase 4: RX processing ---
+        spectrum = self._buf_spectrum.zero_()
+        comm_data = self._buf_comm_data.zero_()
 
+        # Build waveform refs dict for single-pass FFT
+        wf_refs = {}
         recon_mask = (task_ids == 0)
-        if recon_mask.any():
-            recon_spec = self.processor.process_rx_cpi(
-                self._buf_cpi, waveform_ref=None,
-            )
-            spectrum = torch.where(
-                recon_mask.unsqueeze(-1).unsqueeze(-1).expand_as(spectrum),
-                recon_spec, spectrum,
-            )
-
         detect_mask = (task_ids == 1)
-        if detect_mask.any():
-            det_ref = self._build_detect_ref(wf_types, detect_params)
-            det_spec = self.processor.process_rx_cpi(
-                self._buf_cpi, waveform_ref=det_ref,
-            )
-            spectrum = torch.where(
-                detect_mask.unsqueeze(-1).unsqueeze(-1).expand_as(spectrum),
-                det_spec, spectrum,
-            )
-
         comm_mask = (task_ids == 3)
+
+        if recon_mask.any():
+            wf_refs[0] = None
+        if detect_mask.any():
+            wf_refs[1] = self._build_detect_ref(wf_types, detect_params)
         if comm_mask.any():
             comm_ref = self._build_comm_ref(comm_params)
-            comm_spec = self.processor.process_rx_cpi(
-                self._buf_cpi, waveform_ref=comm_ref,
+            wf_refs[3] = comm_ref
+
+        if wf_refs:
+            spec_results = self.processor.process_rx_cpi_unified(
+                self._buf_cpi, wf_refs,
             )
-            spectrum = torch.where(
-                comm_mask.unsqueeze(-1).unsqueeze(-1).expand_as(spectrum),
-                comm_spec, spectrum,
-            )
-            comm_xy = self.processor.process_rx_comm(self._buf_cpi, comm_ref)
+            for task_id, spec in spec_results.items():
+                mask = (task_ids == task_id)
+                spectrum = torch.where(
+                    mask.unsqueeze(-1).unsqueeze(-1),
+                    spec, spectrum,
+                )
+
+        if comm_mask.any():
+            comm_xy = self.processor.process_rx_comm(self._buf_cpi, wf_refs[3])
             comm_data = torch.where(
-                comm_mask.unsqueeze(-1).expand_as(comm_data),
+                comm_mask.unsqueeze(-1),
                 comm_xy, comm_data,
             )
 

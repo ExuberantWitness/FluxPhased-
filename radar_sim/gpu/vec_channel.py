@@ -177,7 +177,9 @@ class VecChannel:
         # Convert signal to interleaved float32 (zero-copy views)
         signal_2d = signal.reshape(E * R * N, S)
         signal_real = torch.view_as_real(signal_2d)           # [E*R*N, S, 2]
-        signal_interleaved = signal_real.reshape(E * R * N, 2 * S).contiguous()
+        signal_interleaved = signal_real.reshape(E * R * N, 2 * S)
+        # signal comes from contiguous buffers; reshape preserves contiguity
+        assert signal_interleaved.is_contiguous()
 
         # Zero-copy wrap with Warp
         signal_in_wp = wp.from_torch(signal_interleaved)
@@ -199,7 +201,9 @@ class VecChannel:
 
         # Convert output buffer back to complex view
         out_3d = self._out_buf.reshape(E * R * N, S, 2)
-        out_complex = torch.view_as_complex(out_3d.contiguous())
+        # _out_buf is pre-allocated and contiguous; reshape preserves contiguity
+        assert out_3d.is_contiguous()
+        out_complex = torch.view_as_complex(out_3d)
         return out_complex.reshape(E, R, N, S)
 
     def generate_noise(self, out: torch.Tensor):
