@@ -883,6 +883,61 @@ Diagonal links (+87.3 dB) are boresight-to-boresight; side links (+14.7 dB) are 
 
 ---
 
+## Competitive Landscape / 竞品对比
+
+FluxPhased **不是**通用 Maxwell 方程求解器（如 CST/HFSS/MEEP），也不只是 dB 级链路预算工具，而是一款定位非常专的 **IQ 信号级相控阵雷达互干扰 GPU 仿真框架**。
+
+### 仿真生态三档定位
+
+电磁/雷达仿真生态按建模保真度可分为三档，FluxPhased 卡在中间最具战术价值的那一层：
+
+**第一档 · 全波 Maxwell 求解器** — CST Microwave Studio、Ansys HFSS、Altair FEKO、COMSOL RF、MEEP、OpenEMS、gprMax。用 FDTD/FEM/MoM 直接求解 Maxwell 方程，输出 E、H 场分布。物理保真度最高，但计算开销极大（单天线全波仿真数小时到数天），且**不包含发射波形、接收机匹配滤波、CFAR 检测、多脉冲相干积累这条完整信号处理链**。
+
+**第二档 · IQ 信号级雷达仿真** — RadarSimPy / RadarSimC（开源）、MATLAB Phased Array System Toolbox、MATLAB Radar Toolbox。假设阵列方向图、信道传播可由解析或半解析模型描述，直接在复基带 IQ 层级建模，速度比全波快 6 个数量级以上。**FluxPhased 属于这一档。**
+
+**第三档 · dB 级链路预算** — 教科书雷达方程计算器、Excel 模型、STK 链路预算模块。仅算 SNR/JNR/INR 等功率量，丢掉相位、波形、相干性。秒级出结果，但无法评估处理链性能（同频 LFM 干扰经匹配滤波后到底有多严重，dB 级模型回答不了）。
+
+### 同档位精细对比
+
+| 维度 | CST / HFSS (全波) | OpenEMS / MEEP (开源全波) | RadarSimPy | MATLAB Phased Array / Radar Toolbox | **FluxPhased** |
+|------|------|------|------|------|------|
+| 建模层级 | Maxwell 全波 | Maxwell 全波 | IQ 信号级 | IQ 信号级 | **IQ 信号级** |
+| 求解方法 | FEM/MoM | FDTD | 数值半解析 (C++ 后端) | 半解析 (CPU/部分 GPU) | **Warp 自定义 CUDA + torch.fft** |
+| 多雷达互干扰 | 几乎不可行 (内存/时间) | 不可行 | 单雷达为主，互干扰需手工搭 | 支持但 CPU 慢 | **4 部 ×25×25 = 2500 阵元一次跑完，~1.1 GB 显存** |
+| 端到端处理链 | 仅 EM 部分 | 仅 EM 部分 | 波形→检测 | 波形→检测 | **含 2D CA-CFAR + RDM + MFAR 多任务** |
+| 相控阵专门能力 | 通用天线建模 | 通用 | 内置阵列模型 | 内置丰富 | **电子扫描+多波束+零陷+加权** |
+| 波形多样性 | N/A | N/A | LFM/部分编码 | LFM/编码丰富 | **LFM/Barker/Frank/Costas/NLFM/P4 同框架** |
+| GPU 加速 | 部分 (商业付费) | 有限 | CPU 为主 | 部分 (Parallel Toolbox) | **原生 GPU，全管线 GPU** |
+| PyTorch 生态集成 | ✗ | ✗ | ✗ | ✗ (MATLAB 生态) | **张量原生，可接 autograd / nn.Module** |
+| 多智能体 RL 接口 | ✗ | ✗ | ✗ | ✗ | **PZ 战场环境，6 异构智能体** |
+| 导弹作战模型 | ✗ | ✗ | ✗ | ✗ | **巡航导弹+视角 RCS+Swerling+BPSK 制导** |
+| 效能评估框架 | ✗ | ✗ | ✗ | ✗ | **感知/作战/博弈三层+BN-Sobol+CDE** |
+| 许可证 | 商业（年费数万美元） | 开源 | 开源（部分核心闭源） | 商业（MATLAB 许可） | **开源 Python** |
+| 精度验证 | 厂商证书 | 社区基准 | 内部测试 | MathWorks 测试 | **闭式解 + RadarSimPy 双对照，corr=1.000000** |
+
+### 核心差异化优势
+
+**1. IQ 级保真度 + 端到端处理链** — 填补了"全波太慢、dB 太粗"中间的真空。同频 LFM 干扰经匹配滤波后产生的距离维条纹（图 07），dB 级工具完全看不到；而 CST 在 200 MHz 带宽下做 4×25×25 × 128 脉冲 CPI 的仿真需要数周到数月。FluxPhased 通过远场+解析阵列模型，将此类场景压缩到 GPU 几秒到几分钟，**同时保留相位、相干积累、脉压旁瓣、Doppler 相位斜坡这些全相干物理信息**。
+
+**2. Warp + PyTorch 双引擎** — IQ 级雷达仿真器里最现代的 GPU 架构。RadarSimPy 核心后端是 C++，MATLAB Phased Array Toolbox 即使开 Parallel Computing Toolbox 也难以逐阵元细粒度并行。FluxPhased 用 NVIDIA Warp 自定义 CUDA 内核处理 2500 阵元相干叠加，FFT 用 `torch.fft`（cuFFT 后端），CFAR 用 Warp 内核——**整条链路从波形生成到检测都不落 CPU**。PyTorch 张量天然可微，整条仿真管线可接 `autograd` 反向传播，未来做梯度优化是顺手的事。
+
+**3. PettingZoo 多智能体战场环境** — 传统电磁/雷达仿真工具服务于"设计验证"工作流，没有一个把自己定位成 RL 训练环境。FluxPhased 提供 PettingZoo 接口 + 6 个异构智能体（4 雷达 + 2 指挥官），可训练 RL 算法学习：动态频率规划、自适应零陷决策、波形选择策略、组网协同对抗。**把仿真器从"工具"升级为"电子战 AI 研究平台"**——这条路径上 MATLAB/RadarSimPy/CST 都没有现成方案。
+
+**4. 相控阵特有功能完整覆盖** — 电子扫描（精度 < 0.1°）、同时多波束、自适应零陷（−50 dB）、Taylor/Chebyshev/Hamming 孔径加权，全部开箱即用的 GPU 实现。在 MATLAB Phased Array Toolbox 里有内置 API，但在 OpenEMS/MEEP 里需使用者自己实现波束形成层；在 RadarSimPy 里覆盖不完整。
+
+**5. 效能评估体系** — 感知/作战/博弈三层 Metrics + BN-Sobol 敏感性分析 + CDE 综合指标 + 加速评估 + 结构化报告，传统仿真工具均不提供此类评估闭环。
+
+**6. 精度验证严苛到工程级** — 两层背靠背验证：一层对闭式解析公式（Friis 路径损耗误差 0.000000 dB，雷达方程误差 < 0.01 dB），一层对 RadarSimPy v15.2.0 处理算法。阵列因子 7 个指向角相关系数 = 1.000000，最大误差 0.0024 dB。
+
+### 客观局限性
+
+- **不求解 Maxwell 方程** — 无法替代 CST/HFSS 做天线单元 S 参数、互耦、近场扫描或精确 RCS 计算；假设阵元方向图均匀且远场
+- **当前验证到 4 雷达 × 2500 阵元** — 扩到组网 16 部或 10000 阵元量级需要进一步显存优化
+- **平面波远场传播假设** — 近场效应、复杂多径、地杂波建模有限（gprMax 专门为此设计）
+- **早期科研代码** — 社区生态需时间积累
+
+---
+
 ## Tech Stack / 技术栈
 
 - **NVIDIA Warp 1.7.2** — Custom CUDA kernels for per-element signal processing / 逐元素信号处理的自定义 CUDA 内核
