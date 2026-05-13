@@ -39,7 +39,11 @@ radar_sim/
 │   ├── test_2env_25.py  # 2-env 25×25 precision tests / 双环境精度测试
 │   └── test_mfar.py     # MFAR full chain tests / MFAR 全链路测试
 │   └── test_missile_env.py  # Missile combat tests / 导弹作战测试
-└── env/                 # Multi-agent battlefield environment / 多智能体战场环境 (PettingZoo)
+├── pz_gpu/              # PettingZoo Parallel API wrapper / PZ 并行接口封装
+│   ├── core.py          # FluxPhasedPZEnv(ParallelEnv) / PZ 环境主类
+│   ├── agent_map.py     # Agent name ↔ GPU tensor index mapping / 智能体名称映射
+│   └── test_pettingzoo.py  # parallel_api_test validation / PZ 合规测试
+└── env/                 # CPU multi-agent battlefield / CPU 多智能体战场 (PettingZoo)
 ```
 
 ## Quick Start / 快速开始
@@ -51,6 +55,7 @@ python radar_sim/gpu/test_vec_env.py             # vectorized env (smoke + bench
 python radar_sim/gpu/test_2env_25.py             # 2-env precision + usability on 25x25
 python radar_sim/gpu/test_mfar.py                # MFAR 4-task per-element control tests
 python radar_sim/gpu/test_missile_env.py          # Missile combat + multi-agent tests
+python radar_sim/pz_gpu/test_pettingzoo.py         # PettingZoo Parallel API tests
 ```
 
 > Windows GBK 控制台请使用 `PYTHONIOENCODING=utf-8` 前缀执行，否则脚本中的 emoji 会触发 `UnicodeEncodeError`。
@@ -174,7 +179,7 @@ RTX 2060, 2 env × 2 radars × 5×5 阵列, 4 脉冲, FFT=64:
 Red Team (t=0)                          Blue Team (t=1)
 ┌─────────────────────┐                ┌─────────────────────┐
 │ Commander Agent     │                │ Commander Agent     │
-│ obs=31, action=3    │                │ obs=31, action=3    │
+│ obs=4+2×Nᵢₙ, act=3+2×Nₒᵤₜ│            │ obs=4+2×Nᵢₙ, act=3+2×Nₒᵤₜ│
 │                     │                │                     │
 │ Radar Agent 0       │                │ Radar Agent 2       │
 │ obs=625×(P×B+2)+17  │                │ obs=625×(P×B+2)+17  │
@@ -359,6 +364,83 @@ RTX 2060, 1 env × 4 radars × 5×5 阵列, 8 脉冲, FFT=64:
 
 ---
 
+## PettingZoo Parallel API / PZ 并行接口
+
+`radar_sim/pz_gpu/` 将 GPU 向量化 MFAR 环境封装为 [PettingZoo ParallelEnv](https://pettingzoo.farama.org/api/parallel/)，可对接 MALib / Ray RLlib / MARLlib / Tianshou 等 MARL 框架。
+
+### 核心接口
+
+```python
+from radar_sim.pz_gpu import FluxPhasedPZEnv
+
+env = FluxPhasedPZEnv(
+    radar_latents_fn=my_encoder,  # [R, state_dim] → [R, num_input_length]
+    max_steps=10000,
+    rows=5, cols=5,               # 小阵列快速验证
+    pulses_per_cpi=8,
+    device="cuda",
+)
+
+obs, infos = env.reset()          # {agent_name: np.array}
+actions = {agent: env.action_space(agent).sample() for agent in env.agents}
+obs, rewards, terms, truncs, infos = env.step(actions)
+```
+
+### 6 个智能体
+
+| Agent | 类型 | Obs 维度 | Action 维度 | Action 值域 |
+|-------|------|---------|------------|------------|
+| red_radar_0, red_radar_1 | 雷达 | `N×(P×B+2)+17+N_out` | `N×22+3` | `[0, 1]` |
+| blue_radar_0, blue_radar_1 | 雷达 | 同上 | 同上 | `[0, 1]` |
+| red_commander | 指挥官 | `4+2×N_in` | `3+2×N_out` | `[-1, 1]` |
+| blue_commander | 指挥官 | 同上 | 同上 | `[-1, 1]` |
+
+### 智能体生命周期
+
+- 雷达被导弹摧毁 → 从 `agents` 移除，`possible_agents` 不变
+- 指挥官在所有己方雷达被摧毁时死亡
+- 任意敌方雷达被摧毁 → 全体 `termination=True`，回合终止
+- `max_steps` 达到 → 全体 `truncation=True`
+
+### radar_latents_fn 回调
+
+指挥官 obs 需要雷达 NN 编码器输出的 latent vector。通过 `radar_latents_fn` 回调注入：
+
+```python
+# 示例：PyTorch 编码器
+encoder = torch.nn.Linear(state_dim, num_input_length).cuda()
+
+def my_encoder(radar_state: np.ndarray) -> np.ndarray:
+    with torch.no_grad():
+        t = torch.from_numpy(radar_state).cuda()
+        return encoder(t).cpu().numpy()
+
+env = FluxPhasedPZEnv(radar_latents_fn=my_encoder)
+```
+
+### PettingZoo 测试
+
+```
+RTX 2060, 2×2 阵列, 2 脉冲, num_input_length=4, num_output_length=4:
+
+  PASS: agent naming
+  PASS: obs/action shapes
+  PASS: radar_latents callback
+  PASS: commander launch
+  PASS: episode terminated at step 5
+  PASS: parallel_api_test (官方合规测试)
+
+All tests passed!
+```
+
+### League Training 衔接
+
+- `possible_agents` 固定 6 个 ID → league framework 通过 `policy_mapping_fn` 分配策略
+- 红蓝身份交换在 framework 层做 policy 翻转，env 不做随机翻转
+- per-agent reward dict 已包含 team 胜负信号（雷达 ±1.0，指挥官 ±10.0）
+
+---
+
 ## Environment / 环境依赖
 
 ### Key Libraries / 关键库
@@ -377,7 +459,7 @@ RTX 2060, 1 env × 4 radars × 5×5 阵列, 8 脉冲, FFT=64:
 |--------------|----------------|
 | **RadarSimPy** v15.2.0 | Level-2 cross-validation against industry simulator. Free for personal use at https://radarsimx.com/product/radarsimpy/ |
 | **Matplotlib** | `validation/generate_plots.py` 可视化 |
-| **PettingZoo** | `radar_sim/env/` 多智能体战场环境 |
+| **PettingZoo** | `radar_sim/pz_gpu/` GPU 并行接口封装 + `radar_sim/env/` CPU 基线环境 |
 
 ### Hardware / 硬件要求
 
@@ -390,7 +472,7 @@ RTX 2060, 1 env × 4 radars × 5×5 阵列, 8 脉冲, FFT=64:
 conda create -n env_isaacsim python=3.10 -y
 conda activate env_isaacsim
 pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu121
-pip install warp-lang==1.7.2 numpy matplotlib
+pip install warp-lang==1.7.2 numpy matplotlib pettingzoo
 ```
 
 ---
@@ -722,6 +804,7 @@ Diagonal links (+87.3 dB) are boresight-to-boresight; side links (+14.7 dB) are 
 | Channel delay direction / 信道延迟方向反转 | `channel_gpu.py` | `src = s + d_int` → `s - d_int` (was time-advance, not delay / 实现为时间超前而非延迟) |
 | Missing TX directivity / 缺少发射空间指向性 | `interference_gpu.py` | Rewrote to use Friis link budget with antenna gains / 重写为 Friis 链路预算，加入天线增益 |
 | Float32 `cos(π/2)**1.5` → NaN at 90° geometry / 90° 几何下浮点 NaN | `vec_interference.py` | Clamp `cos(theta)` to ≥ 0 before fractional power (fixes corner-radar setups) / 分数次幂前 clamp cos ≥ 0 |
+| BPSK encode/modulate CPU tensor / BPSK 编码调制在 CPU 创建张量 | `waveform_gpu.py` | `encode_bpsk` 新增 `device` 参数，`modulate_bpsk` 强制 `.to(device)` / 消除 CPU↔GPU 混合计算 |
 
 ---
 

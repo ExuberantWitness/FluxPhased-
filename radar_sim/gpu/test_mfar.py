@@ -138,7 +138,7 @@ def test_bpsk_roundtrip():
 
     # Encode
     x_orig, y_orig = 0.5, -0.3
-    bits = encode_bpsk(x_orig, y_orig)
+    bits = encode_bpsk(x_orig, y_orig, device=DEV)
     print(f"  Original: ({x_orig}, {y_orig})")
     print(f"  Encoded bits: {bits.tolist()[:8]}...")
 

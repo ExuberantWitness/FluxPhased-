@@ -256,6 +256,7 @@ class VecElementProcessor:
             bits = encode_bpsk(
                 float(np.clip(data_x, -1, 1)),
                 float(np.clip(data_y, -1, 1)),
+                device=dev,
             )
             return modulate_bpsk(bits, n_samples, self.fs, sym_rate, dev)
 

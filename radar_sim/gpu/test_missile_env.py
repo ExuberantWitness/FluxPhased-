@@ -112,7 +112,7 @@ def test_bpsk_batch_roundtrip():
         x = np.clip(i / (n_env - 1) * 2.0 - 1.0, -1, 1) if n_env > 1 else 0.5
         y = np.clip((n_env - 1 - i) / (n_env - 1) * 2.0 - 1.0, -1, 1) if n_env > 1 else -0.5
         original_xy.append((x, y))
-        bits = encode_bpsk(float(x), float(y))
+        bits = encode_bpsk(float(x), float(y), device=device)
         sig = modulate_bpsk(bits, n_samples, fs, symbol_rate, device)
         signals.append(sig)
 

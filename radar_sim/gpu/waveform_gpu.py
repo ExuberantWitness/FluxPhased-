@@ -99,18 +99,19 @@ def generate_p4(n_stages, pulse_width, fs, device):
 # BPSK modulation / demodulation (communication waveform)
 # ---------------------------------------------------------------------------
 
-def encode_bpsk(data_x: float, data_y: float, n_bits: int = 14) -> torch.Tensor:
+def encode_bpsk(data_x: float, data_y: float, n_bits: int = 14,
+                device="cpu") -> torch.Tensor:
     """Encode two floats into 32-bit BPSK payload (14+14 bits + 4-bit CRC).
 
     Layout: [X:14bits | Y:14bits | CRC:4bits]
     Args:
         data_x, data_y: values in [-1, 1], linearly mapped to 14-bit unsigned.
+        device: torch device for output tensor.
     Returns:
         bits: [32] float32 tensor with values {0, 1}
     """
     x_int = int(max(0, min(2**14 - 1, (data_x + 1.0) / 2.0 * (2**14 - 1))))
     y_int = int(max(0, min(2**14 - 1, (data_y + 1.0) / 2.0 * (2**14 - 1))))
-    # Data for CRC: X(14) + Y(14) = 28 bits = 7 nibbles
     data_28 = (x_int << 14) | y_int
     crc = 0
     val = data_28
@@ -118,7 +119,7 @@ def encode_bpsk(data_x: float, data_y: float, n_bits: int = 14) -> torch.Tensor:
         crc ^= (val & 0xF)
         val >>= 4
     word = (x_int << 18) | (y_int << 4) | (crc & 0xF)
-    bits = torch.zeros(32, dtype=torch.float32)
+    bits = torch.zeros(32, dtype=torch.float32, device=device)
     for i in range(32):
         bits[i] = float((word >> (31 - i)) & 1)
     return bits
@@ -171,7 +172,7 @@ def modulate_bpsk(bits: torch.Tensor, n_samples: int, fs: float,
     n_bits = bits.shape[0]
     samples_per_symbol = max(1, int(fs / symbol_rate))
     n = n_samples
-    symbols = (2.0 * bits - 1.0).to(torch.complex64)  # BPSK: 0→-1, 1→+1
+    symbols = (2.0 * bits - 1.0).to(device=device, dtype=torch.complex64)
     # Upsample: repeat each symbol
     signal = symbols.repeat_interleave(samples_per_symbol)[:n]
     if signal.shape[0] < n:
