@@ -61,6 +61,7 @@ class VecBattlefield:
         num_input_length: int = 32,
         num_output_length: int = 16,
         device: str = "cuda",
+        reward_config: dict = None,
     ):
         self.num_envs = num_envs
         self.n_radars = n_radars
@@ -72,6 +73,7 @@ class VecBattlefield:
         self.num_input_length = num_input_length
         self.num_output_length = num_output_length
         self.commander_obs_dim = 4 + 2 * num_input_length
+        self.reward_config = reward_config or {}
         self.commander_action_dim = 3 + 2 * num_output_length
 
         dev = torch.device(device)
@@ -441,25 +443,25 @@ class VecBattlefield:
             # Any kill by this team's missile?
             team_kills = kills[:, t, :].any(dim=-1)  # [E]
 
-            # Commander: +10 for kill, -10 for own radar killed
-            commander_rewards[:, t] += team_kills.float() * 10.0
+            # Commander: kill/death rewards
+            commander_rewards[:, t] += team_kills.float() * self.reward_config.get('kill_bonus', 10.0)
 
             # Any own radar killed by enemy?
             own_killed = kills[:, enemy_team, :].any(dim=-1)
-            commander_rewards[:, t] -= own_killed.float() * 10.0
+            commander_rewards[:, t] += own_killed.float() * self.reward_config.get('death_penalty', -10.0)
 
             # Radar agents on this team
             for ri in own_idx:
-                radar_rewards[:, ri] += team_kills.float() * 1.0
-                radar_rewards[:, ri] -= own_killed.float() * 1.0
+                radar_rewards[:, ri] += team_kills.float() * self.reward_config.get('radar_kill_share', 1.0)
+                radar_rewards[:, ri] += own_killed.float() * self.reward_config.get('radar_death_share', -1.0)
 
             # Emission cost per step
             for ri in own_idx:
-                radar_rewards[:, ri] -= 0.001
+                radar_rewards[:, ri] += self.reward_config.get('emission_cost', -0.001)
 
             # Urgency: commander penalized for not launching
             not_launched = ~self.missile.launched[:, t] & ~self.dones
-            commander_rewards[:, t] -= not_launched.float() * 0.01
+            commander_rewards[:, t] += not_launched.float() * self.reward_config.get('urgency_penalty', -0.01)
 
         return {
             "radar_rewards": radar_rewards,

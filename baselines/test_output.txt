@@ -1,0 +1,105 @@
+C:\Users\zhang\.conda\envs\env_isaacsim\lib\site-packages\warp\torch.py:262: UserWarning: The .grad attribute of a Tensor that is not a leaf Tensor is being accessed. Its .grad attribute won't be populated during autograd.backward(). If you indeed want the .grad field to be populated for a non-leaf Tensor, use .retain_grad() on the non-leaf Tensor. If you access the non-leaf Tensor by mistake, make sure you access the leaf Tensor instead. See github.com/pytorch/pytorch/pull/30531 for more informations. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\builder\windows\pytorch\build\aten\src\ATen/core/TensorBody.h:494.)
+  if t.grad is not None:
+============================================================
+Test 1: RandomPolicy generates valid actions
+============================================================
+
+============================================================
+Test 2: GroundTruthComputer produces reasonable values
+============================================================
+
+============================================================
+Test 3: EpisodeCollector collects 10-step trajectory
+============================================================
+
+============================================================
+Test 4: PerceptionMetrics - all detect vs all jam
+============================================================
+
+============================================================
+Test 5: CombatMetrics - missile launch vs no launch
+============================================================
+
+============================================================
+Test 6: GameMetrics - multi-episode aggregation
+============================================================
+
+============================================================
+Test 7: CommMetrics - comm vs no comm elements
+============================================================
+
+============================================================
+Test 8: TriggerSources - valid ranges and defaults
+============================================================
+
+============================================================
+Test 9: ScenarioGenerator - generates valid configs
+============================================================
+
+============================================================
+Test 10: CDEMetric - values in [0, 1] and distinguishable
+============================================================
+
+============================================================
+Test 11: AcceleratedEvaluator - early stopping
+============================================================
+
+============================================================
+Test 12: EvaluationReport - to_dict and to_markdown
+============================================================
+
+============================================================
+Test 13: PZ + EpisodeCollector + RandomPolicy integration
+============================================================
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA GeForce RTX 2060
+[gpu] VRAM: 6.4 GB
+Warp 1.7.2 initialized:
+   CUDA Toolkit 12.8, Driver 12.6
+   Devices:
+     "cpu"      : "Intel64 Family 6 Model 165 Stepping 2, GenuineIntel"
+     "cuda:0"   : "NVIDIA GeForce RTX 2060" (6 GiB, sm_75, mempool enabled)
+   Kernel cache:
+     C:\Users\zhang\AppData\Local\NVIDIA\warp\Cache\1.7.2
+Module radar_sim.gpu.vec_array a5c9bb8 load on device 'cuda:0' took 3.07 ms  (cached)
+Module radar_sim.gpu.vec_channel fd84cea load on device 'cuda:0' took 2.96 ms  (cached)
+  [PASS] test_random_policy
+  Range: 11093.0 m
+  SNR: -300.0 dB
+  [PASS] test_ground_truth
+  Collected 10 steps
+  Spectrum shape: torch.Size([10, 1, 4, 25, 4, 1024])
+  [PASS] test_episode_collector
+  Detect fraction: 1.000
+  Beamformed spectrum shape: torch.Size([1, 4, 4, 1024])
+  [PASS] test_perception_metrics
+  Launched: True
+  Launch step: 1
+  Any kill: False
+  [PASS] test_combat_metrics
+  Episodes: 5
+  Avg length: 3.0
+  [PASS] test_game_metrics
+  Active comm frac: 1.000
+  Zero comm frac: 0.000
+  [PASS] test_comm_metrics
+  5 perception triggers
+  3 analysis triggers
+  4 game triggers
+  [PASS] test_trigger_sources
+  Random config: ['target_rcs_dbsm', 'bandwidth', 'prf']...
+  [PASS] test_scenario_generator
+  Empty CDE: 0.200
+  Kill CDE: 0.898
+  [PASS] test_cde_metric
+  Episodes used: 20
+  Metric mean: 0.5000
+  [PASS] test_accelerated_eval
+  Summary: range_acc=0.85 | kill_rate=0.3 | CDE=0.55
+  [PASS] test_evaluation_report
+  Agents after 3 steps: 6
+  [PASS] test_pz_integration
+
+==================================================
+Results: 13/13 passed, 0 failed
+All tests passed!

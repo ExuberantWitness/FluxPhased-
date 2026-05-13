@@ -82,6 +82,8 @@ class VecArray:
         self.num_envs = num_envs
         self.n_radars = n_radars
         self.fc = fc
+        self.dx_wl = dx_wl
+        self.dy_wl = dy_wl
         self.wavelength = SPEED_OF_LIGHT / fc
         self.k = 2.0 * np.pi / self.wavelength
         self.device = device
@@ -230,6 +232,5 @@ class VecArray:
 
     @property
     def directivity_db(self) -> float:
-        dx_wl, dy_wl = 0.5, 0.5
-        area_wl2 = self.rows * self.cols * dx_wl * dy_wl
+        area_wl2 = self.rows * self.cols * self.dx_wl * self.dy_wl
         return 10.0 * np.log10(4.0 * np.pi * area_wl2)

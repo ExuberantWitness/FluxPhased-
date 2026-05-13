@@ -9,7 +9,7 @@ import torch
 
 SPEED_OF_LIGHT = 299792458.0
 DEG2RAD = np.pi / 180.0
-POLARIZATION_LOSS_DB = 3.0
+DEFAULT_POLARIZATION_LOSS_DB = 3.0
 
 
 def _wrapped_diff(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
@@ -26,6 +26,9 @@ class VecInterference:
         rows: int = 25, cols: int = 25,
         num_envs: int = 10, n_radars: int = 4,
         n_elem: int = 625, device: str = "cuda",
+        polarization_loss_db: float = DEFAULT_POLARIZATION_LOSS_DB,
+        tx_power_dbm: float = 30.0,
+        dx_wl: float = 0.5, dy_wl: float = 0.5,
     ):
         self.fc = fc
         self.bandwidth = bandwidth
@@ -36,8 +39,9 @@ class VecInterference:
         self.n_radars = n_radars
         self.n_elem = n_elem
         self.device = device
+        self.polarization_loss_db = polarization_loss_db
+        self.tx_power_dbm = tx_power_dbm
 
-        dx_wl, dy_wl = 0.5, 0.5
         dx_m = dx_wl * self.wavelength
         dy_m = dy_wl * self.wavelength
         x_pos = (np.arange(cols) - (cols - 1) / 2.0) * dx_m
@@ -50,7 +54,7 @@ class VecInterference:
             Y.ravel().astype(np.float32), device=torch.device(device),
         )
         self._directivity_linear = float(
-            np.sqrt(4.0 * np.pi * self.n_elem * 0.5 * 0.5),
+            np.sqrt(4.0 * np.pi * self.n_elem * dx_wl * dy_wl),
         )
 
     def _array_gain_db_batch(
@@ -143,12 +147,12 @@ class VecInterference:
             4.0 * np.pi * dist / self.wavelength + 1e-10,
         )
 
-        tx_power_dbm = 30.0  # 1 W
+        tx_power_dbm = self.tx_power_dbm
 
         # Received interference power per (TX i, RX j) pair
         rx_power_dbm = (
             tx_power_dbm + tx_gain_db + rx_gain_db
-            - path_loss_db - POLARIZATION_LOSS_DB
+            - path_loss_db - self.polarization_loss_db
         )
         rx_power_w = 10.0 ** ((rx_power_dbm - 30.0) / 10.0)
         rx_amplitude = torch.sqrt(rx_power_w.clamp(min=0.0))  # [E, R_tx, R_rx]

@@ -53,6 +53,22 @@ class MFARVecEnv:
         num_output_length: int = 16,
         n_teams: int = 2,
         device: str = "cuda",
+        # Configurable physical parameters (previously hardcoded):
+        dx_wl: float = 0.5, dy_wl: float = 0.5,
+        noise_figure_db: float = 5.0,
+        map_size: tuple = (20000.0, 20000.0),
+        speed_ms: float = 244.4,
+        kill_radius_m: float = 500.0,
+        missile_rcs_dbsm: float = 10.0,
+        rcs_nose_dbsm: float = -5.0,
+        rcs_side_dbsm: float = 12.0,
+        rcs_tail_dbsm: float = 3.0,
+        swerling_model: int = 3,
+        red_launch_pos: tuple = (0.0, -10000.0),
+        blue_launch_pos: tuple = (0.0, 10000.0),
+        polarization_loss_db: float = 3.0,
+        reset_config: dict = None,
+        reward_config: dict = None,
     ):
         self.num_envs = num_envs
         self.n_radars = n_radars
@@ -71,6 +87,12 @@ class MFARVecEnv:
         self.num_input_length = num_input_length
         self.num_output_length = num_output_length
         self.device = device
+        self.dx_wl = dx_wl
+        self.dy_wl = dy_wl
+        self.noise_figure_db = noise_figure_db
+        self.map_size = map_size
+        self.reset_config = reset_config or {}
+        self.reward_config = reward_config or {}
 
         self.pri = 1.0 / prf
         self.n_samples = max(1, int(self.pri * self.fs))
@@ -83,16 +105,20 @@ class MFARVecEnv:
         self.array = VecArray(
             rows=rows, cols=cols, fc=fc,
             num_envs=num_envs, n_radars=n_radars, device=device,
+            dx_wl=dx_wl, dy_wl=dy_wl,
         )
         self.channel = VecChannel(
             fc=fc, bandwidth=bandwidth,
             num_envs=num_envs, n_radars=n_radars,
             n_elem=N, n_samples=S, device=device,
+            noise_figure_db=noise_figure_db,
         )
         self.interference = VecInterference(
             fc=fc, bandwidth=bandwidth, rows=rows, cols=cols,
             num_envs=num_envs, n_radars=n_radars,
             n_elem=N, device=device,
+            polarization_loss_db=polarization_loss_db,
+            dx_wl=dx_wl, dy_wl=dy_wl,
         )
         self.processor = VecElementProcessor(
             fs=self.fs, n_samples=S,
@@ -138,8 +164,8 @@ class MFARVecEnv:
         )
 
         # Element positions (shared, computed from array geometry)
-        dx_m = 0.5 * self.array.wavelength
-        dy_m = 0.5 * self.array.wavelength
+        dx_m = self.dx_wl * self.array.wavelength
+        dy_m = self.dy_wl * self.array.wavelength
         x_pos = (np.arange(cols) - (cols - 1) / 2.0) * dx_m
         y_pos = (np.arange(rows) - (rows - 1) / 2.0) * dy_m
         X, Y = np.meshgrid(x_pos, y_pos)
@@ -156,8 +182,17 @@ class MFARVecEnv:
             fs=self.fs, symbol_rate=symbol_rate, device=device,
             num_input_length=num_input_length,
             num_output_length=num_output_length,
-            rcs_nose_dbsm=-5.0, rcs_side_dbsm=12.0, rcs_tail_dbsm=3.0,
-            swerling_model=3,
+            map_size=map_size,
+            speed_ms=speed_ms,
+            kill_radius_m=kill_radius_m,
+            missile_rcs_dbsm=missile_rcs_dbsm,
+            rcs_nose_dbsm=rcs_nose_dbsm,
+            rcs_side_dbsm=rcs_side_dbsm,
+            rcs_tail_dbsm=rcs_tail_dbsm,
+            swerling_model=swerling_model,
+            red_launch_pos=red_launch_pos,
+            blue_launch_pos=blue_launch_pos,
+            reward_config=reward_config,
         )
 
     @property
@@ -184,26 +219,38 @@ class MFARVecEnv:
 
         # Team-based positions: Red in y<0, Blue in y>0
         r_per_team = self.n_radars // self.n_teams
+        rc = self.reset_config
+        pos_spread_x = rc.get('position_spread_x', 8000.0)
+        pos_spread_y = rc.get('position_spread_y', 6000.0)
+        y_offset = rc.get('y_center_offset', 5000.0)
+        vel_range = rc.get('velocity_range', 20.0)
+        hdg_range = rc.get('heading_range', 360.0)
+        spd_range = rc.get('speed_range', 8.0)
+        arr_rot_range = rc.get('array_rotation_range', 120.0)
+        tgt_dist_min = rc.get('target_distance_min', 5000.0)
+        tgt_dist_range = rc.get('target_distance_max', 15000.0) - tgt_dist_min
+        tgt_vel_range = rc.get('target_velocity_range', 30.0)
+
         for t in range(self.n_teams):
             r_start = t * r_per_team
             r_end = r_start + r_per_team
             n_r = r_end - r_start
-            y_center = (t * 2 - 1) * 5000.0  # Red: -5000, Blue: +5000
-            self.radar_pos[env_ids, r_start:r_end, 0] = (torch.rand(E, n_r, device=dev) - 0.5) * 8000.0
-            self.radar_pos[env_ids, r_start:r_end, 1] = y_center + (torch.rand(E, n_r, device=dev) - 0.5) * 6000.0
+            y_center = (t * 2 - 1) * y_offset
+            self.radar_pos[env_ids, r_start:r_end, 0] = (torch.rand(E, n_r, device=dev) - 0.5) * pos_spread_x
+            self.radar_pos[env_ids, r_start:r_end, 1] = y_center + (torch.rand(E, n_r, device=dev) - 0.5) * pos_spread_y
             self.radar_pos[env_ids, r_start:r_end, 2] = 0.0
 
-        self.radar_vel[env_ids] = (torch.rand(E, self.n_radars, 3, device=dev) - 0.5) * 20.0
-        self.radar_heading[env_ids] = torch.rand(E, self.n_radars, device=dev) * 360.0
-        self.radar_speed[env_ids] = torch.rand(E, self.n_radars, device=dev) * 8.0
-        self.array_rotation[env_ids] = (torch.rand(E, self.n_radars, device=dev) - 0.5) * 120.0
+        self.radar_vel[env_ids] = (torch.rand(E, self.n_radars, 3, device=dev) - 0.5) * vel_range
+        self.radar_heading[env_ids] = torch.rand(E, self.n_radars, device=dev) * hdg_range
+        self.radar_speed[env_ids] = torch.rand(E, self.n_radars, device=dev) * spd_range
+        self.array_rotation[env_ids] = (torch.rand(E, self.n_radars, device=dev) - 0.5) * arr_rot_range
 
-        r = 5000.0 + torch.rand(E, self.n_targets, device=dev) * 10000.0
+        r = tgt_dist_min + torch.rand(E, self.n_targets, device=dev) * tgt_dist_range
         ang = torch.rand(E, self.n_targets, device=dev) * 2 * np.pi
         self.target_pos[env_ids, :, 0] = r * torch.cos(ang)
         self.target_pos[env_ids, :, 1] = r * torch.sin(ang)
         self.target_pos[env_ids, :, 2] = 0.0
-        self.target_vel[env_ids] = (torch.rand(E, self.n_targets, 3, device=dev) - 0.5) * 30.0
+        self.target_vel[env_ids] = (torch.rand(E, self.n_targets, 3, device=dev) - 0.5) * tgt_vel_range
 
         self.battlefield.reset(env_ids)
 

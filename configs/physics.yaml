@@ -1,0 +1,65 @@
+# FluxPhased Physical Simulation Parameters
+# All values match GPU module defaults as of 2026-05-13
+
+array:
+  rows: 25
+  cols: 25
+  dx_wl: 0.5   # element spacing in wavelengths (x)
+  dy_wl: 0.5   # element spacing in wavelengths (y)
+
+rf:
+  fc: 10.0e9          # carrier frequency (Hz), X-band
+  bandwidth: 200.0e6  # instantaneous bandwidth (Hz), fs = bandwidth
+  tx_power_w: 1.0     # total transmit power (W)
+  noise_figure_db: 5.0  # receiver noise figure (dB)
+  system_loss_db: 3.0   # system losses (dB)
+
+cpi:
+  prf: 10.0e3        # pulse repetition frequency (Hz)
+  pulses_per_cpi: 32  # pulses per coherent processing interval
+
+missile:
+  speed_ms: 244.4           # cruise speed (m/s) = 880 km/h
+  kill_radius_m: 500.0      # lethal radius (m)
+  rcs_dbsm: 10.0            # average RCS (dBsm)
+  rcs_nose_dbsm: -5.0       # nose-on RCS (dBsm)
+  rcs_side_dbsm: 12.0       # broadside RCS (dBsm)
+  rcs_tail_dbsm: 3.0        # tail-on RCS (dBsm)
+  swerling_model: 3          # Swerling fluctuation model (0-4)
+  red_launch_pos: [0.0, -10000.0]
+  blue_launch_pos: [0.0, 10000.0]
+
+battlefield:
+  map_size: [20000.0, 20000.0]  # 20km x 20km
+  n_radars: 4
+  n_teams: 2
+  n_targets: 1
+  target_rcs_dbsm: 20.0
+
+reset:
+  position_spread_x: 8000.0
+  position_spread_y: 6000.0
+  y_center_offset: 5000.0
+  velocity_range: 20.0
+  heading_range: 360.0
+  speed_range: 8.0
+  array_rotation_range: 120.0
+  target_distance_min: 5000.0
+  target_distance_max: 15000.0
+  target_velocity_range: 30.0
+
+interference:
+  tx_power_dbm: 30.0          # 1W transmit power for interference calc
+  polarization_loss_db: 3.0   # cross-polarization loss (dB)
+
+reward:
+  kill_bonus: 10.0
+  death_penalty: -10.0
+  emission_cost: -0.001
+  urgency_penalty: -0.01
+  radar_kill_share: 1.0
+  radar_death_share: -1.0
+
+comm:
+  symbol_rate: 1.0e6  # BPSK symbol rate (Hz)
+  n_bits: 32           # BPSK data bits per frame
