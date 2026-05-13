@@ -11,12 +11,6 @@ GPU-accelerated IQ-level signal simulation for mutual interference between four 
 ```
 radar_sim/
 ├── config.py            # System configuration / 系统配置 (25x25 阵列, 射频, 波形, 战场)
-├── physics/             # CPU physics baseline (NumPy) / CPU 物理基线
-│   ├── array.py         # Phased array model / 相控阵模型 (25×25, 波束指向, 阵列因子)
-│   ├── channel.py       # Propagation / 信道传播 (路径损耗, 瑞利衰落, 雷达方程)
-│   ├── waveform.py      # Waveform generation / 波形生成 (LFM, Barker, Frank, Costas, NLFM, P4)
-│   ├── receiver.py      # Receiver DSP / 接收机信号处理 (匹配滤波, CFAR, 距离-多普勒)
-│   └── interference.py  # dB-level cross-radar interference / dB 级互扰计算
 ├── gpu/                 # GPU-accelerated simulation / GPU 加速仿真 (Warp + PyTorch)
 │   ├── array_gpu.py     # Warp: beam steering, array factor, per-element beamforming
 │   ├── channel_gpu.py   # Warp: per-element delay/Doppler/fading / 逐元素延迟/多普勒/衰落
@@ -43,7 +37,6 @@ radar_sim/
 │   ├── core.py          # FluxPhasedPZEnv(ParallelEnv) / PZ 环境主类
 │   ├── agent_map.py     # Agent name ↔ GPU tensor index mapping / 智能体名称映射
 │   └── test_pettingzoo.py  # parallel_api_test validation / PZ 合规测试
-└── env/                 # CPU multi-agent battlefield / CPU 多智能体战场 (PettingZoo)
 ```
 
 ## Quick Start / 快速开始
@@ -450,7 +443,7 @@ All tests passed!
 | **Python** | 3.10 | Runtime / 运行时 |
 | **PyTorch** | 2.5.1 + CUDA 12.1 | GPU tensor ops + `torch.fft` (cuFFT) |
 | **NVIDIA Warp** | 1.7.2 | Custom CUDA kernels (beam steering, delay/Doppler, CA-CFAR) |
-| **NumPy** | ≥ 1.24 | CPU baseline / 主机端基线 |
+| **NumPy** | ≥ 1.24 | Host-side array ops / 主机端数组运算 |
 | **CUDA Toolkit** | 12.1+ runtime, 12.6+ driver | GPU compute / GPU 计算 |
 
 ### Optional / 可选
@@ -459,12 +452,12 @@ All tests passed!
 |--------------|----------------|
 | **RadarSimPy** v15.2.0 | Level-2 cross-validation against industry simulator. Free for personal use at https://radarsimx.com/product/radarsimpy/ |
 | **Matplotlib** | `validation/generate_plots.py` 可视化 |
-| **PettingZoo** | `radar_sim/pz_gpu/` GPU 并行接口封装 + `radar_sim/env/` CPU 基线环境 |
+| **PettingZoo** | `radar_sim/pz_gpu/` GPU 并行接口封装 (parallel_api_test passed) |
 
 ### Hardware / 硬件要求
 
 - **GPU**: NVIDIA with sm_70+ and ≥ 4 GB VRAM (tested on RTX 2060 6.4 GB)
-- **CPU**: any modern x86_64; baseline CPU path only runs `radar_sim/physics/*`
+- **CPU**: any modern x86_64
 
 ### Install / 安装示例
 
