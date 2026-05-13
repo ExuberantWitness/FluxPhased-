@@ -37,6 +37,24 @@ radar_sim/
 │   ├── core.py          # FluxPhasedPZEnv(ParallelEnv) / PZ 环境主类
 │   ├── agent_map.py     # Agent name ↔ GPU tensor index mapping / 智能体名称映射
 │   └── test_pettingzoo.py  # parallel_api_test validation / PZ 合规测试
+├── evaluation/          # Effectiveness evaluation framework / 效能评估框架
+│   ├── collectors/      # Data collection layer / 数据收集层
+│   │   ├── ground_truth.py  # Expected range/doppler/SNR from simulation / 仿真真值计算
+│   │   └── episode_collector.py  # Episode trajectory buffer + RandomPolicy / 轨迹收集+随机策略
+│   ├── metrics/         # Metric computation layer / 指标计算层
+│   │   ├── perception.py    # Detection accuracy, coverage, SNR stratification / 感知效能
+│   │   ├── combat.py        # Resource allocation, missile efficiency / 作战决策质量
+│   │   ├── game.py          # Win rate, strategy stability, generalization / 对抗博弈
+│   │   └── comm.py          # BPSK link quality, CRC pass rate / 通信质量
+│   ├── analysis/        # Advanced analysis layer / 高级分析层
+│   │   ├── trigger_sources.py  # Trigger source library (12 sources) / 触发源库
+│   │   ├── sensitivity.py      # BN-Sobol sensitivity analysis / 敏感性分析
+│   │   ├── scenario_generator.py  # Scenario generation from triggers / 场景生成
+│   │   ├── cde.py              # CDE composite metric (formula 15-25) / 综合效能指标
+│   │   └── accelerated_eval.py # Confidence-driven early stopping / 加速评估
+│   ├── reporting/
+│   │   └── report.py    # Structured report (dict/JSON/Markdown) / 结构化报告
+│   └── test_evaluation.py  # 13-test validation suite / 测试套件
 ```
 
 ## Quick Start / 快速开始
@@ -49,6 +67,7 @@ python radar_sim/gpu/test_2env_25.py             # 2-env precision + usability o
 python radar_sim/gpu/test_mfar.py                # MFAR 4-task per-element control tests
 python radar_sim/gpu/test_missile_env.py          # Missile combat + multi-agent tests
 python radar_sim/pz_gpu/test_pettingzoo.py         # PettingZoo Parallel API tests
+python radar_sim/evaluation/test_evaluation.py     # Effectiveness evaluation metrics tests
 ```
 
 > Windows GBK 控制台请使用 `PYTHONIOENCODING=utf-8` 前缀执行，否则脚本中的 emoji 会触发 `UnicodeEncodeError`。
@@ -429,13 +448,98 @@ env = FluxPhasedPZEnv(radar_latents_fn=my_encoder)
 | Info | 结构正确 (alive, position, missile, winner, step) | ✅ |
 | 官方合规 | `parallel_api_test` | ✅ |
 
-**全部 28/28 测试通过。MFAR 6/6 + 导弹 8/8 也全部通过。**
+**全部 28/28 测试通过。MFAR 6/6 + 导弹 8/8 + 评估 13/13 也全部通过，总计 55/55。**
 
 ### League Training 衔接
 
 - `possible_agents` 固定 6 个 ID → league framework 通过 `policy_mapping_fn` 分配策略
 - 红蓝身份交换在 framework 层做 policy 翻转，env 不做随机翻转
 - per-agent reward dict 已包含 team 胜负信号（雷达 ±1.0，指挥官 ±10.0）
+
+---
+
+## Effectiveness Evaluation Framework / 效能评估框架
+
+`radar_sim/evaluation/` 提供与电磁效应测量与调控技术效能评估方案对齐的 Metrics 体系，覆盖感知、分析、博弈三层评估维度。
+
+### 评估维度与指标
+
+| 评估维度 | 指标 | 计算方式 |
+|---|---|---|
+| **感知/准确性** | 检测距离准确率 | spectrum 峰值 bin vs 预期 range bin |
+| **感知/完整性** | 目标覆盖率 | 检测到目标的雷达/目标对占比 |
+| **感知/实时性** | 处理延迟 | `result["timing"]` 各阶段耗时统计 |
+| **感知/鲁棒性** | SNR 分桶准确率 | 按预期 SNR 区间统计检测准确率 |
+| **分析/系统级** | 威胁评估 | 指挥官目标选点误差 vs 最近敌方雷达 |
+| **博弈/有效性** | 击杀率 | 导弹成功击杀占比 |
+| **博弈/资源效率** | 任务分配熵 | 各 task 占比与信息熵 |
+| **博弈/决策性能** | 决策延迟 | 从 reset 到导弹发射的步数 |
+| **博弈/策略稳定性** | 奖励变异系数 | 多 episode 奖励 CV |
+| **博弈/泛化能力** | 对抗胜率 | 多对手策略下的胜率 |
+| **通信质量** | BPSK 链路准确率 | 解码坐标误差 + CRC 通过率 |
+| **跨领域** | CDE 综合指标 | 击杀效能+资源效率+决策质量+泛化能力 |
+| **跨领域** | BN-Sobol 敏感性 | 触发源对系统效能的影响权重排名 |
+| **跨领域** | 加速评估 | 置信度驱动的 episode 早停 |
+
+### 触发源库
+
+12 个可配置触发源，分三张表：
+
+| 分类 | 触发源 | 参数范围 |
+|------|--------|---------|
+| 感知 | target_rcs, bandwidth, prf, pulses_per_cpi, tx_power | 对应物理范围 |
+| 分析 | swerling_model, rows, cols | 对应物理范围 |
+| 博弈 | missile_speed, kill_radius, n_radars, map_size | 对应物理范围 |
+
+### 使用方式
+
+```python
+from radar_sim.evaluation import (
+    EpisodeCollector, PerceptionMetrics, CombatMetrics,
+    GameMetrics, CDEMetric, EvaluationReport,
+)
+
+# 1. 收集 episode 数据
+env = MFARVecEnv(num_envs=1, ...)
+collector = EpisodeCollector(env, max_steps=100)
+episodes = collector.run_episodes(n_episodes=20)
+
+# 2. 计算各维度指标
+pm = PerceptionMetrics(env)
+cm = CombatMetrics()
+gm = GameMetrics()
+cde = CDEMetric()
+
+# 3. 生成报告
+report = EvaluationReport()
+report.perception = pm.detection_accuracy(spectrum, gt)
+report.combat = cm.missile_efficiency(episodes[0], env.radar_pos)
+report.game = gm.game_outcomes(episodes)
+report.cde = cde.compute(episodes[0])
+report.to_markdown("eval_report.md")
+```
+
+### 评估测试
+
+13 项 Metrics 有效性验证（随机策略基线）：
+
+| 测试 | 说明 |
+|------|------|
+| RandomPolicy | 随机参数网络输出合法 action |
+| GroundTruthComputer | 仿真真值 range/doppler/SNR 值合理 |
+| EpisodeCollector | 10 步轨迹收集，数据完整 |
+| PerceptionMetrics | 全 detect → detect_frac=1.0，beamformed RDM 正确 |
+| CombatMetrics | 发射策略 → missile launched，kill_rate 可计算 |
+| GameMetrics | 多 episode 聚合，win_rate 求和=1.0 |
+| CommMetrics | 有 comm vs 无 comm 数据区分度 |
+| TriggerSources | 12 个触发源参数范围合法 |
+| ScenarioGenerator | 生成有效 env 配置 |
+| CDEMetric | 值在 [0, 1]，空 episode=0.2，击杀 episode=0.9 |
+| AcceleratedEvaluator | 恒定 metric 下 20 episode 早停 |
+| EvaluationReport | to_dict/to_markdown 输出正确 |
+| PZ 集成 | PZ wrapper + collector 端到端不崩溃 |
+
+**全部 13/13 测试通过。**
 
 ---
 
@@ -458,6 +562,8 @@ env = FluxPhasedPZEnv(radar_latents_fn=my_encoder)
 | **RadarSimPy** v15.2.0 | Level-2 cross-validation against industry simulator. Free for personal use at https://radarsimx.com/product/radarsimpy/ |
 | **Matplotlib** | `validation/generate_plots.py` 可视化 |
 | **PettingZoo** | `radar_sim/pz_gpu/` GPU 并行接口封装 (parallel_api_test passed) |
+| **SALib** | `radar_sim/evaluation/` BN-Sobol 敏感性分析（评估框架可选依赖） |
+| **SciPy** | `radar_sim/evaluation/` 加速评估置信区间计算（评估框架可选依赖） |
 
 ### Hardware / 硬件要求
 

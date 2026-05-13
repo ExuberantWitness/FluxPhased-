@@ -299,6 +299,9 @@ class MFARVecEnv:
                 (E, self.n_teams, R), missile.swerling_model, dev,
             )
 
+        # Track last-computed channel params for evaluation
+        last_channel_params = None
+
         for p in range(P):
             self._buf_rx_signal.zero_()
 
@@ -315,6 +318,12 @@ class MFARVecEnv:
                     tx_signal, delay_s, doppler_hz, gain,
                 )
                 self._buf_rx_signal += target_return
+                if p == 0 and t_idx == 0:
+                    last_channel_params = {
+                        "delay_samples": delay_s.detach(),
+                        "doppler_hz": doppler_hz.detach(),
+                        "gain_linear": gain.detach(),
+                    }
 
             # Missile targets (in-flight, with aspect RCS + Swerling)
             for team_idx in range(self.n_teams):
@@ -451,6 +460,11 @@ class MFARVecEnv:
             "kills": kills,
             "timing": timing,
             "tx_signal": tx_signal,
+            "channel_params": last_channel_params,
+            "steering_weights": weights_for_intf,
+            "detect_params": detect_params,
+            "jam_params": jam_params,
+            "comm_crc_ok": getattr(self.battlefield, "_last_comm_crc_ok", None),
         }
 
     def _decode_actions(self, actions: torch.Tensor):

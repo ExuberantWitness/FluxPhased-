@@ -75,6 +75,7 @@ class VecBattlefield:
         self.commander_action_dim = 3 + 2 * num_output_length
 
         dev = torch.device(device)
+        self._last_comm_crc_ok = torch.zeros(num_envs, n_teams, dtype=torch.bool, device=dev)
 
         # Team mapping: radar i → team_id[i]
         r_per_team = n_radars // n_teams
@@ -229,6 +230,8 @@ class VecBattlefield:
         E = self.num_envs
         S = tx_signal.shape[-1]
 
+        self._last_comm_crc_ok.zero_()
+
         for t in range(self.n_teams):
             flying = self.missile.in_flight[:, t]  # [E]
             if not flying.any():
@@ -281,6 +284,9 @@ class VecBattlefield:
             # BPSK demodulate
             bits = demodulate_bpsk_batch(rx, self.symbol_rate, self.fs, n_bits=32)
             data_x, data_y, crc_ok = decode_bpsk_batch(bits)
+
+            # Store CRC status for evaluation
+            self._last_comm_crc_ok[active_idx, t] = crc_ok
 
             # Update missile target where CRC passed
             valid_mask = crc_ok
