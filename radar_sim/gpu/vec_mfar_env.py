@@ -35,7 +35,7 @@ DEG2RAD = np.pi / 180.0
 ACTION_PER_ELEM = 22
 # Vehicle action: [speed, heading_change, array_rotation]
 ACTION_VEHICLE = 3
-ACTION_TOTAL_PER_RADAR = 625 * ACTION_PER_ELEM + ACTION_VEHICLE  # 13753
+# Note: actual action_dim is computed per-instance as n_elem * ACTION_PER_ELEM + ACTION_VEHICLE
 
 
 class MFARVecEnv:
@@ -211,7 +211,7 @@ class MFARVecEnv:
 
     @property
     def action_dim(self) -> int:
-        return ACTION_TOTAL_PER_RADAR
+        return self.n_elem * ACTION_PER_ELEM + ACTION_VEHICLE
 
     def reset(self, env_ids=None):
         """Randomize positions for specified envs (or all).
@@ -333,7 +333,7 @@ class MFARVecEnv:
         weights_for_intf = self.array.steer_all(avg_az, avg_el)
         self.interference.compute(
             self.radar_pos, avg_az, avg_el,
-            weights_for_intf, baseband[:, 0, :],
+            weights_for_intf, baseband[0, 0, :],
             out=self._buf_intf,
         )
 

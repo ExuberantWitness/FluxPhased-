@@ -17,6 +17,7 @@ python radar_sim/gpu/test_mfar.py                # MFAR 4-task per-element contr
 python radar_sim/gpu/test_missile_env.py          # Missile combat + multi-agent tests
 python radar_sim/pz_gpu/test_pettingzoo.py         # PettingZoo Parallel API tests
 python radar_sim/evaluation/test_evaluation.py     # Effectiveness evaluation metrics tests
+python -m training.verify_training               # PPO training verification (gradients + loss)
 ```
 
 > Windows GBK 控制台请使用 `PYTHONIOENCODING=utf-8` 前缀执行，否则脚本中的 emoji 会触发 `UnicodeEncodeError`。
@@ -83,7 +84,23 @@ radar_sim/
 │   └── report.py        # CalibrationReport (Markdown + convergence plot) / 标定报告
 configs/                 # YAML configuration files / YAML 配置文件
 ├── physics.yaml         # All physical simulation parameters / 物理仿真参数
-└── algorithm.yaml       # Algorithm/training parameters / 算法训练参数
+├── algorithm.yaml       # Algorithm/training parameters / 算法训练参数
+└── league.yaml          # League training config / 联赛训练配置
+training/                # Multi-agent RL training framework / 多智能体 RL 训练框架
+├── train.py             # CLI entry point / 训练入口
+├── verify_training.py   # Training verification script / 训练验证脚本
+├── flux_league.py       # Full 3-role league manager / 完整三角色联赛管理器
+├── ppo/                 # PPO algorithm / PPO 算法
+│   ├── actor_critic.py  # Commander + Radar actor-critic / 指挥官+雷达 Actor-Critic
+│   ├── ppo_trainer.py   # PPO training loop / PPO 训练循环
+│   ├── buffer.py        # GAE rollout buffer / GAE 回放缓冲
+│   └── reward_shaping.py # Dense intermediate rewards / 密集中间奖励
+├── self_play/           # Self-play infrastructure / 自对弈基础设施
+│   ├── opponent_pool.py  # Policy pool + PFSP sampling / 策略池 + PFSP 采样
+│   ├── payoff_matrix.py  # Win rate matrix evaluation / 胜率矩阵评估
+│   └── meta_solver.py   # Nash equilibrium LP solver / Nash 均衡 LP 求解器
+└── curriculum/          # Phased training curriculum / 分阶段课程训练
+    └── phased_trainer.py # Phase A->D orchestration / A->D 四阶段编排
 ```
 
 </details>
@@ -921,6 +938,103 @@ Diagonal links (+87.3 dB) are boresight-to-boresight; side links (+14.7 dB) are 
 **说明的能力：** 该图展示了多部相控阵雷达协同探测的完整空间场景。左上子图为 10km×10km 战场俯视图，4 个雷达的波束（彩色扇区）同时照射中心目标，波束足迹随距离扩展呈现自然的锥形扩散。右上子图从目标视角以极坐标展示 4 个雷达的来波方向和相对增益强度。下方子图以柱状图定量对比 4 部雷达在目标处的等效照射功率（含阵列增益和路径损耗），体现各雷达因距离和偏轴角不同而产生的功率差异。这是传统单雷达无法实现的——4 部雷达的同时照射提供了空间分集增益，显著提升了对隐身目标的检测概率。
 
 **合理性：** 4 部雷达到中心目标距离均为 7.07 km（对角线），但因波束指向偏转角不同（最大 45°），各雷达在目标处的等效增益因 scan loss（~1/cos(θ) 波束展宽）略有差异。偏转角度越大的雷达，目标处增益略低，这在柱状图中得到体现。波束足迹宽度与距离·波束宽度的乘积一致（7.07 km × 4.6° ≈ 0.57 km 半宽），符合远场方向图投影规律。
+
+</details>
+
+---
+
+<details>
+<summary><b>Initial Algorithm Demo / 初始算法演示</b></summary>
+
+基于 AlphaStar 联赛训练思想，实现了完整的多智能体对抗训练框架 **FluxLeague**。核心思路：雷达 EW 对抗具有非传递博弈结构（detect→jam→recon→detect 循环克制），需要种群级训练寻找混合策略 Nash 均衡，而非单一最优策略。
+
+### 训练框架架构
+
+```
+FluxLeague Manager
+├── Population Pool (K policies, max 20)
+│   ├── Main Agent × 2           (red + blue, trains vs full opponent population via PFSP)
+│   ├── Main Exploiter × 2       (trains vs opponent's current Main Agent only)
+│   └── League Exploiter × 2     (trains vs full population, resettable)
+├── Payoff Matrix + Meta-Solver  (Nash equilibrium via LP)
+├── Hierarchical PPO per team
+│   ├── Commander PPO             (68-dim obs → 35-dim action)
+│   └── Radar PPO (shared)        (spectrum+state → 22*N+3 action)
+└── GPU Simulation (MFARVecEnv)
+```
+
+**三角色分工（源自 AlphaStar）：**
+
+| 角色 | 对手 | 不可替代性 |
+|------|------|-----------|
+| **Main Agent** | PFSP 采样全种群 | 追求综合最强，最终部署策略来源 |
+| **Main Exploiter** | 仅对方 Main Agent | 快速发现冠军策略的即时弱点 |
+| **League Exploiter** | PFSP 采样全种群 | 发现种群整体盲区（非传递博弈最关键） |
+
+### 训练闭环验证
+
+`python -m training.verify_training` 在 2×2 小配置上运行 200 次 PPO 更新，验证：
+
+```
+Reward:   first 20 avg = +0.146 → last 20 avg = +0.048 (Δ = -0.098)
+Radar loss: first 20 avg = 207.65 → last 20 avg = 35.93 (Δ = -171.7, -83%)
+Gradient norm: mean = 69637, max = 242591
+
+Checks:
+  Gradients flow:   PASS (mean grad_norm=69637)
+  Loss changes:     PASS (loss 从 208 降到 36)
+  Reward changes:   PASS
+```
+
+### 密集奖励塑形
+
+稀疏奖励（仅 kill/death ±10）无法支撑 13753 维连续动作空间学习。新增 5 种密集中间奖励：
+
+| 奖励分量 | 权重 | 计算方式 |
+|----------|------|----------|
+| 检测 SNR | 0.10 | detect 阵元 SNR 超阈值比例 |
+| 检测覆盖率 | 0.05 | 有效检测阵元占比 |
+| 干扰效果 | 0.10 | jam 阵元功率归一化 |
+| 通信可靠度 | 0.05 | BPSK CRC 通过率 |
+| 侦察情报 | 0.03 | recon 阵元接收能量 |
+
+### 4 阶段课程训练
+
+| 阶段 | 内容 | 目标 |
+|------|------|------|
+| A. 单任务预训练 | 固定任务分配，训练 detect/recon/jam 独立策略 | 引导谱理解和波束控制 |
+| B. 多任务集成 | 启用完整动作空间，密集奖励，对抗随机对手 | 学习任务分配 |
+| C. PSRO 种群训练 | 评估 payoff 矩阵 → Nash 均衡 → 训练 best response | 处理非传递性 |
+| D. 联赛精炼 | Exploiter 聚焦主策略弱点 | 最终策略鲁棒化 |
+
+### 训练命令
+
+```bash
+# 完整 4 阶段训练
+python -m training.train --config configs/league.yaml
+
+# 单独运行某阶段
+python -m training.train --config configs/league.yaml --phase c
+
+# 从 checkpoint 恢复
+python -m training.train --resume checkpoints/league/league_state.pt
+```
+
+### 关键文件
+
+| 文件 | 行数 | 功能 |
+|------|------|------|
+| `training/ppo/actor_critic.py` | ~280 | Commander + Radar Actor-Critic 网络（含 AdaptiveSpectrumEncoder） |
+| `training/ppo/ppo_trainer.py` | ~220 | PPO 训练循环 + TeamPPOTrainer（管理 commander + 共享 radar） |
+| `training/ppo/reward_shaping.py` | ~120 | 密集奖励塑形（detect/jam/comm/recon） |
+| `training/ppo/buffer.py` | ~100 | GAE rollout buffer |
+| `training/flux_league.py` | ~240 | 完整三角色联赛管理器（PSRO 迭代） |
+| `training/self_play/meta_solver.py` | ~110 | Nash 均衡 LP 求解器 + NashConv |
+| `training/self_play/opponent_pool.py` | ~160 | 策略池 + PFSP 优先采样 |
+| `training/self_play/payoff_matrix.py` | ~100 | 胜率矩阵评估 |
+| `training/curriculum/phased_trainer.py` | ~200 | 4 阶段课程编排 |
+| `training/train.py` | ~130 | CLI 入口 |
+| `configs/league.yaml` | ~50 | 训练配置 |
 
 </details>
 
