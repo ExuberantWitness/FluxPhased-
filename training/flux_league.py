@@ -138,7 +138,7 @@ class FluxLeague:
                     radar=policy_dict["radar"],
                     **self.ppo_config,
                 )
-                trainer.set_radar_obs_dim(env.state_dim)
+                trainer.init_buffers(env.state_dim, env.action_dim)
 
                 # Save initial checkpoint
                 ckpt_name = f"{role}_team{team}_gen0.pt"
@@ -250,20 +250,11 @@ class FluxLeague:
         opponent_id: str,
         own_policy_id: str,
     ) -> dict:
-        """Train one team policy against an opponent for N episodes.
-
-        Args:
-            env: MFARVecEnv
-            trainer: TeamPPOTrainer for the training team
-            opponent_id: opponent policy to play against
-            own_policy_id: own policy ID
-        Returns:
-            training metrics dict
-        """
+        """Train one team policy against an opponent for N episodes."""
         opp_trainer = self.trainers.get(opponent_id)
         record = self.pool.policies[own_policy_id]
         team = record.team
-        r_per_team = env.n_radars // env.n_teams
+        opp_team = 1 - team
 
         total_rewards = 0.0
         wins = 0
@@ -274,34 +265,51 @@ class FluxLeague:
             episode_reward = 0.0
 
             for step in range(self.max_steps_per_episode):
-                # Build actions for all radars
                 with torch.no_grad():
+                    # Own team: real policy inference
+                    own = trainer.get_own_actions(env, team)
+
+                    # Opponent team: real policy or random fallback
                     actions = torch.zeros(
                         env.num_envs, env.n_radars, env.action_dim, device=self.device,
                     )
+                    for i, r in enumerate(range(own["r_start"], own["r_end"])):
+                        actions[:, r, :] = own["radar_actions"][i]
+
+                    if opp_trainer:
+                        opp = opp_trainer.get_own_actions(env, opp_team)
+                        for i, r in enumerate(range(opp["r_start"], opp["r_end"])):
+                            actions[:, r, :] = opp["radar_actions"][i]
+                    else:
+                        opp_r_start = opp_team * (env.n_radars // env.n_teams)
+                        opp_r_end = opp_r_start + (env.n_radars // env.n_teams)
+                        actions[:, opp_r_start:opp_r_end, :] = torch.rand(
+                            env.num_envs, opp_r_end - opp_r_start, env.action_dim,
+                            device=self.device,
+                        )
+
                     commander_actions = torch.zeros(
                         env.num_envs, env.n_teams,
-                        env.battlefield.commander_action_dim,
-                        device=self.device,
+                        env.battlefield.commander_action_dim, device=self.device,
                     )
+                    commander_actions[:, team, :] = own["commander_action"]
+                    if opp_trainer:
+                        commander_actions[:, opp_team, :] = opp["commander_action"]
+                    else:
+                        commander_actions[:, opp_team, :] = (
+                            torch.rand(
+                                env.num_envs, env.battlefield.commander_action_dim,
+                                device=self.device,
+                            ) * 2 - 1
+                        )
 
-                    # Own team: use training policy
-                    # (simplified: random actions for now — full version would
-                    # use trainer.actor_critic.forward(obs))
-                    r_start = team * r_per_team
-                    r_end = r_start + r_per_team
+                result = env.step(actions=actions, commander_actions=commander_actions)
 
-                    # Opponent team: use opponent policy
-                    # (simplified: random for now)
-
-                result = env.step(
-                    actions=actions,
-                    commander_actions=commander_actions,
-                )
-
-                # Process rewards
-                reward_info = trainer.collect_env_step(env, result)
-                episode_reward += reward_info["radar_reward"][:, r_start:r_end].sum().item()
+                # Store transitions for training team only
+                reward_info = trainer.store_transition(env, result, own["transition"], team)
+                episode_reward += reward_info["radar_reward"][
+                    :, own["r_start"]:own["r_end"]
+                ].sum().item()
 
                 if result["dones"].any():
                     if result["winners"][0] == team:
@@ -311,7 +319,6 @@ class FluxLeague:
             total_rewards += episode_reward
             episodes += 1
 
-            # PPO update when buffer is full
             if episodes % 10 == 0:
                 trainer.update()
 

@@ -18,15 +18,7 @@ from .reward_shaping import DenseRewardShaper
 
 
 class PPOTrainer:
-    """PPO training loop for one agent (commander or radar).
-
-    Usage:
-        trainer = PPOTrainer(actor_critic, config)
-        for step in range(n_steps):
-            trainer.collect_rollout(env, ...)
-            if buffer.full:
-                trainer.update()
-    """
+    """PPO training loop for one agent (commander or radar)."""
 
     def __init__(
         self,
@@ -56,39 +48,8 @@ class PPOTrainer:
 
         self.optimizer = torch.optim.Adam(self.ac.parameters(), lr=lr)
 
-    def collect_step(
-        self,
-        obs: torch.Tensor,
-        buffer: RolloutBuffer,
-        deterministic: bool = False,
-    ) -> torch.Tensor:
-        """Collect one step: get action, log_prob, value.
-
-        Args:
-            obs: [obs_dim] or [B, obs_dim] tensor
-            buffer: RolloutBuffer to store transition
-            deterministic: if True, use mean action (no sampling)
-        Returns:
-            action tensor for env step
-        """
-        with torch.no_grad():
-            if obs.dim() == 1:
-                obs = obs.unsqueeze(0)
-
-            action, value = self.ac(obs)
-            # Approximate log_prob for flat action
-            log_prob = torch.zeros(action.shape[0], device=action.device)
-
-        return action.squeeze(0), value.squeeze(), log_prob.squeeze()
-
     def update(self, buffer: RolloutBuffer) -> Dict[str, float]:
-        """Run PPO update on collected rollouts.
-
-        Args:
-            buffer: Full RolloutBuffer with computed returns
-        Returns:
-            dict of loss metrics
-        """
+        """Run PPO update on collected rollouts."""
         total_policy_loss = 0.0
         total_value_loss = 0.0
         total_entropy = 0.0
@@ -102,25 +63,18 @@ class PPOTrainer:
                 advantages = batch["advantages"]
                 returns = batch["returns"]
 
-                # Normalize advantages
                 advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
-                # Forward pass
                 log_prob, entropy, value = self.ac.evaluate_actions(obs, old_actions)
 
-                # Policy loss (clipped surrogate)
                 ratio = torch.exp(log_prob - old_log_probs)
                 surr1 = ratio * advantages
                 surr2 = torch.clamp(ratio, 1 - self.clip_range, 1 + self.clip_range) * advantages
                 policy_loss = -torch.min(surr1, surr2).mean()
 
-                # Value loss
                 value_loss = ((value.squeeze() - returns) ** 2).mean()
-
-                # Entropy bonus
                 entropy_loss = -entropy.mean()
 
-                # Total loss
                 loss = policy_loss + self.value_coef * value_loss + self.entropy_coef * entropy_loss
 
                 self.optimizer.zero_grad()
@@ -141,10 +95,18 @@ class PPOTrainer:
 
 
 class TeamPPOTrainer:
-    """Manages PPO training for a full team (1 commander + 2 radars with shared params).
+    """Manages PPO training for a full team (1 commander + shared radar policy).
 
-    The two radars on the same team share a single RadarActorCritic network,
-    doubling the effective sample efficiency.
+    The radars on the same team share a single RadarActorCritic network,
+    doubling effective sample efficiency.
+
+    Usage:
+        trainer = TeamPPOTrainer(commander, radar, ...)
+        trainer.init_buffers(env.state_dim, env.action_dim)
+        own = trainer.get_own_actions(env, team)
+        result = env.step(actions, cmd_actions)
+        trainer.store_transition(env, result, own["transition"], team)
+        if buffer full: trainer.update()
     """
 
     def __init__(
@@ -181,81 +143,157 @@ class TeamPPOTrainer:
             buffer_size=buffer_size, device=device,
         )
         self.device = device
+        self.gamma = gamma
+        self.gae_lambda = gae_lambda
+        self.batch_size = batch_size
+        self.buffer_size = buffer_size
 
-        # Separate buffers for commander and radar
-        from .buffer import RolloutBuffer
-
-        cmd_obs_dim = 68
-        cmd_act_dim = 35
-        radar_obs_dim = 0  # set later from env
-        radar_act_dim = 13753
-
-        self.commander_buffer = RolloutBuffer(
-            buffer_size, cmd_obs_dim, cmd_act_dim,
-            gamma=gamma, gae_lambda=gae_lambda, device=device,
-        )
-        self.radar_buffer = RolloutBuffer(
-            buffer_size, radar_act_dim, radar_act_dim,
-            gamma=gamma, gae_lambda=gae_lambda, device=device,
-        )
-
+        # Buffers initialized via init_buffers() after env is created
+        self.commander_buffer = None
+        self.radar_buffer = None
         self.reward_shaper = DenseRewardShaper(device=device)
 
-    def set_radar_obs_dim(self, obs_dim: int):
-        """Set radar observation dimension (from env)."""
+    def init_buffers(self, env_state_dim: int, env_action_dim: int):
+        """Initialize rollout buffers with correct dimensions from env."""
+        self.commander_buffer = RolloutBuffer(
+            self.buffer_size, obs_dim=68, act_dim=35,
+            gamma=self.gamma, gae_lambda=self.gae_lambda, device=self.device,
+        )
         self.radar_buffer = RolloutBuffer(
-            self.radar_buffer.buffer_size,
-            obs_dim, 13753,
-            gamma=self.radar_buffer.gamma,
-            gae_lambda=self.radar_buffer.gae_lambda,
-            device=self.device,
+            self.buffer_size, obs_dim=env_state_dim, act_dim=env_action_dim,
+            gamma=self.gamma, gae_lambda=self.gae_lambda, device=self.device,
         )
 
-    def collect_env_step(
-        self,
-        env,  # MFARVecEnv
-        step_output: dict,
-    ) -> dict:
-        """Process one env step output into buffer additions.
+    def _get_observations(self, env):
+        """Get current state and commander observations from env."""
+        state = env._assemble_state(env._buf_spectrum, env._buf_comm_data)
+        comm_input = torch.zeros(
+            env.num_envs, env.n_radars, env.num_input_length, device=self.device,
+        )
+        commander_obs = env.battlefield.get_commander_observation(
+            env.radar_pos, comm_input,
+        )
+        return state, commander_obs
+
+    def get_own_actions(self, env, team: int, deterministic: bool = False):
+        """Query own policies and return actions for env.step().
 
         Args:
             env: MFARVecEnv instance
-            step_output: dict from env.step()
+            team: team index (0 or 1)
+            deterministic: use mean actions (for evaluation)
         Returns:
-            metrics dict
+            dict with radar_actions, commander_action, transition, r_start, r_end
         """
-        # Compute shaped rewards
-        shaped = self.reward_shaper(step_output)
-        total_radar_reward = (
-            shaped["total_shaped"] + step_output["radar_rewards"]
-        )  # [E, R]
-        commander_reward = step_output["commander_rewards"]  # [E, n_teams]
+        r_per_team = env.n_radars // env.n_teams
+        r_start = team * r_per_team
+        r_end = r_start + r_per_team
+
+        state, commander_obs = self._get_observations(env)
+
+        with torch.no_grad():
+            # Commander
+            cmd_obs = commander_obs[:, team, :]  # [E, 68]
+            cmd_action, cmd_logp, cmd_val = self.commander_trainer.ac.get_action(
+                cmd_obs, deterministic=deterministic,
+            )
+
+            # Radars (shared policy, individual observations)
+            radar_actions = []
+            rep_logp = rep_val = rep_obs = rep_action = None
+            for r in range(r_start, r_end):
+                r_obs = state[:, r, :]  # [E, state_dim]
+                r_act, r_logp, r_val = self.radar_trainer.ac.get_action(
+                    r_obs, deterministic=deterministic,
+                )
+                radar_actions.append(r_act)
+                if r == r_start:
+                    rep_obs = r_obs
+                    rep_action = r_act
+                    rep_logp = r_logp          # [E]
+                    rep_val = r_val.squeeze(-1) # [E]
+
+        return {
+            "radar_actions": radar_actions,    # list of [E, action_dim]
+            "commander_action": cmd_action,    # [E, cmd_act_dim]
+            "transition": {
+                "cmd_obs": cmd_obs,
+                "cmd_action": cmd_action,
+                "cmd_logp": cmd_logp,
+                "cmd_val": cmd_val.squeeze(-1),
+                "radar_obs": rep_obs,
+                "radar_action": rep_action,
+                "radar_logp": rep_logp,
+                "radar_val": rep_val,
+            },
+            "r_start": r_start,
+            "r_end": r_end,
+        }
+
+    def store_transition(self, env, result: dict, transition: dict, team: int):
+        """Compute shaped rewards and store transitions in buffers.
+
+        Args:
+            env: MFARVecEnv instance
+            result: output from env.step()
+            transition: dict from get_own_actions()["transition"]
+            team: team index
+        Returns:
+            reward metrics dict
+        """
+        shaped = self.reward_shaper(result)
+        r_per_team = env.n_radars // env.n_teams
+        r_start = team * r_per_team
+
+        total_radar_reward = shaped["total_shaped"] + result["radar_rewards"]  # [E, R]
+        cmd_reward = result["commander_rewards"]  # [E, n_teams]
+
+        for e in range(env.num_envs):
+            done = float(result["dones"][e].item())
+
+            # Commander transition
+            self.commander_buffer.add(
+                obs=transition["cmd_obs"][e].cpu(),
+                action=transition["cmd_action"][e].cpu(),
+                reward=cmd_reward[e, team].item(),
+                done=done,
+                value=transition["cmd_val"][e].item(),
+                log_prob=transition["cmd_logp"][e].item(),
+            )
+
+            # Radar transition (representative radar for the team)
+            radar_reward = total_radar_reward[e, r_start:r_start + r_per_team].sum().item()
+            self.radar_buffer.add(
+                obs=transition["radar_obs"][e].cpu(),
+                action=transition["radar_action"][e].cpu(),
+                reward=radar_reward,
+                done=done,
+                value=transition["radar_val"][e].item(),
+                log_prob=transition["radar_logp"][e].item(),
+            )
 
         return {
             "radar_reward": total_radar_reward,
-            "commander_reward": commander_reward,
+            "commander_reward": cmd_reward,
             "shaped_rewards": shaped,
         }
 
     def update(self) -> dict:
-        """Run PPO updates for both commander and radar."""
+        """Run PPO updates for both commander and radar when buffers are full."""
         cmd_metrics = {}
         radar_metrics = {}
 
-        if self.commander_buffer.size > self.batch_size:
+        if self.commander_buffer and self.commander_buffer.size > self.batch_size:
             self.commander_buffer.compute_returns()
             cmd_metrics = self.commander_trainer.update(self.commander_buffer)
             self.commander_buffer.reset()
 
-        if self.radar_buffer.size > self.batch_size:
+        if self.radar_buffer and self.radar_buffer.size > self.batch_size:
             self.radar_buffer.compute_returns()
             radar_metrics = self.radar_trainer.update(self.radar_buffer)
             self.radar_buffer.reset()
 
-        return {
-            "commander": cmd_metrics,
-            "radar": radar_metrics,
-        }
+        return {"commander": cmd_metrics, "radar": radar_metrics}
 
     def save(self, path: str):
         """Save team policy checkpoint."""

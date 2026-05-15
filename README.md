@@ -605,6 +605,7 @@ report.to_markdown("eval_report.md")
 
 - **GPU**: NVIDIA with sm_70+ and ≥ 4 GB VRAM (tested on RTX 2060 6.4 GB)
 - **CPU**: any modern x86_64
+- **显存参考**: 5×5 训练 (P=4, bins=64) 需 ≤ 2 GB；25×25 训练 (P=4, bins=64) E=4 需 ~15 GB，推荐 RTX 4090
 
 ### Install / 安装示例
 
@@ -628,7 +629,7 @@ pip install warp-lang==1.7.2 numpy matplotlib pettingzoo
 | Radars / 雷达数量 | 4 × 25×25 phased arrays / 相控阵 |
 | Bandwidth / 带宽 | 200 MHz (IQ-level / IQ 级) |
 | Elements total / 总阵元数 | 4 × 625 = 2,500 |
-| GPU memory / 显存占用 | ~1.1 GB / 6.4 GB (RTX 2060) |
+| GPU memory / 显存占用 | 见下方 VRAM 表（随配置变化） |
 
 </details>
 
@@ -641,32 +642,43 @@ GPU 端实现了 `RadarSimVecEnv`（[radar_sim/gpu/vec_env.py](radar_sim/gpu/vec
 
 ### Per-Env VRAM Footprint / 单环境显存占用
 
-针对 4 部 25×25 阵列 + 32 脉冲 + PRF=10 kHz + BW=200 MHz（n_samples=20000）的标称配置：
+当前代码使用逐阵元 CPI buffer（`_buf_cpi = [E, R, N, P, S]`）支持逐阵元频谱分析。N 维度使显存随阵元数线性增长。
 
-| Buffer / 缓冲区 | Shape | Size / 单 env |
-|-----------------|-------|---------------|
-| `_buf_rx_signal` | [E, R, N, S] complex64 | **400 MB** |
-| `_buf_tx`        | [E, R, N, S] complex64 | 400 MB |
-| `_buf_noise`     | [E, R, N, S] complex64 | 400 MB |
-| `_buf_intf`      | [E, R, N, S] complex64 | 400 MB |
-| `channel._out_buf` | [E·R·N, 2·S] float32 | 400 MB |
-| `_buf_pulse_train` | [E, R, P, S] complex64 | 20 MB |
-| Receiver FFT 中间张量 | sig_fft / range_profile / rd_map | ~400 MB peak |
-| **Total per env / 单环境合计** | | **≈ 2.4 GB peak** |
+#### Buffer 明细（E=1, R=4, S=20000）
 
-E=1 实测：pre-allocated 2024 MB，step 峰值 2425 MB（与理论一致）。
+| Buffer | Shape | 类型 | 25×25 P=4 bins=64 | 25×25 P=32 bins=1024 |
+|--------|-------|------|--------------------|-----------------------|
+| `_buf_rx_signal` | [E,R,N,S] | c64 | 400 MB | 400 MB |
+| `_buf_tx` | [E,R,N,S] | c64 | 400 MB | 400 MB |
+| `_buf_noise` | [E,R,N,S] | c64 | 400 MB | 400 MB |
+| `_buf_intf` | [E,R,N,S] | c64 | 400 MB | 400 MB |
+| `_buf_cpi` | [E,R,N,P,S] | c64 | **1.6 GB** | **12.8 GB** |
+| `_buf_spectrum` | [E,R,N,P,bins] | f32 | 0.1 GB | **8.2 GB** |
+| `_buf_comm_data` | [E,R,N,2] | f32 | ~0 | ~0 |
+| channel / processor 等 | — | — | ~0.4 GB | ~0.4 GB |
+| **单环境合计** | | | **~3.7 GB** | **~23 GB** |
 
-### RTX 2060 (6.4 GB) Measured Results / RTX 2060 实测
+> 注：N=25 (5×5) 时上述值除以 25。例如 5×5 + P=4 + bins=64 单环境仅 ~0.15 GB。
 
-25×25 阵 / 4 雷达 / 32 脉冲配置：
+#### 多环境显存需求
 
-| num_envs | step 耗时 | 峰值 VRAM | 状态 |
-|----------|-----------|-----------|------|
-| **1** | **1.8 s** | **2436 MB** | OK |
-| **2** | **11.2 s** | **4864 MB** | OK |
-| 3 | 240+ s | 7294 MB | ⚠️ 超 VRAM，CUDA mempool 回退至系统内存，**实际不可用** |
+| 配置 | E=1 | E=2 | E=4 | E=10 | 推荐显卡 |
+|------|-----|-----|-----|------|----------|
+| 5×5, P=4, bins=64 | 0.15 GB | 0.3 GB | 0.6 GB | 1.5 GB | RTX 2060 (6 GB) |
+| 10×10, P=16, bins=64 | 0.7 GB | 1.4 GB | 2.8 GB | 7 GB | RTX 3060 (12 GB) |
+| **25×25, P=4, bins=64** | **3.7 GB** | **7.4 GB** | **14.8 GB** | **37 GB** | **RTX 4090 (24 GB) 跑 E=4** |
+| 25×25, P=32, bins=1024 | 23 GB | 46 GB | 92 GB | — | A100 (80 GB) 跑 E=3 |
 
-**结论 / Conclusion**：RTX 2060 上 4×(25×25) + 32 脉冲配置最多 **2 个并行 env**。10 env + 25×25 + 32 脉冲约需 24 GB 显存，建议在 RTX 3090/4090 (24 GB) 或 A100 (40/80 GB) 上运行。
+#### RTX 2060 (6.4 GB) 可行配置
+
+25×25 阵列因 `_buf_cpi [E,R,N,P,S]` 的 N=625 维度，仅能跑 P=4 + bins=64 的训练配置：
+
+| 配置 | num_envs | 预分配 | 峰值估计 | 状态 |
+|------|----------|--------|----------|------|
+| 5×5, P=4, bins=64 | 10+ | <1.5 GB | ~1.5 GB | ✅ 充裕 |
+| 10×10, P=16, bins=64 | 4 | ~2.8 GB | ~3.5 GB | ✅ 可用 |
+| 25×25, P=4, bins=64 | 1 | ~3.7 GB | ~4.5 GB | ✅ 可用 |
+| 25×25, P=32, bins=1024 | — | — | — | ❌ 单环境 23 GB，不可用 |
 
 ### Smaller Configs / 较小配置（10×10 阵 / 4 雷达 / 16 脉冲，快速验证）
 

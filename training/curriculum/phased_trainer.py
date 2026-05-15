@@ -75,9 +75,10 @@ class PhasedTrainer:
     def run_phase_a(self):
         """Phase A: Pre-train radar policies on fixed single tasks.
 
-        For each task (detect, recon, jam), train a separate policy
-        with all elements assigned to that task. This bootstraps basic
-        spectrum understanding and beam steering.
+        For each task (detect, recon, jam), query the radar policy for
+        beam/params, then override the task assignment to the fixed task.
+        Compute corrected log_probs for the modified action and store
+        transitions so PPO actually updates the network.
         """
         env = self.env_factory()
         tasks = [0, 1, 2]  # recon, detect, jam
@@ -85,36 +86,84 @@ class PhasedTrainer:
 
         for task_idx, task_name in zip(tasks, task_names):
             print(f"\n  Pre-training task: {task_name}")
+            policy = create_team_policy(
+                0, device=self.device,
+                n_elem=self.league.n_elem,
+                n_pulses=self.league.n_pulses,
+                n_bins=self.league.n_bins,
+                num_output_length=self.league.num_output_length,
+            )
             trainer = TeamPPOTrainer(
-                commander=create_team_policy(0, device=self.device)["commander"],
-                radar=create_team_policy(0, device=self.device)["radar"],
+                commander=policy["commander"],
+                radar=policy["radar"],
                 **self.league.ppo_config,
             )
-            trainer.set_radar_obs_dim(env.state_dim)
+            trainer.init_buffers(env.state_dim, env.action_dim)
 
             for ep in range(self.phase_a_episodes // 3):
                 env.reset()
                 for step in range(1000):
-                    # Fix all elements to current task
-                    actions = torch.zeros(
-                        env.num_envs, env.n_radars, env.action_dim, device=self.device,
-                    )
-                    # Set task fraction to always select current task
-                    for r in range(env.n_radars):
-                        for e in range(env.n_elem):
-                            base = e * 22
-                            actions[:, r, base + task_idx] = 1.0  # set task fraction
-                            actions[:, r, base + 4:base + 12] = 0.5  # neutral beam
-                            actions[:, r, base + 12:base + 22] = 0.5  # neutral params
+                    with torch.no_grad():
+                        state, commander_obs = trainer._get_observations(env)
 
-                    commander_actions = torch.zeros(
-                        env.num_envs, env.n_teams,
-                        env.battlefield.commander_action_dim,
-                        device=self.device,
-                    )
+                        actions = torch.zeros(
+                            env.num_envs, env.n_radars, env.action_dim,
+                            device=self.device,
+                        )
+                        commander_actions = torch.zeros(
+                            env.num_envs, env.n_teams,
+                            env.battlefield.commander_action_dim,
+                            device=self.device,
+                        )
+
+                        # Commander actions for all teams
+                        for team in range(env.n_teams):
+                            cmd_obs = commander_obs[:, team, :]
+                            cmd_act, _, _ = trainer.commander_trainer.ac.get_action(cmd_obs)
+                            commander_actions[:, team, :] = cmd_act
+
+                        # Radar actions: query policy, override task
+                        rep_obs = rep_action = None
+                        for r in range(env.n_radars):
+                            radar_obs = state[:, r, :]
+                            radar_act, _, _ = trainer.radar_trainer.ac.get_action(radar_obs)
+
+                            # Override task assignment to fixed task
+                            for e in range(env.n_elem):
+                                base = e * 22
+                                radar_act[:, base:base + 4].zero_()
+                                radar_act[:, base + task_idx] = 1.0
+
+                            actions[:, r, :] = radar_act
+
+                            if r == 0:
+                                rep_obs = radar_obs
+                                rep_action = radar_act.clone()
 
                     result = env.step(actions=actions, commander_actions=commander_actions)
-                    trainer.collect_env_step(env, result)
+
+                    # Compute corrected log_probs for modified actions
+                    with torch.no_grad():
+                        rep_logp, _, rep_val = trainer.radar_trainer.ac.evaluate_actions(
+                            rep_obs, rep_action,
+                        )
+                        cmd_obs_t0 = commander_obs[:, 0, :]
+                        cmd_act_t0 = commander_actions[:, 0, :]
+                        cmd_logp, _, cmd_val = trainer.commander_trainer.ac.evaluate_actions(
+                            cmd_obs_t0, cmd_act_t0,
+                        )
+
+                    transition = {
+                        "cmd_obs": cmd_obs_t0,
+                        "cmd_action": cmd_act_t0,
+                        "cmd_logp": cmd_logp,
+                        "cmd_val": cmd_val.squeeze(-1),
+                        "radar_obs": rep_obs,
+                        "radar_action": rep_action,
+                        "radar_logp": rep_logp,
+                        "radar_val": rep_val.squeeze(-1),
+                    }
+                    trainer.store_transition(env, result, transition, team=0)
 
                     if result["dones"].any():
                         break
@@ -129,13 +178,12 @@ class PhasedTrainer:
             )
             trainer.save(ckpt_path)
 
-        env_reset = None  # release env
-
     def run_phase_b(self):
         """Phase B: Multi-task integration with dense reward shaping.
 
         Enable full action space (task selection + params). Train against
-        random opponents with heavy reward shaping.
+        random opponents with heavy reward shaping. Own team uses real
+        policy inference, opponent uses random actions.
         """
         env = self.env_factory()
         self.league.initialize(env)
@@ -145,7 +193,13 @@ class PhasedTrainer:
                 continue
 
             record = self.league.pool.policies[policy_id]
-            print(f"\n  Training {record.role} team {record.team} ({policy_id})")
+            team = record.team
+            opp_team = 1 - team
+            r_per_team = env.n_radars // env.n_teams
+            opp_r_start = opp_team * r_per_team
+            opp_r_end = opp_r_start + r_per_team
+
+            print(f"\n  Training {record.role} team {team} ({policy_id})")
 
             wins = 0
             for ep in range(self.phase_b_episodes):
@@ -153,21 +207,39 @@ class PhasedTrainer:
 
                 for step in range(1000):
                     with torch.no_grad():
-                        actions = torch.rand(
+                        # Own team: real policy
+                        own = trainer.get_own_actions(env, team)
+
+                        # Opponent: random
+                        actions = torch.zeros(
                             env.num_envs, env.n_radars, env.action_dim,
                             device=self.device,
                         )
+                        for i, r in enumerate(range(own["r_start"], own["r_end"])):
+                            actions[:, r, :] = own["radar_actions"][i]
+                        actions[:, opp_r_start:opp_r_end, :] = torch.rand(
+                            env.num_envs, opp_r_end - opp_r_start, env.action_dim,
+                            device=self.device,
+                        )
+
                         commander_actions = torch.zeros(
                             env.num_envs, env.n_teams,
                             env.battlefield.commander_action_dim,
                             device=self.device,
                         )
+                        commander_actions[:, team, :] = own["commander_action"]
+                        commander_actions[:, opp_team, :] = (
+                            torch.rand(
+                                env.num_envs, env.battlefield.commander_action_dim,
+                                device=self.device,
+                            ) * 2 - 1
+                        )
 
                     result = env.step(actions=actions, commander_actions=commander_actions)
-                    trainer.collect_env_step(env, result)
+                    trainer.store_transition(env, result, own["transition"], team)
 
                     if result["dones"].any():
-                        if result["winners"][0] == record.team:
+                        if result["winners"][0] == team:
                             wins += 1
                         break
 
@@ -181,7 +253,7 @@ class PhasedTrainer:
             # Save phase B checkpoint
             ckpt_path = os.path.join(
                 self.league.checkpoint_dir,
-                f"{record.role}_team{record.team}_phaseB.pt",
+                f"{record.role}_team{team}_phaseB.pt",
             )
             trainer.save(ckpt_path)
 
@@ -212,8 +284,8 @@ class PhasedTrainer:
     def run_phase_d(self):
         """Phase D: League exploiter refinement.
 
-        Focus training on exploiters to find remaining weaknesses
-        in main agents. Use PFSP opponent sampling.
+        Exploiters train against the opponent's main agent using real
+        policy inference for both sides. Finds weaknesses in main agents.
         """
         env = self.env_factory()
 
@@ -224,7 +296,17 @@ class PhasedTrainer:
             if record.role not in [ROLE_MAIN_EXPLOITER, ROLE_LEAGUE_EXPLOITER]:
                 continue
 
-            print(f"\n  Refining {record.role} team {record.team} ({policy_id})")
+            team = record.team
+            opp_team = 1 - team
+            r_per_team = env.n_radars // env.n_teams
+            opp_r_start = opp_team * r_per_team
+            opp_r_end = opp_r_start + r_per_team
+
+            # Get opponent's main agent trainer
+            opp_main_id = self.league.pool.get_active_main(opp_team)
+            opp_trainer = self.league.trainers.get(opp_main_id) if opp_main_id else None
+
+            print(f"\n  Refining {record.role} team {team} ({policy_id})")
 
             wins = 0
             for ep in range(self.phase_d_episodes):
@@ -232,21 +314,46 @@ class PhasedTrainer:
 
                 for step in range(1000):
                     with torch.no_grad():
-                        actions = torch.rand(
+                        # Exploiter: real policy
+                        own = trainer.get_own_actions(env, team)
+
+                        actions = torch.zeros(
                             env.num_envs, env.n_radars, env.action_dim,
                             device=self.device,
                         )
+                        for i, r in enumerate(range(own["r_start"], own["r_end"])):
+                            actions[:, r, :] = own["radar_actions"][i]
+
                         commander_actions = torch.zeros(
                             env.num_envs, env.n_teams,
                             env.battlefield.commander_action_dim,
                             device=self.device,
                         )
+                        commander_actions[:, team, :] = own["commander_action"]
+
+                        # Opponent: real main agent or random fallback
+                        if opp_trainer:
+                            opp = opp_trainer.get_own_actions(env, opp_team)
+                            for i, r in enumerate(range(opp["r_start"], opp["r_end"])):
+                                actions[:, r, :] = opp["radar_actions"][i]
+                            commander_actions[:, opp_team, :] = opp["commander_action"]
+                        else:
+                            actions[:, opp_r_start:opp_r_end, :] = torch.rand(
+                                env.num_envs, opp_r_end - opp_r_start, env.action_dim,
+                                device=self.device,
+                            )
+                            commander_actions[:, opp_team, :] = (
+                                torch.rand(
+                                    env.num_envs, env.battlefield.commander_action_dim,
+                                    device=self.device,
+                                ) * 2 - 1
+                            )
 
                     result = env.step(actions=actions, commander_actions=commander_actions)
-                    trainer.collect_env_step(env, result)
+                    trainer.store_transition(env, result, own["transition"], team)
 
                     if result["dones"].any():
-                        if result["winners"][0] == record.team:
+                        if result["winners"][0] == team:
                             wins += 1
                         break
 
@@ -262,9 +369,20 @@ class PhasedTrainer:
         self._final_evaluation(env)
 
     def _final_evaluation(self, env):
-        """Run final win rate evaluation against random baseline."""
+        """Run final win rate evaluation using deterministic policies."""
+        r_per_team = env.n_radars // env.n_teams
+
         for team in range(self.league.n_teams):
             agent_id = self.league.get_final_agent(team)
+            trainer = self.league.trainers.get(agent_id)
+            if not trainer:
+                print(f"\n  Team {team} final agent: {agent_id} (no trainer)")
+                continue
+
+            opp_team = 1 - team
+            opp_r_start = opp_team * r_per_team
+            opp_r_end = opp_r_start + r_per_team
+
             print(f"\n  Team {team} final agent: {agent_id}")
 
             wins = 0
@@ -273,14 +391,30 @@ class PhasedTrainer:
                 env.reset()
                 for step in range(1000):
                     with torch.no_grad():
-                        actions = torch.rand(
+                        own = trainer.get_own_actions(env, team, deterministic=True)
+
+                        actions = torch.zeros(
                             env.num_envs, env.n_radars, env.action_dim,
                             device=self.device,
                         )
+                        for i, r in enumerate(range(own["r_start"], own["r_end"])):
+                            actions[:, r, :] = own["radar_actions"][i]
+                        actions[:, opp_r_start:opp_r_end, :] = torch.rand(
+                            env.num_envs, opp_r_end - opp_r_start, env.action_dim,
+                            device=self.device,
+                        )
+
                         commander_actions = torch.zeros(
                             env.num_envs, env.n_teams,
                             env.battlefield.commander_action_dim,
                             device=self.device,
+                        )
+                        commander_actions[:, team, :] = own["commander_action"]
+                        commander_actions[:, opp_team, :] = (
+                            torch.rand(
+                                env.num_envs, env.battlefield.commander_action_dim,
+                                device=self.device,
+                            ) * 2 - 1
                         )
 
                     result = env.step(actions=actions, commander_actions=commander_actions)

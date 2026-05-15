@@ -32,17 +32,12 @@ class PayoffMatrix:
         red_policy_id: str,
         blue_policy_id: str,
         env,  # MFARVecEnv
-        red_trainer,  # TeamPPOTrainer or policy loader
-        blue_trainer,
+        red_trainer,  # TeamPPOTrainer
+        blue_trainer,  # TeamPPOTrainer
     ) -> float:
         """Evaluate win rate of red vs blue over multiple games.
 
-        Args:
-            red_policy_id, blue_policy_id: policy IDs from opponent pool
-            env: MFARVecEnv instance (E must be > 0)
-            red_trainer, blue_trainer: TeamPPOTrainer instances with loaded policies
-        Returns:
-            win rate of red (0.0 - 1.0)
+        Uses deterministic policy inference for both sides.
         """
         red_wins = 0
         total = 0
@@ -53,32 +48,32 @@ class PayoffMatrix:
             batch = min(E, remaining)
             env.reset()
 
-            for step in range(env.max_steps if hasattr(env, 'max_steps') else 10000):
-                # Get observations
-                obs = env._assemble_state(
-                    env._buf_spectrum.zero_(),
-                    env._buf_comm_data.zero_(),
-                ) if step == 0 else None
-
-                # Use deterministic policies for evaluation
+            for step in range(10000):
                 with torch.no_grad():
-                    # Red team actions
-                    red_radar_obs = obs[:, :2] if obs is not None else None  # radars 0,1
-                    blue_radar_obs = obs[:, 2:] if obs is not None else None  # radars 2,3
+                    # Red team (team 0): deterministic policy
+                    red = red_trainer.get_own_actions(env, team=0, deterministic=True)
+                    # Blue team (team 1): deterministic policy
+                    blue = blue_trainer.get_own_actions(env, team=1, deterministic=True)
 
-                    # Simplified: use zero actions for now (placeholder for actual policy inference)
-                    actions = torch.rand(batch, env.n_radars, env.action_dim, device=self.device)
+                    actions = torch.zeros(batch, env.n_radars, env.action_dim, device=self.device)
+                    for i, r in enumerate(range(red["r_start"], red["r_end"])):
+                        actions[:, r, :] = red["radar_actions"][i]
+                    for i, r in enumerate(range(blue["r_start"], blue["r_end"])):
+                        actions[:, r, :] = blue["radar_actions"][i]
+
                     commander_actions = torch.zeros(
                         batch, env.n_teams, env.battlefield.commander_action_dim,
                         device=self.device,
                     )
+                    commander_actions[:, 0, :] = red["commander_action"]
+                    commander_actions[:, 1, :] = blue["commander_action"]
 
                 result = env.step(actions=actions, commander_actions=commander_actions)
 
                 if result["dones"].any():
                     for e in range(batch):
                         if result["dones"][e]:
-                            if result["winners"][e] == 0:  # Red wins
+                            if result["winners"][e] == 0:
                                 red_wins += 1
                             total += 1
                     break
