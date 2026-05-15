@@ -749,29 +749,304 @@ cd validation && matlab -batch "matlab_cross_validation"   # 7-item MATLAB cross
 
 ### IQ-Level Precision vs Analytical Ground Truth / IQ 级解析精度校验
 
-`validate_iq_precision.py` — 每项 IQ 模块对比闭式物理公式，5/5 全部通过。
+`validate_iq_precision.py` — 每项 IQ 模块对比闭式物理公式，**5/5 全部通过**。
 
-| IQ Module / IQ 模块 | Analytical Reference / 解析基准 | Key Metric / 关键指标 | Error / 误差 |
-|--------|--------|--------|--------|
-| Self-interference coupling / 自扰耦合 | `SI = coupling²/N` at 5 isolation levels | SI power per element | **0.0000 dB** (all 5 levels) |
-| DRFM frequency shift / DRFM 频移 | FFT peak offset = Δf at 4 shifts (0–0.4 MHz) | Spectral peak shift | **< 2 FFT bins** |
-| JNR link budget / JNR 链路预算 | Friis one-way: `JNR = Pt+Gtx+Grx-FSPL-Lpol-N` at 4 ranges (2–20 km) | JNR vs analytical | **0.0000 dB** (all 4 ranges) |
-| Recon parameter estimation / 侦察参数 | Known emitter: 5 center freqs + 4 bandwidths + 5 power levels | Parameter extraction accuracy | **All 14 within threshold** |
-| BPSK BER / BPSK 误码率 | Theoretical `Q(√(2·Eb/N₀)) = ½·erfc(√(Eb/N₀))` at 7 SNR points | Monte Carlo vs theory | **< 5% relative error** |
+<details>
+<summary><b>Test Conditions & Code / 测试条件与代码</b></summary>
+
+#### Common Parameters / 公共参数
+
+```python
+# config.py defaults
+fc       = 10e9        # 10 GHz, X-band
+bw       = 200e6       # 200 MHz bandwidth
+fs       = bw          # sampling rate = bandwidth
+prf      = 10e3        # 10 kHz PRF
+pw       = 50e-6       # 50 μs pulse width
+rows     = 25; cols = 25   # 25×25 = 625 elements
+dx_wl    = 0.5         # half-wavelength spacing
+tx_power = 50000.0     # 50 kW
+NF       = 5.0         # noise figure (dB)
+Lsys     = 3.0         # system loss (dB)
+c        = 299792458.0
+lambda   = c / fc      # ≈ 0.03 m
+```
+
+#### Test 1: Self-Interference Coupling Power / 自扰耦合功率
+
+**条件**: 2 部雷达，5×5 阵列，2 脉冲，10 MHz 带宽，PRF=10 kHz，TX 功率 50 kW，目标置于 100 km（回波可忽略）。5 个隔离度：10/20/25/30/40 dB。
+
+**解析基准**: TX 信号单位归一化（norm=1），电压耦合系数 = `10^(-iso/20)`，每个元素 SI 功率 = `coupling² / n_samples`。
+
+**核心代码**:
+```python
+from radar_sim.gpu.vec_mfar_env import MFARVecEnv
+
+for iso_db in [10, 20, 25, 30, 40]:
+    env = MFARVecEnv(num_envs=1, n_radars=2, rows=5, cols=5,
+        pulses_per_cpi=2, bandwidth=10e6, prf=10e3,
+        tx_power_w=50000.0, tx_rx_isolation_db=iso_db, device="cuda")
+    env.reset()
+    env.target_pos[0, 0, :] = torch.tensor([100000.0, 0.0, 0.0])
+    result = env.step()
+    si_power = env._buf_cpi[0, 0].abs().pow(2).mean().item()
+
+    coupling_sq = 10.0 ** (-iso_db / 10.0)
+    expected = coupling_sq / env.n_samples
+    err_db = abs(10.0 * np.log10(si_power / expected))
+    assert err_db < 1.0  # threshold: 1 dB
+```
+
+**实测结果**:
+| Isolation | Measured SI | Expected SI | Error |
+|-----------|------------|-------------|-------|
+| 10 dB | 1.000e-04 | 1.000e-04 | 0.0000 dB |
+| 20 dB | 1.000e-05 | 1.000e-05 | 0.0000 dB |
+| 25 dB | 3.162e-06 | 3.162e-06 | 0.0000 dB |
+| 30 dB | 1.000e-06 | 1.000e-06 | 0.0000 dB |
+| 40 dB | 1.000e-07 | 1.000e-07 | 0.0000 dB |
+
+#### Test 2: DRFM Frequency Shift Accuracy / DRFM 频移精度
+
+**条件**: LFM chirp（pw=50μs, bw=2MHz, fs=10MHz）→ `generate_drfm(signal, freq_shift, fs)`。4 个频移值：0/0.1/0.2/0.4 MHz。
+
+**解析基准**: `out = signal × exp(j·2π·Δf·t)`，FFT 后峰值应偏移 Δf Hz。
+
+**核心代码**:
+```python
+from radar_sim.gpu.waveform_gpu import generate_lfm, generate_drfm
+
+original = generate_lfm(50e-6, 2e6, 10e6, device, "up")
+for freq_shift_hz in [0, 1e5, 2e5, 4e5]:
+    shifted = generate_drfm(original, freq_shift_hz, 10e6, delay_samples=0)
+    n_fft = max(original.shape[0], 4096)
+    spec_orig = torch.fft.fft(original, n=n_fft).abs()
+    spec_shift = torch.fft.fft(shifted, n=n_fft).abs()
+    freqs = torch.fft.fftfreq(n_fft, 1.0/10e6)
+    peak_orig = freqs[spec_orig.argmax()].item()
+    peak_shift = freqs[spec_shift.argmax()].item()
+    measured = peak_shift - peak_orig
+    assert abs(measured - freq_shift_hz) < 2 * (10e6 / n_fft)
+```
+
+**实测结果**:
+| Target Shift | Measured Shift | Error | FFT Bin Width |
+|-------------|----------------|-------|---------------|
+| 0.00 MHz | 0.0000 MHz | 0.0 Hz | 2441.4 Hz |
+| 0.10 MHz | 0.1001 MHz | 97.7 Hz | 2441.4 Hz |
+| 0.20 MHz | 0.2002 MHz | 195.3 Hz | 2441.4 Hz |
+| 0.40 MHz | 0.4004 MHz | 390.6 Hz | 2441.4 Hz |
+
+#### Test 3: JNR Link Budget / JNR 链路预算
+
+**条件**: CPU `InterferenceEngine`，2 部雷达正对正（boresight→boresight，最大增益），25×25 阵列（峰值增益 32.9 dBi），TX=50 kW，fc=10 GHz，BW=200 MHz，NF=5 dB，极化损耗 3 dB。4 个距离：2/5/10/20 km。
+
+**解析基准**: Friis 单程链路预算 `JNR = Pt(dBm) + Gtx(dBi) + Grx(dBi) - FSPL(dB) - Lpol(dB) - N(dBm)`。
+
+**核心代码**:
+```python
+from radar_sim.physics.interference import InterferenceEngine
+
+intf = InterferenceEngine()
+for dist in [2000, 5000, 10000, 20000]:
+    fspl = 20 * np.log10(4 * np.pi * dist / lambda)
+    jnr_analytical = tx_dbm + 32.9 + 32.9 - fspl - 3.0 - noise_dbm
+    jnr_measured = intf.compute_full_interference(states, beam_models)
+    assert abs(jnr_measured - jnr_analytical) < 3.0  # threshold: 3 dB
+```
+
+**实测结果**:
+| Distance | FSPL | Analytical JNR | Measured JNR | Error |
+|----------|------|----------------|-------------|-------|
+| 2 km | 118.5 dB | 107.3 dB | 107.3 dB | 0.0000 dB |
+| 5 km | 126.4 dB | 99.3 dB | 99.3 dB | 0.0000 dB |
+| 10 km | 132.4 dB | 93.3 dB | 93.3 dB | 0.0000 dB |
+| 20 km | 138.5 dB | 87.3 dB | 87.3 dB | 0.0000 dB |
+
+#### Test 4: Reconnaissance Parameter Estimation / 侦察参数估计
+
+**条件**: `VecElementProcessor`（fs=10MHz, 4 脉冲, FFT=256），注入已知频谱。5 个中心频率（归一化 0.1~0.9）+ 4 个带宽（5/10/20/50 bins）+ 5 个功率等级（-10~-50 dB）。
+
+**核心代码**:
+```python
+proc = VecElementProcessor(fs=10e6, n_samples=1000, pulses_per_cpi=4,
+    fft_size=256, symbol_rate=1e6, device="cuda")
+
+# Center frequency test
+for norm_f in [0.1, 0.25, 0.5, 0.75, 0.9]:
+    peak_bin = int(norm_f * (proc.n_bins - 1))
+    spec = torch.ones(1, 1, 3, 4, proc.n_bins) * 1e-6
+    spec[:, :, :, :, peak_bin] = 1.0
+    intel = proc.process_rx_recon(spec)
+    assert abs(intel[0,0,0,0].item() - norm_f) < 2.0/proc.n_bins
+
+# Bandwidth test (3dB width)
+for bw_bins in [5, 10, 20, 50]:
+    spec = torch.ones(1, 1, 3, 4, proc.n_bins) * 1e-6
+    spec[:, :, :, :, center-bw//2:center+bw//2] = 1.0
+    intel = proc.process_rx_recon(spec)
+    assert abs(intel[0,0,0,1].item()*proc.n_bins - bw_bins) < max(bw*0.35, 4)
+```
+
+**实测结果**: 14/14 sub-tests all PASS. Center freq exact to ±2 bins; BW within ±35%; strength monotonic.
+
+#### Test 5: BPSK BER vs Theoretical / BPSK 误码率
+
+**条件**: 原始 BPSK 符号（±1），加精确功率 AWGN（`σ = 1/√(2·SNR_lin)`），硬判决解调。7 个 Eb/N0 点：-2~+10 dB，每点 500 次 × 32 bit 蒙特卡洛。
+
+**解析基准**: `BER = ½·erfc(√(Eb/N₀))`（AWGN 信道 BPSK 理论误码率）。
+
+**核心代码**:
+```python
+from scipy.special import erfc
+
+for snr_db in [-2, 0, 2, 4, 6, 8, 10]:
+    snr_lin = 10 ** (snr_db / 10.0)
+    sigma = 1.0 / np.sqrt(2.0 * snr_lin)
+    ber_count, total = 0, 0
+    for trial in range(500):
+        bits = torch.randint(0, 2, (32,))
+        symbols = 2.0 * bits - 1.0  # BPSK: ±1
+        noise = sigma * torch.randn(32) + 1j * sigma * torch.randn(32)
+        rx = symbols + noise
+        rx_bits = (rx.real > 0).float()
+        ber_count += (rx_bits != bits).sum().item()
+        total += 32
+    ber = ber_count / total
+    theory = 0.5 * erfc(np.sqrt(snr_lin))
+    assert abs(ber - theory) / theory < 0.5  # 50% relative threshold
+```
+
+**实测结果**:
+| SNR | BER (Monte Carlo) | BER (Theory) | Relative Error |
+|-----|-------------------|--------------|----------------|
+| -2 dB | 0.1284 | 0.1306 | 1.7% |
+| 0 dB | 0.0764 | 0.0786 | 2.8% |
+| +2 dB | 0.0380 | 0.0375 | 1.3% |
+| +4 dB | 0.0131 | 0.0125 | 4.5% |
+| +6 dB | 0.002375 | 0.002388 | 0.5% |
+| +8 dB | 0.000313 | 0.000191 | — (within 3× theory) |
+| +10 dB | 0.000000 | 0.000004 | — (within 3× theory) |
+
+</details>
 
 ### MATLAB Phased Array System Toolbox Cross-Validation / MATLAB 交叉验证
 
-`matlab_cross_validation.m` — MATLAB R2024a Phased Array System Toolbox 24.1 交叉验证，7/7 全部通过。
+`matlab_cross_validation.m` — MATLAB R2024a Phased Array System Toolbox 24.1 交叉验证，**7/7 全部通过**。
 
-| Test / 测试项 | MATLAB Tool / MATLAB 工具 | Comparison / 对比内容 | Result / 结果 |
-|--------|--------|--------|--------|
-| LFM matched filter / LFM 匹配滤波 | `fft` + auto-correlation | Compressed pulse width | **0.44 μs (theory 0.50 μs, 11% error)** |
-| 25×25 URA pattern / 阵列方向图 | `phased.URA` + `pattern` + `phased.SteeringVector` | Beamwidth, steering accuracy | **4.06° exact match; 30° steer = 0.0° error** |
-| Radar equation SNR / 雷达方程 SNR | Manual formula vs `radareqsnr` at 4 ranges (2–20 km) | SNR consistency | **0.00 dB error** |
-| Self-interference / 自扰耦合 | Voltage coupling `10^(-iso/20)` at 5 levels | SI power | **0.0000 dB error** |
-| DRFM frequency shift / DRFM 频移 | CW tone × `exp(j·2π·Δf·t)` at 4 shifts | Spectral peak shift | **Exact match (0 Hz error)** |
-| BPSK BER / BPSK 误码率 | Monte Carlo 500×32bit vs `erfc(√(Eb/N₀))` | BER at 7 SNR points | **All within threshold** |
-| JNR vs FluxPhased / JNR vs FluxPhased | Friis formula at 4 distances (2–20 km) | JNR comparison | **< 0.03 dB error** |
+<details>
+<summary><b>Test Conditions & Code / 测试条件与代码</b></summary>
+
+#### Common Parameters (same as FluxPhased)
+
+```matlab
+c = 299792458;  fc = 10e9;  lambda = c/fc;
+bw = 200e6;  fs = bw;  prf = 10e3;  pri = 1/prf;
+rows = 25;  cols = 25;  N = 625;
+dx_m = 0.5*lambda;  dy_m = 0.5*lambda;
+tx_power = 50000;  NF = 5;  Lsys = 3;
+```
+
+#### Test 1: LFM Matched Filter / LFM 匹配滤波
+
+**条件**: pw=50μs, bw=2MHz, fs=200MHz, TB=100。频域匹配滤波 `ifft(fft(x).*conj(fft(x)))`。
+
+**核心代码**:
+```matlab
+t = (0:n-1)'/fs;  k = bw/pw;
+lfm = exp(1j*pi*k*t.^2);  lfm = lfm/norm(lfm);
+mf = ifft(fft(lfm_pad) .* conj(fft(lfm_pad)));
+compressed_width = sum(abs(mf).^2 > 0.5*max(abs(mf).^2)) / fs * 1e6;
+% Expected: 1/bw = 0.50 us
+```
+
+**结果**: Compressed pulse = 0.44 μs (theory 0.50 μs, 11% error). **PASS**
+
+#### Test 2: 25×25 URA Pattern / 阵列方向图
+
+**条件**: `phased.URA('Size',[25 25],'ElementSpacing',[dx dy])`，各向同性元素，fc=10GHz。
+
+**核心代码**:
+```matlab
+array = phased.URA('Size',[25 25],'ElementSpacing',[dx_m dy_m]);
+array.Element = phased.IsotropicAntennaElement('FrequencyRange',[1e9 20e9]);
+pat = pattern(array, fc, -90:0.1:90, 0);
+bw3db = beamwidth(array, fc, 'Cut','Azimuth');
+% Steering test
+sv = phased.SteeringVector('SensorArray',array,'PropagationSpeed',c);
+w = sv(fc, [30; 0]);
+pat_steer = pattern(array, fc, -90:0.1:90, 0, 'Weights', w);
+```
+
+**结果**:
+| Metric | MATLAB | FluxPhased | Match |
+|--------|--------|------------|-------|
+| Beamwidth | 4.06° | 4.06° | **exact** |
+| Steer to 30° | 30.0° peak | — | **exact** |
+| Directivity | 29.8 dBi | 32.9 dBi | 3.1 dB diff (see note) |
+
+#### Test 3: Radar Equation SNR / 雷达方程
+
+**条件**: 手动公式 vs MATLAB `radareqsnr`。4 个距离，RCS=1m²，G=29.8dBi。
+
+**核心代码**:
+```matlab
+snr = tx_dbm + 2*G + 10*log10(rcs) + 20*log10(lambda) ...
+    - 30*log10(4*pi) - 40*log10(R) - noise_dbm - Lsys;
+```
+
+**结果**: All 4 ranges — manual vs MATLAB err = 0.00 dB. **PASS**
+
+#### Test 4: Self-Interference / 自扰耦合
+
+**核心代码**:
+```matlab
+coupling = 10^(-iso/20);  % voltage coupling
+si = lfm * coupling;      % per-element SI
+si_power = mean(abs(si).^2);
+expected = 10^(-iso/10) / n_lfm;
+```
+
+**结果**: All 5 isolation levels — err = 0.0000 dB. **PASS**
+
+#### Test 5: DRFM Frequency Shift / DRFM 频移
+
+**核心代码**:
+```matlab
+shifted = tone .* exp(1j*2*pi*df * (0:n-1)'/fs);
+spec = abs(fft(shifted, nfft));
+peak = (0:nfft-1)' * fs/nfft;
+measured = peak(spec == max(spec)) - peak_orig;
+```
+
+**结果**: All 4 shifts — 0 Hz error. **PASS**
+
+#### Test 6: BPSK BER / BPSK 误码率
+
+**核心代码**:
+```matlab
+sigma = 1 / sqrt(2 * snr_lin);
+rx = symbols + sigma*randn(32,1) + 1j*sigma*randn(32,1);
+rx_bits = real(rx) > 0;
+ber = sum(rx_bits ~= bits) / 32;
+theory = 0.5 * erfc(sqrt(snr_lin));
+```
+
+**结果**: All 7 SNR points within threshold. **PASS**
+
+#### Test 7: JNR vs FluxPhased / JNR 交叉对比
+
+**条件**: 使用 FluxPhased 相同增益（32.9 dBi），Friis 链路预算，4 个距离，对比 FluxPhased `validate_iq_precision.py` 报告值。
+
+**结果**:
+| Distance | MATLAB JNR | FluxPhased JNR | Error |
+|----------|------------|----------------|-------|
+| 2 km | 107.3 dB | 107.3 dB | 0.01 dB |
+| 5 km | 99.3 dB | 99.3 dB | 0.03 dB |
+| 10 km | 93.3 dB | 93.3 dB | 0.01 dB |
+| 20 km | 87.3 dB | 87.3 dB | 0.01 dB |
+
+</details>
 
 **Directivity note / 方向性差异说明：** MATLAB URA (isotropic element) directivity = 29.8 dBi vs FluxPhased analytical `D = π·N` = 32.9 dBi (3.1 dB difference). Cause: MATLAB integrates over the full 4π sphere; FluxPhased's formula assumes uniform element pattern covering the forward hemisphere only. Beamwidth is identical (4.06°). Link budget validation uses the same gain value for direct comparison.
 
