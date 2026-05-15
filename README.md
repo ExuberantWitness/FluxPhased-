@@ -1144,6 +1144,20 @@ FluxPhased **不是**通用 Maxwell 方程求解器（如 CST/HFSS/MEEP），也
 
 **回归测试**：test_mfar 6/6 + test_missile 8/8 + test_evaluation 13/13 + test_pettingzoo 28/28 = **55/55 全部通过**。
 
+**MATLAB 交叉验证**：[matlab_cross_validation.m](validation/matlab_cross_validation.m) — 使用 MATLAB Phased Array System Toolbox R2024a 交叉验证 **7/7 全部通过**：
+
+| 交叉验证项 | MATLAB 工具/函数 | 对比结果 |
+|------------|------------------|----------|
+| LFM 匹配滤波 | `fft` + 自相关 | 压缩脉宽 0.44 us (理论 0.50 us)，误差 11% |
+| 25×25 阵列方向图 | `phased.URA` + `pattern` | 波束宽度 4.06° 完全一致；波束导向 30° 精确到 0.0° |
+| 雷达方程链路预算 | 手动公式 vs `radareqsnr` | 4 个距离全部 err=0.00 dB |
+| 自扰耦合功率 | 电压耦合 `10^(-iso/20)` | 5 个隔离度全部 err=0.0000 dB |
+| DRFM 频移精度 | CW 音频 × `exp(j·2π·Δf·t)` | 4 个频移全部精确匹配 |
+| BPSK 误码率 | 蒙特卡洛 500×32bit vs `erfc` | 7 个 SNR 点全部在阈值内 |
+| JNR 链路预算 vs FluxPhased | Friis 公式 | 4 个距离全部 err < 0.03 dB |
+
+**注**：MATLAB URA 方向性 29.8 dBi vs FluxPhased 32.9 dBi（差 3.1 dB）。原因：MATLAB 各向同性元素覆盖完整 4π 球面，FluxPhased 使用解析公式 `D=π·N`。波束宽度完全一致（4.06°），不影响链路预算验证（JNR 对比使用相同增益值）。
+
 ### 2026-05-15 (1)
 
 **EM Precision Audit Fixes / 电磁仿真精度修正**
