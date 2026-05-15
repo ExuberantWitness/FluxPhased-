@@ -15,6 +15,8 @@ class ArrayGeometry:
     cols: int = 25
     dx_wl: float = 0.5
     dy_wl: float = 0.5
+    taper: str = "uniform"
+    taper_param: float = -30.0
 
     @property
     def num_elements(self) -> int:
@@ -25,7 +27,7 @@ class ArrayGeometry:
 class RFConfig:
     fc: float = 10.0e9
     bandwidth: float = 200e6
-    tx_power_w: float = 1.0
+    tx_power_w: float = 50000.0
     noise_figure_db: float = 5.0
     system_loss_db: float = 3.0
 

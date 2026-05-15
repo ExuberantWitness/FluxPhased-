@@ -54,3 +54,6 @@ env:
   pulses_per_cpi: 4
   fft_size: 64
   device: "cuda"
+  # 50 kW peak — compensates for 5×5 small array (25 elements vs 625 for 25×25)
+  # Produces ~15-25 dB SNR at 5-10 km after CPI with matched filter processing gain
+  tx_power_w: 50000

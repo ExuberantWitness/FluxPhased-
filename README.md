@@ -727,15 +727,17 @@ python validation/validate_precision.py    # CPU vs GPU internal consistency
 
 | Test / 测试项 | Reference / 参考基准 | Result / 结果 |
 |--------|--------|--------|
-| Array factor (7 steer angles) / 阵列因子 | Analytical AF = sum(w*exp(jkru)) | **corr = 1.000000, max_err = 0.0024 dB** |
-| Path loss (1–50 km) / 路径损耗 | Friis L = (4pid/lambda)^2 | **err = 0.000000 dB** |
-| Radar SNR (4 ranges) / 雷达信噪比 | Analytical Pr = PtGtGr*lam^2*sigma/((4pi)^3*R^4*kTB) | **Linear = dB form (err < 0.01 dB)** |
+| Array factor (7 steer angles) / 阵列因子 | Analytical AF = sum(w*exp(jkru)) | **corr = 1.000000 (7/7), max_err = 0.0024 dB** |
+| Path loss (1–50 km) / 路径损耗 | Friis L = (4πd/λ)² | **err = 0.000000 dB** |
+| Radar SNR (5–50 km) / 雷达信噪比 | Standard radar equation Pr = Pt·G²·λ²·σ/((4π)³·R⁴·kTB) | **CPU vs GPU err = 0.00 dB (Pt=50 kW, G=32.9 dBi)** |
 | Matched filter / 匹配滤波 | Numpy FFT cross-correlation | **Peaks at exact delay positions / 精确延迟位置** |
 | Range-Doppler map / 距离-多普勒图 | RadarSimPy doppler_fft | **Doppler bin exact match / 多普勒单元精确匹配** |
 | CA-CFAR detection / CA-CFAR 检测 | RadarSimPy cfar_ca_2d | **Targets detected, noise rejected / 目标检出，噪声抑制** |
 | Interference JNR / 干扰干噪比 | Analytical Friis link budget | **12/12 links validated, 0 dB path loss error** |
 | Range resolution / 距离分辨率 | Theoretical dR = c/(2B) = 0.75 m | **Exact match / 精确一致** |
 | Doppler velocity / 多普勒速度 | Analytical phase ramp | **err = 0.36 m/s (bin_res = 1.17 m/s)** |
+| Costas-16 waveform / Costas-16 波形 | Valid permutation {1..16} | **Corrected to valid Costas array** |
+| Albersheim detection / Albersheim 检测概率 | Proc. IEEE 69(7), 1981 | **Standard formula with pulse count N** |
 
 ### Interference JNR Matrix / 干扰 JNR 矩阵
 
@@ -1097,7 +1099,7 @@ FluxPhased **不是**通用 Maxwell 方程求解器（如 CST/HFSS/MEEP），也
 
 **5. 效能评估体系** — 感知/作战/博弈三层 Metrics + BN-Sobol 敏感性分析 + CDE 综合指标 + 加速评估 + 结构化报告，传统仿真工具均不提供此类评估闭环。
 
-**6. 精度验证严苛到工程级** — 两层背靠背验证：一层对闭式解析公式（Friis 路径损耗误差 0.000000 dB，雷达方程误差 < 0.01 dB），一层对 RadarSimPy v15.2.0 处理算法。阵列因子 7 个指向角相关系数 = 1.000000，最大误差 0.0024 dB。
+**6. 精度验证严苛到工程级** — 两层背靠背验证：一层对闭式解析公式（Friis 路径损耗误差 0.000000 dB，标准雷达方程 CPU vs GPU 误差 0.00 dB），一层对 RadarSimPy v15.2.0 处理算法。阵列因子 7 个指向角相关系数 = 1.000000，最大误差 0.0024 dB。
 
 ### 客观局限性
 
@@ -1112,6 +1114,22 @@ FluxPhased **不是**通用 Maxwell 方程求解器（如 CST/HFSS/MEEP），也
 
 <details>
 <summary><b>Updates & Bug Fixes / 更新进展与缺陷修复</b></summary>
+
+### 2026-05-15
+
+**EM Precision Audit Fixes / 电磁仿真精度修正**
+
+对电磁仿真精准度进行全面审计，修正 3 项关键问题，更新默认参数匹配真实 X 波段 MFAR：
+
+| 修正项 | 影响文件 | 修正内容 |
+|--------|----------|----------|
+| C1: 雷达方程增益含 R⁻⁸ 衰减（应为 R⁻⁴） | `vec_channel.py`, `pipeline_gpu.py`, `channel.py` | `path_gain_extra` 因子导致三重路径损耗，修正为标准雷达方程 `Pr = Pt + 2G + σ + 20·log10(λ) - 30·log10(4π) - 40·log10(R) - Lsys` |
+| C2: Costas-16 序列非法（值 2 重复） | `waveform.py`, `waveform_gpu.py` | 替换为合法 Costas 排列 `{3,9,10,13,5,15,11,16,14,8,7,4,12,2,6,1}`；修正 `generate_costas(4,...)` → `generate_costas(16,...)` |
+| M1: Albersheim 检测概率用 sigmoid 近似 | `channel.py` | 替换为标准 Albersheim 公式（Proc. IEEE 69(7), 1981），含脉冲数 N 依赖 |
+
+**默认参数更新**：`tx_power_w` 1 W → 50 kW（匹配 X 波段 MFAR）；`ArrayGeometry` 新增 `taper` / `taper_param` 字段。
+
+校验结果：test_mfar 6/6 通过，test_evaluation 13/13 通过，validate_precision 阵列因子 corr=1.0 (7/7)、路径损耗 err=0.0 dB、SNR err=0.0 dB。
 
 ### 2026-05-13 (2)
 

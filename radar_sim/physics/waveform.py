@@ -78,7 +78,7 @@ def generate_costas(n_freqs: int, pulse_width: float, fs: float) -> NDArray:
         5: np.array([1, 3, 4, 2, 5]),
         6: np.array([1, 3, 2, 6, 4, 5]),
         7: np.array([1, 3, 2, 6, 4, 5, 7]),
-        16: np.array([2, 5, 10, 4, 6, 13, 9, 16, 3, 8, 2, 11, 7, 14, 12, 1]),
+        16: np.array([3, 9, 10, 13, 5, 15, 11, 16, 14, 8, 7, 4, 12, 2, 6, 1]),
     }
     seq = costas_sequences.get(n_freqs, costas_sequences[4])
     n = len(seq)

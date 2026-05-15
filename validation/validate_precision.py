@@ -79,7 +79,7 @@ print("=" * 70)
 print("TEST 1: Array Pattern — CPU vs GPU")
 print("=" * 70)
 
-geom = ArrayGeometry(rows=25, cols=25, dx=0.5, dy=0.5, taper="uniform")
+geom = ArrayGeometry(rows=25, cols=25, dx_wl=0.5, dy_wl=0.5)
 fc = 10e9
 
 results = []
@@ -143,12 +143,17 @@ for dist in [5000, 10000, 50000]:
         distance_m=dist, frequency_hz=fc, bandwidth_hz=200e6,
         rcs_dbsm=rcs, system_loss_db=3.0,
     )
-    # GPU equivalent
+    # GPU equivalent — standard radar equation form (must match CPU)
     wavelength = SPEED_OF_LIGHT / fc
-    path_loss_db = 40.0 * np.log10(4 * np.pi * dist / wavelength)
     tx_dbm = 10 * np.log10(1000 * 1000)
     noise_dbm = 10 * np.log10(1.380649e-23 * 290 * 1000) + 10 * np.log10(200e6) + 5
-    gpu_snr = tx_dbm + 32.9 + 32.9 + rcs - path_loss_db - 3.0 - noise_dbm
+    gpu_snr = (
+        tx_dbm + 2 * 32.9 + rcs
+        + 20.0 * np.log10(wavelength)
+        - 30.0 * np.log10(4.0 * np.pi)
+        - 40.0 * np.log10(dist)
+        - 3.0 - noise_dbm
+    )
 
     err = abs(cpu_snr - gpu_snr)
     status = "✅" if err < 0.1 else "❌"

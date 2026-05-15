@@ -46,8 +46,8 @@ class PhasedArray:
     def _build_element_grid(self):
         """Build 625-element grid positions in meters."""
         rows, cols = self.geom.rows, self.geom.cols
-        dx_m = self.geom.dx * self._wavelength
-        dy_m = self.geom.dy * self._wavelength
+        dx_m = self.geom.dx_wl * self._wavelength
+        dy_m = self.geom.dy_wl * self._wavelength
 
         # Center the array at origin
         x_center = (cols - 1) * dx_m / 2.0
@@ -117,8 +117,8 @@ class PhasedArray:
     @property
     def directivity_linear(self) -> float:
         """Approximate directivity (linear). 4πA/λ² for uniform, reduced for tapered."""
-        dx_wl = self.geom.dx
-        dy_wl = self.geom.dy
+        dx_wl = self.geom.dx_wl
+        dy_wl = self.geom.dy_wl
         area_wl2 = self.geom.rows * self.geom.cols * dx_wl * dy_wl
         # Taper efficiency: ~0.85 for Taylor -30dB, ~0.65 for Chebyshev -40dB
         if self.geom.taper == "uniform":
@@ -285,8 +285,8 @@ class PhasedArray:
         3dB beamwidth ≈ 0.886 * λ / (N * d) for uniform linear array.
         For planar array, same formula per dimension.
         """
-        bw_az_rad = 0.886 / (self.geom.cols * self.geom.dx)
-        bw_el_rad = 0.886 / (self.geom.rows * self.geom.dy)
+        bw_az_rad = 0.886 / (self.geom.cols * self.geom.dx_wl)
+        bw_el_rad = 0.886 / (self.geom.rows * self.geom.dy_wl)
         bw_az_deg = np.degrees(bw_az_rad)
         bw_el_deg = np.degrees(bw_el_rad)
 

@@ -94,8 +94,13 @@ def compute_snr(
     # Signal power using radar range equation (dB)
     tx_power_dbm = 10.0 * np.log10(tx_power_w * 1000.0)
 
-    # Path loss (monostatic, 2-way)
-    path_loss_db = 40.0 * np.log10(4.0 * np.pi * distance_m / wavelength)
+    # Path loss (monostatic, 2-way): standard radar equation form
+    # Pr = Pt + 2G + σ + 20·log10(λ) - 30·log10(4π) - 40·log10(R) - Lsys
+    path_loss_db = (
+        30.0 * np.log10(4.0 * np.pi)
+        + 40.0 * np.log10(distance_m)
+        - 20.0 * np.log10(wavelength)
+    )
 
     # RCS + processing gain
     signal_dbm = (
@@ -196,25 +201,39 @@ def compute_communication_snr(
 
 
 def albersheim_detection_probability(snr_db: float, pfa: float = 1e-6, n_pulses: int = 1) -> float:
-    """Albersheim's approximation for detection probability P_d.
+    """Detection probability from SNR using Albersheim's empirical formula.
 
+    Standard Albersheim equation (Proc. IEEE 69(7), July 1981):
+      SNR = -5·log10(N) + [6.2 + 4.54/√N]·log10(A) + 5·log10(B)
+            + (4.6/N)·log10(A/B + 0.44·N)
+    where A = ln(0.62/Pfa), B = ln(Pd/(1-Pd))
+
+    This inverts the formula to compute Pd from SNR via bisection.
     Valid for Swerling 0 (non-fluctuating) targets.
     """
-    if n_pulses == 1:
-        A = np.log(0.62 / pfa)
-        B = np.log(0.12 / (0.12 / pfa))
-    else:
-        A = np.log(0.62 / pfa)
-        B = np.log(0.12 / (0.12 / pfa))
+    N = max(n_pulses, 1)
+    A = np.log(0.62 / pfa)
 
-    snr_linear = 10.0 ** (snr_db / 10.0)
-    Z = snr_linear / n_pulses
+    def snr_for_pd(pd):
+        if pd <= 0.0 or pd >= 1.0:
+            return 1e10
+        B = np.log(pd / (1.0 - pd))
+        return (
+            -5.0 * np.log10(N)
+            + (6.2 + 4.54 / np.sqrt(N)) * np.log10(A)
+            + 5.0 * np.log10(B)
+            + (4.6 / N) * np.log10(A / B + 0.44 * N)
+        )
 
-    # Albersheim formula
-    eta = (Z - A) / (B - A)
-    pd = 0.5 * (1.0 + np.tanh(eta * 2.5))  # sigmoid approximation
-
-    return float(np.clip(pd, pfa, 0.999))
+    # Bisection to invert: find Pd such that snr_for_pd(Pd) ≈ snr_db
+    lo, hi = pfa, 1.0 - pfa
+    for _ in range(50):
+        mid = (lo + hi) / 2.0
+        if snr_for_pd(mid) < snr_db:
+            lo = mid
+        else:
+            hi = mid
+    return float(np.clip((lo + hi) / 2.0, pfa, 0.9999))
 
 
 def shannon_capacity_bps(snr_linear: float, bandwidth_hz: float) -> float:
@@ -225,19 +244,20 @@ def shannon_capacity_bps(snr_linear: float, bandwidth_hz: float) -> float:
 
 
 def detection_snr_required(pfa: float = 1e-6, pd: float = 0.9, n_pulses: int = 1) -> float:
-    """Required SNR (dB) for given P_d and P_fa (Albersheim inversion)."""
-    if n_pulses == 1:
-        A = np.log(0.62 / pfa)
-        B = np.log(0.12 / (0.12 / pfa))
-    else:
-        A = np.log(0.62 / pfa)
-        B = np.log(0.12 / (0.12 / pfa))
+    """Required SNR (dB) for given P_d and P_fa using Albersheim's formula.
 
-    # Invert sigmoid
-    eta = np.arctanh(2.0 * pd - 1.0) / 2.5
-    Z = A + eta * (B - A)
-    snr_required = Z * n_pulses
-    return 10.0 * np.log10(max(snr_required, 1e-10))
+    Standard Albersheim equation (Proc. IEEE 69(7), July 1981).
+    """
+    N = max(n_pulses, 1)
+    A = np.log(0.62 / pfa)
+    B = np.log(pd / (1.0 - pd))
+    snr = (
+        -5.0 * np.log10(N)
+        + (6.2 + 4.54 / np.sqrt(N)) * np.log10(A)
+        + 5.0 * np.log10(B)
+        + (4.6 / N) * np.log10(A / B + 0.44 * N)
+    )
+    return float(snr)
 
 
 class PropagationChannel:

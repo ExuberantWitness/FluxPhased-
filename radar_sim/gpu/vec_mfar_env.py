@@ -363,6 +363,7 @@ class MFARVecEnv:
                 tx_power_w=self.tx_power_w,
                 rcs_dbsm=self.target_rcs_dbsm,
                 array_directivity_db=self.array.directivity_db,
+                n_elem=self.n_elem,
             )
             static_params.append((delay_s, doppler_hz, gain))
 
@@ -379,6 +380,7 @@ class MFARVecEnv:
                 tx_power_w=self.tx_power_w,
                 rcs_dbsm=missile.rcs_dbsm,
                 array_directivity_db=self.array.directivity_db,
+                n_elem=self.n_elem,
             )
             gain = gain * aspect_correction[:, team_idx]
             if swerling_slow is not None:

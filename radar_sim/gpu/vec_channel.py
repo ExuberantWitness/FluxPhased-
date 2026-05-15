@@ -100,13 +100,18 @@ class VecChannel:
         tgt_pos: torch.Tensor, tgt_vel: torch.Tensor,
         tx_power_w: float = 1.0, rcs_dbsm: float = 20.0,
         array_directivity_db: float = 44.0, system_loss_db: float = 3.0,
+        n_elem: int = 625,
     ):
-        """Compute two-way channel parameters via the radar equation.
+        """Compute two-way channel parameters via the standard radar equation.
 
-        Matches pipeline_gpu.simulate_pulse: amplitude = sqrt(rx_power) where
-        rx_power_dbm = tx_power + 2*directivity + RCS - 40log10(4*pi*R/lambda)
-                       - system_loss, then multiplied by a one-way path-gain
-                       factor (10^(-one_way_pl/10)) used as an amplitude factor.
+        Standard monostatic radar equation (dBm):
+          Pr = Pt + 2G + σ + 20·log10(λ) - 30·log10(4π) - 40·log10(R) - Lsys
+
+        Per-element gain for ELDA (voltage amplitude):
+          gain = sqrt(Pr_beamformed / N_elem)
+
+        The per-element gain produces correct beamformed-level SNR when the
+        RL agent processes all N element spectra.
 
         Args:
             radar_pos: [E, R, 3]
@@ -114,10 +119,11 @@ class VecChannel:
             tgt_pos:   [E, 3] single target position per env
             tgt_vel:   [E, 3]
             tx_power_w, rcs_dbsm, array_directivity_db, system_loss_db: scalars
+            n_elem: number of array elements (for per-element gain division)
         Returns:
             delay_samples: [E, R] float32 (round-trip)
             doppler_hz:    [E, R] float32 (two-way)
-            gain_linear:   [E, R] float32 (combined amplitude factor)
+            gain_linear:   [E, R] float32 (per-element voltage amplitude)
         """
         rel = tgt_pos.unsqueeze(1) - radar_pos           # [E, R, 3]
         distance = rel.norm(dim=-1).clamp(min=1.0)       # [E, R]
@@ -129,24 +135,20 @@ class VecChannel:
         radial_vel = (rel_vel * rel).sum(dim=-1) / distance
         doppler_hz = 2.0 * radial_vel * self.fc / SPEED_OF_LIGHT
 
-        one_way_pl_db = 20.0 * torch.log10(
-            4.0 * np.pi * distance / self.wavelength + 1e-10,
-        )
-        two_way_pl_db = 2.0 * one_way_pl_db
-
+        # Standard monostatic radar equation in dB form:
+        # Pr = Pt + 2G + σ + 20·log10(λ) - 30·log10(4π) - 40·log10(R) - Lsys
         rx_power_dbm = (
-            10.0 * np.log10(tx_power_w * 1000.0)
-            + 2.0 * array_directivity_db
-            + rcs_dbsm
-            - two_way_pl_db
-            - system_loss_db
+            10.0 * np.log10(tx_power_w * 1000.0)         # Pt (dBm)
+            + 2.0 * array_directivity_db                   # 2G
+            + rcs_dbsm                                     # σ
+            + 20.0 * np.log10(self.wavelength)             # λ² term
+            - 30.0 * np.log10(4.0 * np.pi)                 # (4π)³ term
+            - 40.0 * torch.log10(distance)                  # R⁴ term
+            - system_loss_db                                # Lsys
         )
         rx_power_w = 10.0 ** ((rx_power_dbm - 30.0) / 10.0)
-        rx_amplitude = torch.sqrt(rx_power_w.clamp(min=0.0))
-
-        # Match pipeline_gpu: extra one-way path-gain factor folded in
-        path_gain_extra = 10.0 ** (-one_way_pl_db / 10.0)
-        gain_linear = rx_amplitude * path_gain_extra
+        # Per-element voltage gain for ELDA: sqrt(Pr_beam / N_elem)
+        gain_linear = torch.sqrt((rx_power_w / n_elem).clamp(min=0.0))
 
         return delay_samples, doppler_hz, gain_linear
 

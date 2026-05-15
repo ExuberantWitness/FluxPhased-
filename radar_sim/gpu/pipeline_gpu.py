@@ -217,17 +217,16 @@ class RadarPipelineGPU:
                 # RCS in linear
                 rcs_linear = 10.0 ** (rcs_dbsm / 10.0)
 
-                # Two-way path loss
+                # Two-way path loss — standard radar equation form
                 wavelength = SPEED_OF_LIGHT / rs.freq_hz
-                path_loss_db = 40.0 * np.log10(
-                    4.0 * np.pi * distance / wavelength
-                )
-                # Radar equation: received power includes RCS
+                # Pr = Pt + 2G + σ + 20·log10(λ) - 30·log10(4π) - 40·log10(R) - Lsys
                 rx_power_dbm = (
                     10 * np.log10(rs.tx_power_w * 1000)
-                    + self.arrays[rid].directivity_db * 2  # TX + RX gain
+                    + self.arrays[rid].directivity_db * 2
                     + rcs_dbsm
-                    - path_loss_db
+                    + 20.0 * np.log10(wavelength)
+                    - 30.0 * np.log10(4.0 * np.pi)
+                    - 40.0 * np.log10(distance)
                     - 3.0  # system loss
                 )
                 rx_power_linear = 10.0 ** (rx_power_dbm / 10.0) * 1e-3
@@ -247,8 +246,12 @@ class RadarPipelineGPU:
                     2.0 * np.dot(rs.vel - tgt_vel, rel) / distance
                     * rs.freq_hz / SPEED_OF_LIGHT
                 )
+                # rx_amplitude already contains the full radar equation gain,
+                # so override path_gain to 1.0 (per-element normalization only)
+                n_elem = self.arrays[rid].n_elem
+                channel_params["path_gain_linear"] = 1.0 / np.sqrt(n_elem)
 
-                # Scale baseband by TX amplitude
+                # Scale baseband by TX amplitude (per-element voltage)
                 tx_scaled = baseband * rx_amplitude
 
                 # Apply channel to per-element signal

@@ -56,7 +56,7 @@ def generate_costas(n_freqs, pulse_width, fs, device):
     seqs = {
         4: [1, 3, 2, 4], 5: [1, 3, 4, 2, 5],
         6: [1, 3, 2, 6, 4, 5], 7: [1, 3, 2, 6, 4, 5, 7],
-        16: [2, 5, 10, 4, 6, 13, 9, 16, 3, 8, 2, 11, 7, 14, 12, 1],
+        16: [3, 9, 10, 13, 5, 15, 11, 16, 14, 8, 7, 4, 12, 2, 6, 1],
     }
     seq = seqs.get(n_freqs, seqs[4])
     n = max(1, int(pulse_width * fs))
@@ -340,7 +340,7 @@ class WaveformGeneratorGPU:
             "lfm_down": lambda: generate_lfm(pw, bw, fs, dev, "down"),
             "barker_13": lambda: generate_barker(13, pw / 13, fs, dev),
             "frank_16": lambda: generate_frank(4, fs, pw, dev),
-            "costas_16": lambda: generate_costas(4, pw, fs, dev),
+            "costas_16": lambda: generate_costas(16, pw, fs, dev),
             "nlfm": lambda: generate_nlfm(pw, bw, fs, dev),
             "p4_code": lambda: generate_p4(4, pw, fs, dev),
             "noise_broadband": lambda: generate_noise_broadband(
