@@ -1130,7 +1130,19 @@ FluxPhased **不是**通用 Maxwell 方程求解器（如 CST/HFSS/MEEP），也
 | 干扰-DRFM (Jamming) | ✅ **补全** | `vec_element_processor.py`, `vec_mfar_env.py` | DRFM 捕获→频移→重发；宽带噪声 SNR 461→24 随功率衰减 |
 | 侦察 (Reconnaissance) | ✅ **增强** | `vec_element_processor.py` (`process_rx_recon`) | 中心频率估计精确到 1 bin，带宽/信号强度提取正确 |
 
-**新增测试**：[test_iq_capabilities.py](validation/test_iq_capabilities.py) — 6 项 IQ 级能力测试全部通过。
+**新增测试**：
+- [test_iq_capabilities.py](validation/test_iq_capabilities.py) — 6 项 IQ 级能力功能测试全部通过
+- [validate_iq_precision.py](validation/validate_iq_precision.py) — 5 项解析精度验证全部通过：
+
+| 精度测试 | 对比基准 | 最大误差 | 结果 |
+|----------|----------|----------|------|
+| 自扰耦合功率 | `SI = coupling² / N_samples` (5 个隔离度) | 0.0000 dB | PASS |
+| DRFM 频移精度 | FFT 峰值偏移 = Δf (4 个频移值) | < 2 FFT bins | PASS |
+| JNR 链路预算 | Friis 单程链路预算 (4 个距离) | 0.0000 dB | PASS |
+| 侦察参数估计 | 已知频率/带宽/功率 (14 项) | 全部在阈值内 | PASS |
+| BPSK 误码率 | `Q(√(2·Eb/N₀))` (7 个 SNR 点) | < 5% 相对误差 | PASS |
+
+**回归测试**：test_mfar 6/6 + test_missile 8/8 + test_evaluation 13/13 + test_pettingzoo 28/28 = **55/55 全部通过**。
 
 ### 2026-05-15 (1)
 

@@ -439,10 +439,7 @@ class MFARVecEnv:
                 tx_active = (task_ids != 0)   # non-recon elements transmit
                 rx_active = (task_ids != 2)   # non-jam elements receive
                 si = tx_signal * coupling      # [E, R, N, S]
-                mask = (rx_active & tx_active).unsqueeze(-1)  # self-term
                 self._buf_rx_signal += si * rx_active.unsqueeze(-1).float()
-                # Subtract self-leakage that TX sees from itself (already in tx_signal)
-                # The above adds all TX leakage into RX-active elements
 
             self.channel.generate_noise(out=self._buf_noise)
             self._buf_rx_signal += self._buf_noise
