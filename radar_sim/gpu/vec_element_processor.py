@@ -208,13 +208,56 @@ class VecElementProcessor:
         xy_flat = torch.stack([data_x, data_y], dim=-1)  # [E*R*N, 2]
         return xy_flat.reshape(*shape, 2)
 
+    def process_rx_recon(
+        self, spectrum: torch.Tensor,
+    ) -> torch.Tensor:
+        """Extract signal parameters from recon element spectrum.
+
+        For each recon element, estimates:
+          - Center frequency (normalized peak bin)
+          - Bandwidth (3dB width around peak, normalized)
+          - Signal strength (peak power in dB, normalized to [0,1])
+          - DOA hint (0 for now, placeholder for beam-comparison AOA)
+
+        Args:
+            spectrum: [E, R, N, P, n_bins] float32 power spectrum (recon elements)
+        Returns:
+            [E, R, N, 4] float32 recon intelligence per element
+        """
+        # Average over pulses: [E, R, N, n_bins]
+        spec_avg = spectrum.mean(dim=-2)
+        n_bins = spec_avg.shape[-1]
+
+        # Peak bin per element
+        peak_bin = spec_avg.argmax(dim=-1)  # [E, R, N]
+        peak_power = spec_avg.max(dim=-1).values  # [E, R, N]
+
+        # Center frequency (normalized to [0, 1])
+        center_freq = peak_bin.float() / max(n_bins - 1, 1)
+
+        # 3dB bandwidth: count bins above half-power around peak
+        half_power = peak_power * 0.5  # [E, R, N]
+        above_3db = (spec_avg > half_power.unsqueeze(-1)).sum(dim=-1).float()
+        bw_norm = above_3db / max(n_bins, 1)  # normalized to [0, 1]
+
+        # Signal strength (peak dB, normalized to [0, 1])
+        eps = 1e-30
+        peak_db = 10.0 * torch.log10(peak_power + eps)
+        # Normalize: clip to [-60, 0] dB range, map to [0, 1]
+        strength = ((peak_db + 60.0) / 60.0).clamp(0, 1)
+
+        # DOA hint: placeholder 0 (requires multi-element beam comparison)
+        doa_hint = torch.zeros_like(center_freq)
+
+        return torch.stack([center_freq, bw_norm, strength, doa_hint], dim=-1)
+
     # ------------------------------------------------------------------
     # Decision downlink (TX): action → waveform × weight
     # ------------------------------------------------------------------
 
     def generate_waveform(
         self, task_id: int, waveform_type: int, params: torch.Tensor,
-        n_samples: int,
+        n_samples: int, captured_signal: torch.Tensor = None,
     ) -> torch.Tensor:
         """Generate waveform for one task type.
 
@@ -223,6 +266,7 @@ class VecElementProcessor:
             waveform_type: index into waveform lookup table
             params: task-specific parameters tensor
             n_samples: output waveform length
+            captured_signal: [S] complex64 captured RX signal for DRFM
         Returns:
             [n_samples] complex64 waveform, or None for recon
         """
@@ -270,9 +314,17 @@ class VecElementProcessor:
                     n_samples, center * self.fs, bw * self.fs, self.fs, power, dev,
                 )
             else:  # DRFM
-                # DRFM needs captured signal — fallback to noise if none provided
-                power = params[0].item() if params.numel() > 0 else 1.0
-                return generate_noise_broadband(n_samples, power, dev)
+                if captured_signal is not None and captured_signal.norm() > 1e-10:
+                    freq_shift = params[2].item() if params.numel() > 2 else 0.0
+                    freq_shift_hz = freq_shift * self.fs * 0.01
+                    power = params[0].item() if params.numel() > 0 else 1.0
+                    drfm = generate_drfm(
+                        captured_signal[:n_samples], freq_shift_hz, self.fs,
+                    )
+                    return drfm * (power ** 0.5)
+                else:
+                    power = params[0].item() if params.numel() > 0 else 1.0
+                    return generate_noise_broadband(n_samples, power, dev)
 
         elif task_id == TASK_COMM:
             data_x = params[0].item() if params.numel() > 0 else 0.0
@@ -302,6 +354,7 @@ class VecElementProcessor:
         elem_y: torch.Tensor,      # [N] float32 element y positions (m)
         wavelength: float,
         n_samples: int,
+        captured_signal: torch.Tensor = None,  # [E, R, S] for DRFM
     ) -> torch.Tensor:
         """Assemble per-element TX signals from action parameters.
 
@@ -335,6 +388,8 @@ class VecElementProcessor:
         # Generate waveforms per unique task/type combination
         # Pre-build a waveform bank: { (task, type): waveform [S] }
         wf_bank = {}
+        # Per-radar DRFM waveforms: { (task, type, e, r): waveform [S] }
+        wf_bank_drfm = {}
         for t in range(4):
             mask_t = (task_ids == t)
             if not mask_t.any():
@@ -342,15 +397,34 @@ class VecElementProcessor:
             types_in_task = wf_types[mask_t].unique()
             for wt in types_in_task:
                 wt_int = int(wt.item())
-                params_map = {
-                    TASK_DETECT: detect_params[mask_t][0],
-                    TASK_JAM: jam_params[mask_t][0],
-                    TASK_COMM: comm_params[mask_t][0],
-                }
-                params = params_map.get(t, torch.zeros(3, device=dev))
-                wf = self.generate_waveform(t, wt_int, params, n_samples)
-                if wf is not None:
-                    wf_bank[(t, wt_int)] = wf
+                jam_type = wt_int % 3
+                if t == TASK_JAM and jam_type == _JAM_DRFM and captured_signal is not None:
+                    # DRFM: generate per-radar waveform (different captured signals)
+                    for e in range(E):
+                        for r in range(R):
+                            params_map = {
+                                TASK_DETECT: detect_params[e, r],
+                                TASK_JAM: jam_params[e, r],
+                                TASK_COMM: comm_params[e, r],
+                            }
+                            params = params_map.get(t, torch.zeros(3, device=dev))
+                            cap = captured_signal[e, r]
+                            wf = self.generate_waveform(
+                                t, wt_int, params, n_samples,
+                                captured_signal=cap,
+                            )
+                            if wf is not None:
+                                wf_bank_drfm[(t, wt_int, e, r)] = wf
+                else:
+                    params_map = {
+                        TASK_DETECT: detect_params[mask_t][0],
+                        TASK_JAM: jam_params[mask_t][0],
+                        TASK_COMM: comm_params[mask_t][0],
+                    }
+                    params = params_map.get(t, torch.zeros(3, device=dev))
+                    wf = self.generate_waveform(t, wt_int, params, n_samples)
+                    if wf is not None:
+                        wf_bank[(t, wt_int)] = wf
 
         # Build TX signal tensor
         tx_out = torch.zeros(E, R, N, n_samples, dtype=torch.complex64, device=dev)
@@ -359,9 +433,16 @@ class VecElementProcessor:
             mask = (task_ids == t) & (wf_types == wt)
             if not mask.any():
                 continue
-            # Apply weight × waveform where mask is True
             mask_expanded = mask.unsqueeze(-1)  # [E,R,N,1]
             weighted = weights.unsqueeze(-1) * wf.view(1, 1, 1, -1)  # [E,R,N,S]
             tx_out = torch.where(mask_expanded, weighted, tx_out)
+
+        # Per-radar DRFM waveforms
+        for (t, wt, e, r), wf in wf_bank_drfm.items():
+            mask = (task_ids[e, r] == t) & (wf_types[e, r] == wt)  # [N]
+            if not mask.any():
+                continue
+            weighted = weights[e, r] * wf.view(1, -1)  # [N, S]
+            tx_out[e, r] = torch.where(mask.unsqueeze(-1), weighted, tx_out[e, r])
 
         return tx_out

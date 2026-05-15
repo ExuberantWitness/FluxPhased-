@@ -256,7 +256,7 @@ def test_state_dim():
     N = env.n_elem
     P = env.n_pulses
     B = env.n_bins
-    expected = N * (P * B + 2) + 5 + 6 + env.n_teams * 3 + N_out
+    expected = N * (P * B + 2 + 4) + 5 + 6 + env.n_teams * 3 + N_out
     assert env.state_dim == expected, f"Expected {expected}, got {env.state_dim}"
 
     env.reset()

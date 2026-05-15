@@ -67,6 +67,7 @@ class MFARVecEnv:
         red_launch_pos: tuple = (0.0, -10000.0),
         blue_launch_pos: tuple = (0.0, 10000.0),
         polarization_loss_db: float = 3.0,
+        tx_rx_isolation_db: float = 25.0,
         reset_config: dict = None,
         reward_config: dict = None,
     ):
@@ -91,6 +92,7 @@ class MFARVecEnv:
         self.dy_wl = dy_wl
         self.noise_figure_db = noise_figure_db
         self.map_size = map_size
+        self.tx_rx_isolation_db = tx_rx_isolation_db
         self.reset_config = reset_config or {}
         self.reward_config = reward_config or {}
 
@@ -156,6 +158,11 @@ class MFARVecEnv:
             E, R, N, 2, dtype=torch.float32, device=dev_torch,
         )
 
+        # DRFM capture buffer: [E, R, S] complex64
+        self._captured_signal = torch.zeros(
+            E, R, S, dtype=torch.complex64, device=dev_torch,
+        )
+
         # --- State tensors ---
         self.radar_pos = torch.zeros(E, R, 3, device=dev_torch)
         self.radar_vel = torch.zeros(E, R, 3, device=dev_torch)
@@ -206,7 +213,7 @@ class MFARVecEnv:
     @property
     def state_dim(self) -> int:
         missile_dims = 6 + self.n_teams * 3  # own missile 6 + all missiles awareness 6
-        return (self.n_elem * (self.n_pulses * self.n_bins + 2)
+        return (self.n_elem * (self.n_pulses * self.n_bins + 2 + 4)
                 + 5 + missile_dims + self.num_output_length)
 
     @property
@@ -322,6 +329,7 @@ class MFARVecEnv:
             task_ids, beam_az, beam_el, wf_types,
             detect_params, jam_params, comm_params,
             ex, ey, self.array.wavelength, S,
+            captured_signal=self._captured_signal,
         )
         t_tx = time.perf_counter()
 
@@ -424,11 +432,27 @@ class MFARVecEnv:
                 self._buf_rx_signal += target_return
 
             self._buf_rx_signal += self._buf_intf
+
+            # Self-interference: TX→RX leakage within same array
+            if self.tx_rx_isolation_db < 200.0:
+                coupling = 10.0 ** (-self.tx_rx_isolation_db / 20.0)
+                tx_active = (task_ids != 0)   # non-recon elements transmit
+                rx_active = (task_ids != 2)   # non-jam elements receive
+                si = tx_signal * coupling      # [E, R, N, S]
+                mask = (rx_active & tx_active).unsqueeze(-1)  # self-term
+                self._buf_rx_signal += si * rx_active.unsqueeze(-1).float()
+                # Subtract self-leakage that TX sees from itself (already in tx_signal)
+                # The above adds all TX leakage into RX-active elements
+
             self.channel.generate_noise(out=self._buf_noise)
             self._buf_rx_signal += self._buf_noise
             self._buf_cpi[:, :, :, p, :] = self._buf_rx_signal
 
         t_pulses = time.perf_counter()
+
+        # --- Phase 3.5: DRFM signal capture ---
+        # Store the mean RX signal per radar for DRFM retransmission next step
+        self._captured_signal = self._buf_cpi[:, :, :, -1, :].mean(dim=2).detach()
 
         # --- Phase 4: RX processing ---
         spectrum = self._buf_spectrum.zero_()
@@ -466,6 +490,18 @@ class MFARVecEnv:
                 comm_xy, comm_data,
             )
 
+        # Recon intelligence: extract signal parameters from recon spectrum
+        recon_intel = torch.zeros(
+            E, R, self.n_elem, 4, dtype=torch.float32, device=dev,
+        )
+        if recon_mask.any():
+            recon_spec = spectrum.clone()
+            ri = self.processor.process_rx_recon(recon_spec)
+            recon_intel = torch.where(
+                recon_mask.unsqueeze(-1),
+                ri, recon_intel,
+            )
+
         t_rx = time.perf_counter()
 
         # --- Phase 5: Radar→missile BPSK communication ---
@@ -484,7 +520,7 @@ class MFARVecEnv:
         t_missile = time.perf_counter()
 
         # --- Phase 7: Assemble state ---
-        state = self._assemble_state(spectrum, comm_data)
+        state = self._assemble_state(spectrum, comm_data, recon_intel)
 
         if radar_latents is not None:
             commander_obs = self.battlefield.get_commander_observation(
@@ -615,12 +651,13 @@ class MFARVecEnv:
         ref = modulate_bpsk(bits, self.n_samples, self.fs, self.processor.symbol_rate, dev)
         return ref
 
-    def _assemble_state(self, spectrum, comm_data):
-        """Assemble state vector from spectrum, comm data, vehicle, and missile awareness.
+    def _assemble_state(self, spectrum, comm_data, recon_intel=None):
+        """Assemble state vector from spectrum, comm data, recon intel, vehicle, and missile awareness.
 
         Args:
             spectrum: [E, R, N, P, n_bins] float32
             comm_data: [E, R, N, 2] float32
+            recon_intel: [E, R, N, 4] float32 or None
         Returns:
             [E, R, state_dim] float32
         """
@@ -628,6 +665,11 @@ class MFARVecEnv:
 
         spec_flat = spectrum.reshape(E, R, N * P * B)
         comm_flat = comm_data.reshape(E, R, N * 2)
+
+        if recon_intel is None:
+            recon_flat = torch.zeros(E, R, N * 4, dtype=torch.float32, device=spectrum.device)
+        else:
+            recon_flat = recon_intel.reshape(E, R, N * 4)
 
         vehicle = torch.stack([
             self.radar_pos[..., 0],
@@ -639,7 +681,7 @@ class MFARVecEnv:
 
         missile_state = self._build_missile_state_per_radar()
 
-        parts = [spec_flat, comm_flat, vehicle, missile_state]
+        parts = [spec_flat, comm_flat, recon_flat, vehicle, missile_state]
         if self.num_output_length > 0:
             parts.append(self._commander_instructions)
 

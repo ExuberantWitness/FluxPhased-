@@ -1115,7 +1115,24 @@ FluxPhased **不是**通用 Maxwell 方程求解器（如 CST/HFSS/MEEP），也
 <details>
 <summary><b>Updates & Bug Fixes / 更新进展与缺陷修复</b></summary>
 
-### 2026-05-15
+### 2026-05-15 (2)
+
+**IQ-Level EW Capability Completion / IQ 级电子战能力补全**
+
+补全 6 项相控阵雷达 IQ 级仿真能力，新增自扰、DRFM 干扰、侦察信号参数提取：
+
+| 能力 | 状态 | 实现文件 | IQ 级验证 |
+|------|------|----------|-----------|
+| 探测 (Detection) | ✅ 完整 | `waveform_gpu.py`, `vec_channel.py`, `vec_element_processor.py` | LFM 匹配滤波 PG=26.3 dB (理论 27 dB)，峰值精确到延迟位置 |
+| 互扰 (Mutual Interference) | ✅ 完整 | `vec_interference.py` | IQ 级跨雷达信号注入，JNR 随距离 1/R² 衰减 |
+| 通信 (Communication) | ✅ 完整 | `waveform_gpu.py` (BPSK encode/decode) | 4 组坐标解码误差 < 0.001，CRC 拒绝误码 |
+| 自扰 (Self-Interference) | ✅ **新增** | `vec_mfar_env.py` (pulse loop) | TX→RX 泄露：10 dB 隔离度能量比 100 dB 高 5.4×10⁸ 倍 |
+| 干扰-DRFM (Jamming) | ✅ **补全** | `vec_element_processor.py`, `vec_mfar_env.py` | DRFM 捕获→频移→重发；宽带噪声 SNR 461→24 随功率衰减 |
+| 侦察 (Reconnaissance) | ✅ **增强** | `vec_element_processor.py` (`process_rx_recon`) | 中心频率估计精确到 1 bin，带宽/信号强度提取正确 |
+
+**新增测试**：[test_iq_capabilities.py](validation/test_iq_capabilities.py) — 6 项 IQ 级能力测试全部通过。
+
+### 2026-05-15 (1)
 
 **EM Precision Audit Fixes / 电磁仿真精度修正**
 
