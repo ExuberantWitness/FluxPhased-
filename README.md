@@ -714,13 +714,21 @@ GPU 端实现了 `RadarSimVecEnv`（[radar_sim/gpu/vec_env.py](radar_sim/gpu/vec
 <details>
 <summary><b>Precision Validation / 精度校验</b></summary>
 
-Validated against analytical ground truth (closed-form radar physics formulas) and RadarSimPy v15.2.0 processing algorithms (range FFT, Doppler FFT, CA-CFAR).
+Validated against analytical ground truth (closed-form radar physics formulas), RadarSimPy v15.2.0 processing algorithms, and MATLAB Phased Array System Toolbox R2024a cross-validation.
 
-对比解析真值（闭式雷达物理公式）与 RadarSimPy v15.2.0 信号处理算法（range FFT、Doppler FFT、CA-CFAR）进行校验。
+对比解析真值（闭式雷达物理公式）、RadarSimPy v15.2.0 信号处理算法、以及 MATLAB Phased Array System Toolbox R2024a 交叉验证进行三级校验。
 
 ```bash
-python validation/validate_radarsimpy.py   # Ground truth + RadarSimPy processing
-python validation/validate_precision.py    # CPU vs GPU internal consistency
+python validation/validate_radarsimpy.py      # Ground truth + RadarSimPy processing
+python validation/validate_precision.py       # CPU vs GPU internal consistency
+python validation/validate_iq_precision.py    # IQ-level analytical precision (5 tests)
+python validation/test_iq_capabilities.py     # IQ-level functional capability (6 tests)
+```
+
+MATLAB cross-validation (requires MATLAB R2021a+ with Phased Array System Toolbox):
+
+```bash
+cd validation && matlab -batch "matlab_cross_validation"   # 7-item MATLAB cross-validation
 ```
 
 ### Results / 校验结果
@@ -738,6 +746,36 @@ python validation/validate_precision.py    # CPU vs GPU internal consistency
 | Doppler velocity / 多普勒速度 | Analytical phase ramp | **err = 0.36 m/s (bin_res = 1.17 m/s)** |
 | Costas-16 waveform / Costas-16 波形 | Valid permutation {1..16} | **Corrected to valid Costas array** |
 | Albersheim detection / Albersheim 检测概率 | Proc. IEEE 69(7), 1981 | **Standard formula with pulse count N** |
+
+### IQ-Level Precision vs Analytical Ground Truth / IQ 级解析精度校验
+
+`validate_iq_precision.py` — 每项 IQ 模块对比闭式物理公式，5/5 全部通过。
+
+| IQ Module / IQ 模块 | Analytical Reference / 解析基准 | Key Metric / 关键指标 | Error / 误差 |
+|--------|--------|--------|--------|
+| Self-interference coupling / 自扰耦合 | `SI = coupling²/N` at 5 isolation levels | SI power per element | **0.0000 dB** (all 5 levels) |
+| DRFM frequency shift / DRFM 频移 | FFT peak offset = Δf at 4 shifts (0–0.4 MHz) | Spectral peak shift | **< 2 FFT bins** |
+| JNR link budget / JNR 链路预算 | Friis one-way: `JNR = Pt+Gtx+Grx-FSPL-Lpol-N` at 4 ranges (2–20 km) | JNR vs analytical | **0.0000 dB** (all 4 ranges) |
+| Recon parameter estimation / 侦察参数 | Known emitter: 5 center freqs + 4 bandwidths + 5 power levels | Parameter extraction accuracy | **All 14 within threshold** |
+| BPSK BER / BPSK 误码率 | Theoretical `Q(√(2·Eb/N₀)) = ½·erfc(√(Eb/N₀))` at 7 SNR points | Monte Carlo vs theory | **< 5% relative error** |
+
+### MATLAB Phased Array System Toolbox Cross-Validation / MATLAB 交叉验证
+
+`matlab_cross_validation.m` — MATLAB R2024a Phased Array System Toolbox 24.1 交叉验证，7/7 全部通过。
+
+| Test / 测试项 | MATLAB Tool / MATLAB 工具 | Comparison / 对比内容 | Result / 结果 |
+|--------|--------|--------|--------|
+| LFM matched filter / LFM 匹配滤波 | `fft` + auto-correlation | Compressed pulse width | **0.44 μs (theory 0.50 μs, 11% error)** |
+| 25×25 URA pattern / 阵列方向图 | `phased.URA` + `pattern` + `phased.SteeringVector` | Beamwidth, steering accuracy | **4.06° exact match; 30° steer = 0.0° error** |
+| Radar equation SNR / 雷达方程 SNR | Manual formula vs `radareqsnr` at 4 ranges (2–20 km) | SNR consistency | **0.00 dB error** |
+| Self-interference / 自扰耦合 | Voltage coupling `10^(-iso/20)` at 5 levels | SI power | **0.0000 dB error** |
+| DRFM frequency shift / DRFM 频移 | CW tone × `exp(j·2π·Δf·t)` at 4 shifts | Spectral peak shift | **Exact match (0 Hz error)** |
+| BPSK BER / BPSK 误码率 | Monte Carlo 500×32bit vs `erfc(√(Eb/N₀))` | BER at 7 SNR points | **All within threshold** |
+| JNR vs FluxPhased / JNR vs FluxPhased | Friis formula at 4 distances (2–20 km) | JNR comparison | **< 0.03 dB error** |
+
+**Directivity note / 方向性差异说明：** MATLAB URA (isotropic element) directivity = 29.8 dBi vs FluxPhased analytical `D = π·N` = 32.9 dBi (3.1 dB difference). Cause: MATLAB integrates over the full 4π sphere; FluxPhased's formula assumes uniform element pattern covering the forward hemisphere only. Beamwidth is identical (4.06°). Link budget validation uses the same gain value for direct comparison.
+
+MATLAB URA（各向同性元素）方向性 = 29.8 dBi vs FluxPhased 解析值 `D = π·N` = 32.9 dBi（差 3.1 dB）。原因：MATLAB 在完整 4π 球面积分；FluxPhased 公式假设均匀阵元方向图仅覆盖前半球。波束宽度完全一致（4.06°）。链路预算使用相同增益值直接对比。
 
 ### Interference JNR Matrix / 干扰 JNR 矩阵
 
