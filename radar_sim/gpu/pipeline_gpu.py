@@ -276,7 +276,7 @@ class RadarPipelineGPU:
             noise_std = np.sqrt(noise_power_linear / 2.0)
             noise = (torch.randn(n_elem, n_samples, dtype=torch.complex64,
                                  device=torch.device(self.device))
-                     * noise_std)
+                     * noise_std * np.sqrt(2.0))
             rx_signal += noise
 
             # RX beamforming: weight and sum across elements

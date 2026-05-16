@@ -211,18 +211,17 @@ class VecChannel:
     def generate_noise(self, out: torch.Tensor):
         """Generate complex AWGN in-place into pre-allocated tensor [E, R, N, S] complex64.
 
-        Matches pipeline_gpu idiom: torch.randn(complex64) gives each
-        quadrature variance 0.5; multiplying by noise_std yields total
-        power noise_power_linear / 2 (same as the reference pipeline).
+        Each quadrature gets variance noise_std**2, so total complex power
+        = 2 * noise_std**2 = noise_power_linear, matching the standard RF
+        noise power kB*T*B*F.
         """
         noise_view = torch.view_as_real(out)
-        # torch.normal_() gives N(0,1); scale by noise_std/sqrt(2) so each
-        # quadrature has variance noise_std**2 / 2 — total complex variance
-        # noise_std**2 = noise_power_linear / 2.
-        inv_sqrt2 = float(1.0 / np.sqrt(2.0))
+        # torch.normal_() gives N(0,1); scale by noise_std so each
+        # quadrature has variance noise_std**2 — total complex variance
+        # 2 * noise_std**2 = noise_power_linear.
         noise_view[..., 0].normal_()
         noise_view[..., 1].normal_()
-        noise_view.mul_(self.noise_std * inv_sqrt2)
+        noise_view.mul_(self.noise_std)
 
     def compute_params_one_way(
         self,

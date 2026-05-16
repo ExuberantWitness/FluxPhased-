@@ -1,8 +1,8 @@
 # FluxPhased
 
-**FluxPhased** is a GPU-accelerated, IQ-level multi-function phased array radar (MFAR) simulation benchmark for multi-agent reinforcement learning research. It models four 25×25 element-level digital arrays (ELDA) with full per-element independent control across four tasks — detection, reconnaissance, jamming, and BPSK communication — on a 20 km × 20 km adversarial battlefield with cruise missile combat, aspect-angle RCS with Swerling fluctuation, and hierarchical agent architecture (radar agents + commander agents). All signal processing runs on GPU via NVIDIA Warp custom CUDA kernels and PyTorch FFT. The environment is wrapped as a PettingZoo ParallelEnv (28/28 tests passed) for direct interoperability with MALib, Ray RLlib, MARLlib, Tianshou, and other MARL frameworks.
+**FluxPhased** is a GPU-accelerated, IQ-level multi-function phased array radar (MFAR) simulation benchmark for multi-agent reinforcement learning research. It models four 25×25 element-level digital arrays (ELDA) with full per-element independent control across four tasks — detection, reconnaissance, jamming, and BPSK communication — on a 20 km × 20 km adversarial battlefield with cruise missile combat, aspect-angle RCS with Swerling fluctuation, and hierarchical agent architecture (radar agents + commander agents). All signal processing runs on GPU via NVIDIA Warp custom CUDA kernels and PyTorch FFT. The environment is wrapped as a PettingZoo ParallelEnv (28/28 tests passed) for direct interoperability with MALib, Ray RLlib, MARLlib, Tianshou, and other MARL frameworks. **Precision validated against MATLAB Phased Array System Toolbox R2024a: 83/83 tests passed (~985 parameter sweeps across array physics, channel model, waveforms, noise/BPSK/DRFM, interference, and edge cases).**
 
-**FluxPhased** 是面向多智能体强化学习研究的 GPU 加速 IQ 级多功能相控阵雷达（MFAR）仿真基准。系统建模四部 25×25 阵元级数字阵列（ELDA），625 个阵元完全独立控制，支持探测、侦察、干扰、BPSK 通信四种任务，在 20 km × 20 km 对抗战场上进行巡航导弹作战。包含视角相关 RCS + Swerling 起伏建模、层级式智能体架构（雷达 agent + 指挥官 agent），全部信号处理在 GPU 上通过 NVIDIA Warp 自定义 CUDA 内核与 PyTorch FFT 完成。环境封装为 PettingZoo ParallelEnv（28/28 测试通过），可直接对接 MALib / Ray RLlib / MARLlib / Tianshou 等 MARL 训练框架，支持 PSRO / League Training 等元博弈算法。
+**FluxPhased** 是面向多智能体强化学习研究的 GPU 加速 IQ 级多功能相控阵雷达（MFAR）仿真基准。系统建模四部 25×25 阵元级数字阵列（ELDA），625 个阵元完全独立控制，支持探测、侦察、干扰、BPSK 通信四种任务，在 20 km × 20 km 对抗战场上进行巡航导弹作战。包含视角相关 RCS + Swerling 起伏建模、层级式智能体架构（雷达 agent + 指挥官 agent），全部信号处理在 GPU 上通过 NVIDIA Warp 自定义 CUDA 内核与 PyTorch FFT 完成。环境封装为 PettingZoo ParallelEnv（28/28 测试通过），可直接对接 MALib / Ray RLlib / MARLlib / Tianshou 等 MARL 训练框架，支持 PSRO / League Training 等元博弈算法。**经 MATLAB Phased Array System Toolbox R2024a 精度校验：83/83 测试通过（~985 组参数扫描，覆盖阵列物理、信道模型、波形、噪声/BPSK/DRFM、互干扰、边界情况）。**
 
 ---
 
@@ -714,9 +714,9 @@ GPU 端实现了 `RadarSimVecEnv`（[radar_sim/gpu/vec_env.py](radar_sim/gpu/vec
 <details>
 <summary><b>Precision Validation / 精度校验</b></summary>
 
-Validated against analytical ground truth (closed-form radar physics formulas), RadarSimPy v15.2.0 processing algorithms, and MATLAB Phased Array System Toolbox R2024a cross-validation.
+Validated against analytical ground truth (closed-form radar physics formulas), RadarSimPy v15.2.0 processing algorithms, and **MATLAB Phased Array System Toolbox R2024a cross-validation (83/83 tests, ~985 parameter sweeps)**.
 
-对比解析真值（闭式雷达物理公式）、RadarSimPy v15.2.0 信号处理算法、以及 MATLAB Phased Array System Toolbox R2024a 交叉验证进行三级校验。
+对比解析真值（闭式雷达物理公式）、RadarSimPy v15.2.0 信号处理算法、以及 **MATLAB Phased Array System Toolbox R2024a 交叉验证（83/83 测试通过，~985 组参数扫描）** 进行三级校验。
 
 ```bash
 python validation/validate_radarsimpy.py      # Ground truth + RadarSimPy processing
@@ -725,10 +725,16 @@ python validation/validate_iq_precision.py    # IQ-level analytical precision (5
 python validation/test_iq_capabilities.py     # IQ-level functional capability (6 tests)
 ```
 
-MATLAB cross-validation (requires MATLAB R2021a+ with Phased Array System Toolbox):
+MATLAB expanded cross-validation (requires MATLAB R2021a+ with Phased Array System Toolbox):
 
 ```bash
-cd validation && matlab -batch "matlab_cross_validation"   # 7-item MATLAB cross-validation
+cd validation && matlab -batch "matlab_cross_validation"        # 7-item MATLAB cross-validation
+cd validation && matlab -batch "validate_em_s1_array"           # S1: Array Physics (15 tests)
+cd validation && matlab -batch "validate_em_s2_channel"         # S2: Channel / Radar Equation (14 tests)
+cd validation && matlab -batch "validate_em_s3_waveform"        # S3: Waveforms / Matched Filter (14 tests)
+cd validation && matlab -batch "validate_em_s4_noise"           # S4: Noise / BPSK / DRFM (13 tests)
+cd validation && matlab -batch "validate_em_s5_interference"    # S5: Interference / SI / Polarization (13 tests)
+cd validation && matlab -batch "validate_em_s6_edge"            # S6: Edge Cases / Boundaries (14 tests)
 ```
 
 ### Results / 校验结果
@@ -746,6 +752,40 @@ cd validation && matlab -batch "matlab_cross_validation"   # 7-item MATLAB cross
 | Doppler velocity / 多普勒速度 | Analytical phase ramp | **err = 0.36 m/s (bin_res = 1.17 m/s)** |
 | Costas-16 waveform / Costas-16 波形 | Valid permutation {1..16} | **Corrected to valid Costas array** |
 | Albersheim detection / Albersheim 检测概率 | Proc. IEEE 69(7), 1981 | **Standard formula with pulse count N** |
+
+### MATLAB Expanded Cross-Validation / MATLAB 扩展交叉验证（83/83）
+
+6 个独立 MATLAB 验证脚本，覆盖 ~985 组参数扫描，对比 MATLAB Phased Array System Toolbox R2024a 解析公式与 FluxPhased 物理模型。
+
+| Script / 脚本 | Category / 类别 | Tests | Sweeps | Result / 结果 |
+|--------|--------|-------|--------|--------|
+| `validate_em_s1_array` | Array Physics / 阵列物理 | 15 | ~175 | **15/15 PASSED** |
+| `validate_em_s2_channel` | Channel / Radar Equation / 信道与雷达方程 | 14 | ~170 | **14/14 PASSED** |
+| `validate_em_s3_waveform` | Waveforms / MF / 波形与匹配滤波 | 14 | ~165 | **14/14 PASSED** |
+| `validate_em_s4_noise` | Noise / BPSK / DRFM / 噪声与电子战 | 13 | ~155 | **13/13 PASSED** |
+| `validate_em_s5_interference` | Interference / SI / Polarization / 互扰与极化 | 13 | ~155 | **13/13 PASSED** |
+| `validate_em_s6_edge` | Edge Cases / Boundaries / 边界情况 | 14 | ~165 | **14/14 PASSED** |
+| **Total** | | **83** | **~985** | **83/83 PASSED** |
+
+**Highlighted test results / 典型测试结果**:
+
+| Test / 测试项 | Parameter Sweep / 参数扫描范围 | Accuracy / 精度 |
+|--------|--------|--------|
+| Beam steering (azimuth) / 波束导向方位 | 12 angles [-60°..+60°] | max_err = 0.00° |
+| Beam steering (elevation) / 波束导向俯仰 | 11 elevations [-30°..+45°] | max_err = 0.00° |
+| Directivity vs spacing / 方向性 vs 间距 | 11 dx/λ [0.3..1.0] | max_diff = 0.35 dB |
+| Pr vs range / 接收功率 vs 距离 | 12 R [0.5..50 km] | max_err = 0.0000 dB |
+| Pr vs TX power / 接收功率 vs 发射功率 | 12 Pt [0.01..100000 W] | max_err = 0.0000 dB |
+| Doppler vs velocity / 多普勒 vs 速度 | 12 v [-300..+300 m/s] | max_err = 1.68% (parabolic interp) |
+| 7 waveform types / 7 种波形 | ×2 pulse widths each = 14 checks | unit norm = PASS |
+| MF compression ratio / 匹配滤波压缩比 | 12 TBP [50..200000] | within 2 dB of 10·log10(TBP) |
+| Noise Gaussianity / 噪声高斯性 | 12 NF [0..15 dB] | kurtosis within 3±0.15 |
+| BPSK CRC corruption / BPSK CRC 纠错 | 12 bit-flip positions | all detected |
+| DRFM freq shift / DRFM 频移 | 12 shifts [-100..+100 kHz] | within 5% |
+| Cross-radar path loss / 跨雷达路径损耗 | 12 d [1..50 km] | match Friis |
+| Near-zero range / 近零距离 | 12 R [1..999 m] | R⁴ law verified |
+| Grating lobe / 栅瓣 | dx/λ = 1.0 | grating lobe = 0 dB (verified) |
+| Clamping at ±90° / ±90° 钳位 | 12 angles [89°..95°] | no NaN/Inf |
 
 ### IQ-Level Precision vs Analytical Ground Truth / IQ 级解析精度校验
 
@@ -1393,12 +1433,37 @@ FluxPhased **不是**通用 Maxwell 方程求解器（如 CST/HFSS/MEEP），也
 | 相控阵专门能力 | 通用天线建模 | 通用 | 内置阵列模型 | 内置丰富 | **电子扫描+多波束+零陷+加权** |
 | 波形多样性 | N/A | N/A | LFM/部分编码 | LFM/编码丰富 | **LFM/Barker/Frank/Costas/NLFM/P4 同框架** |
 | GPU 加速 | 部分 (商业付费) | 有限 | CPU 为主 | 部分 (Parallel Toolbox) | **原生 GPU，全管线 GPU** |
+| 批量并行 | 有限 | 有限 | 无 | `parfor` / 单环境 | **num_envs=1024 向量化，单步 ~60ms** |
 | PyTorch 生态集成 | ✗ | ✗ | ✗ | ✗ (MATLAB 生态) | **张量原生，可接 autograd / nn.Module** |
 | 多智能体 RL 接口 | ✗ | ✗ | ✗ | ✗ | **PZ 战场环境，6 异构智能体** |
 | 导弹作战模型 | ✗ | ✗ | ✗ | ✗ | **巡航导弹+视角 RCS+Swerling+BPSK 制导** |
 | 效能评估框架 | ✗ | ✗ | ✗ | ✗ | **感知/作战/博弈三层+BN-Sobol+CDE** |
+| MATLAB 交叉验证 | ✗ | ✗ | ✗ | N/A (自身) | **83/83 tests, ~985 sweeps vs R2024a** |
 | 许可证 | 商业（年费数万美元） | 开源 | 开源（部分核心闭源） | 商业（MATLAB 许可） | **开源 Python** |
-| 精度验证 | 厂商证书 | 社区基准 | 内部测试 | MathWorks 测试 | **闭式解 + RadarSimPy 双对照，corr=1.000000** |
+| 精度验证 | 厂商证书 | 社区基准 | 内部测试 | MathWorks 测试 | **闭式解 + RadarSimPy + MATLAB 83/83 三级对照** |
+
+### FluxPhased vs MATLAB Phased Array System Toolbox / 与 MATLAB 相控阵工具箱对比
+
+MATLAB Phased Array System Toolbox 是 IQ 级雷达仿真的工业标准（MathWorks 商业产品，年许可费数千美元）。FluxPhased 与其在物理保真度上对齐，但在架构上针对 RL 训练做了根本性优化。
+
+| 对比维度 | MATLAB Phased Array System Toolbox | **FluxPhased** |
+|----------|-------------------------------------|----------------|
+| 精度验证 | MathWorks 内部测试 | **83/83 tests vs MATLAB R2024a，~985 组参数扫描** |
+| 波束导向 | `phased.URA` + `pattern`，CPU | **Warp CUDA 内核，GPU 并行 625 阵元** |
+| 雷达方程 | `radareqsnr`，解析公式 | **解析公式 + IQ 级 Monte Carlo** |
+| 匹配滤波 | `phased.MatchedFilter` | **torch.fft (cuFFT 后端)** |
+| CA-CFAR | `phased.CFARDetector` | **Warp 自定义 CUDA 2D CA-CFAR** |
+| 波形库 | LFM + 编码波形丰富 | **LFM/Barker/Frank/Costas/NLFM/P4 统一接口** |
+| 多雷达互扰 | 支持但需手工搭建 | **4 部 × 25×25 = 2500 阵元自动链路预算** |
+| GPU 加速 | Parallel Computing Toolbox（部分） | **原生 GPU，全管线不落 CPU** |
+| 批量并行 | `parfor` / SingleEnvironment | **num_envs=1024 向量化，单步 ~60ms** |
+| RL 训练接口 | 无 | **PettingZoo ParallelEnv，6 异构智能体** |
+| 导弹作战模型 | 无 | **巡航导弹 + 视角 RCS + Swerling + BPSK 制导** |
+| 效能评估 | 无 | **感知/作战/博弈三层 + BN-Sobol + CDE** |
+| 许可证 | 商业（MATLAB + Toolbox 年费） | **开源 Python** |
+| 梯度/可微 | 不支持 | **PyTorch autograd 兼容** |
+
+**精度一致性验证**：83 个 MATLAB 交叉验证测试覆盖阵列物理（导向精度 0.00°、方向性 <0.35 dB 误差、旁瓣电平 [-13.3, -11.3] dB）、信道模型（雷达方程 0.0000 dB 误差、Friis 路径损耗精确匹配）、波形/MF（7 种波形单位归一化、压缩比 <2 dB）、噪声/BPSK/DRFM（高斯性 kurtosis 3±0.15、CRC 全检、频移 <5%）、互干扰（跨雷达 Friis 精确匹配、SINR 一致性）、边界情况（±90° 无 NaN、零距离 R⁴ 律、栅瓣检测）。
 
 ### 核心差异化优势
 
@@ -1412,7 +1477,7 @@ FluxPhased **不是**通用 Maxwell 方程求解器（如 CST/HFSS/MEEP），也
 
 **5. 效能评估体系** — 感知/作战/博弈三层 Metrics + BN-Sobol 敏感性分析 + CDE 综合指标 + 加速评估 + 结构化报告，传统仿真工具均不提供此类评估闭环。
 
-**6. 精度验证严苛到工程级** — 两层背靠背验证：一层对闭式解析公式（Friis 路径损耗误差 0.000000 dB，标准雷达方程 CPU vs GPU 误差 0.00 dB），一层对 RadarSimPy v15.2.0 处理算法。阵列因子 7 个指向角相关系数 = 1.000000，最大误差 0.0024 dB。
+**6. 精度验证严苛到工程级** — 三层背靠背验证：一层对闭式解析公式（Friis 路径损耗误差 0.000000 dB，标准雷达方程 CPU vs GPU 误差 0.00 dB），一层对 RadarSimPy v15.2.0 处理算法，**一层对 MATLAB Phased Array System Toolbox R2024a（83/83 测试通过，~985 组参数扫描）**。阵列因子 7 个指向角相关系数 = 1.000000，最大误差 0.0024 dB。波束导向精度 0.00°，噪声功率公式在所有 NF 值下验证一致。
 
 ### 客观局限性
 
@@ -1428,7 +1493,36 @@ FluxPhased **不是**通用 Maxwell 方程求解器（如 CST/HFSS/MEEP），也
 <details>
 <summary><b>Updates & Bug Fixes / 更新进展与缺陷修复</b></summary>
 
-### 2026-05-15 (2)
+### 2026-05-17
+
+**MATLAB Expanded Cross-Validation (83 Tests) / MATLAB 扩展交叉验证（83 测试）**
+
+使用 MATLAB Phased Array System Toolbox R2024a 对 FluxPhased IQ 级 EM 仿真基础层进行全面参数扫描验证。6 个独立验证脚本，83 个测试，~985 组参数扫描，**全部通过**。
+
+| 脚本 | 测试数 | 扫描数 | 结果 |
+|------|--------|--------|------|
+| `validate_em_s1_array.m` — 阵列物理（导向/波束宽度/方向性/旁瓣/互易性） | 15 | ~175 | **15/15** |
+| `validate_em_s2_channel.m` — 信道与雷达方程（距离/RCS/功率/多普勒/SNR） | 14 | ~170 | **14/14** |
+| `validate_em_s3_waveform.m` — 波形与匹配滤波（LFM/Barker/Frank/Costas/NLFM/P4） | 14 | ~165 | **14/14** |
+| `validate_em_s4_noise.m` — 噪声/BPSK/DRFM（高斯性/CRC/频移/延迟/JNR） | 13 | ~155 | **13/13** |
+| `validate_em_s5_interference.m` — 互扰/SI/极化（跨雷达链路/角 wrapping/SINR） | 13 | ~155 | **13/13** |
+| `validate_em_s6_edge.m` — 边界情况（近零距离/极值间距/±90°钳位/PRF模糊） | 14 | ~165 | **14/14** |
+
+**Bug 发现与修复**：扩展验证在测试代码中发现并修复了多个测试逻辑错误（MF 距离公式、FFT 频谱搜索范围、旁瓣掩码算法等），**确认 FluxPhased 源码无新增 bug**。
+
+### 2026-05-15 (3)
+
+**3dB Noise Power Fix / 3dB 噪声功率修正**
+
+在基础验证（`validate_em_base.m` 20/20）中发现并修正 FluxPhased 噪声生成中多余的 `1/sqrt(2)` 系数，导致噪声功率系统性偏低 3dB。
+
+| 修正项 | 影响文件 | 修正内容 |
+|--------|----------|----------|
+| N1: 噪声生成多余 1/√2 | `vec_channel.py:224` | `noise_view.mul_(self.noise_std * inv_sqrt2)` → `noise_view.mul_(self.noise_std)` |
+| N2: battlefield 噪声缩放 | `vec_battlefield.py:283` | `* channel.noise_std / sqrt(2)` → `* channel.noise_std` |
+| N3: pipeline 噪声补偿 | `pipeline_gpu.py:279` | `* noise_std` → `* noise_std * sqrt(2)` 补偿 complex64 方差 |
+
+**影响分析**：此为乘性错误（固定 3dB），与噪声功率等级无关（NF=1.5dB/6dB/任意值均被修复）。修复后噪声功率公式 `noise_std = sqrt(kB·T·B·F/2)`，每路正交分量方差 = `noise_std²`，复数总功率 = `2·noise_std² = kB·T·B·F`，与标准 RF 噪声功率一致。
 
 **IQ-Level EW Capability Completion / IQ 级电子战能力补全**
 

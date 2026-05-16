@@ -280,7 +280,7 @@ class VecBattlefield:
             rx = channel.apply_one_way(sig, gain)  # [n_active, S]
 
             # Add noise
-            noise = torch.randn_like(rx) * (channel.noise_std / np.sqrt(2.0))
+            noise = torch.randn_like(rx) * channel.noise_std
             rx = rx + noise
 
             # BPSK demodulate
