@@ -288,7 +288,7 @@ class VecElementProcessor:
                 "lfm_down": lambda: generate_lfm(pw, bw, self.fs, dev, "down"),
                 "barker_13": lambda: generate_barker(13, pw / 13, self.fs, dev),
                 "frank_16": lambda: generate_frank(4, self.fs, pw, dev),
-                "costas_16": lambda: generate_costas(4, pw, self.fs, dev),
+                "costas_16": lambda: generate_costas(16, pw, self.fs, dev),
                 "nlfm": lambda: generate_nlfm(pw, bw, self.fs, dev),
                 "p4_code": lambda: generate_p4(4, pw, self.fs, dev),
             }

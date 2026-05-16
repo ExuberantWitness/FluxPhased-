@@ -42,12 +42,19 @@ def generate_barker(n_bits, chip_width, fs, device):
 
 def generate_frank(n_phases, fs, pulse_width, device):
     n = max(1, int(pulse_width * fs))
-    idx = torch.arange(n_phases, device=device)
+    n_pts = n_phases * n_phases
+    idx = torch.arange(n_phases, device=device, dtype=torch.float32)
     i, j = torch.meshgrid(idx, idx, indexing="ij")
     phases = 2.0 * np.pi / n_phases * i * j
-    phase_seq = torch.exp(1j * phases.ravel())
-    indices = torch.linspace(0, len(phase_seq) - 1, n, device=device).long()
-    signal = phase_seq[indices]
+    phase_seq = phases.ravel()
+    # Linear interpolation of phase, then exp → continuous-phase waveform
+    t_norm = torch.linspace(0, n_pts - 1, n, device=device)
+    lo = t_norm.long().clamp(max=n_pts - 2)
+    frac = t_norm - lo.float()
+    phase_lo = phase_seq[lo]
+    phase_hi = phase_seq[(lo + 1).clamp(max=n_pts - 1)]
+    phase_interp = phase_lo + frac * (phase_hi - phase_lo)
+    signal = torch.exp(1j * phase_interp)
     signal = signal / signal.norm()
     return signal
 
@@ -88,9 +95,15 @@ def generate_p4(n_stages, pulse_width, fs, device):
     n = max(1, int(pulse_width * fs))
     k = torch.arange(n_pts, dtype=torch.float32, device=device)
     phases = np.pi * k ** 2 / n_pts - np.pi * k
-    phase_seq = torch.exp(1j * phases)
-    indices = torch.linspace(0, n_pts - 1, n, device=device).long()
-    signal = phase_seq[indices]
+    phase_seq = phases
+    # Linear interpolation of phase
+    t_norm = torch.linspace(0, n_pts - 1, n, device=device)
+    lo = t_norm.long().clamp(max=n_pts - 2)
+    frac = t_norm - lo.float()
+    phase_lo = phase_seq[lo]
+    phase_hi = phase_seq[(lo + 1).clamp(max=n_pts - 1)]
+    phase_interp = phase_lo + frac * (phase_hi - phase_lo)
+    signal = torch.exp(1j * phase_interp)
     signal = signal / signal.norm()
     return signal
 
