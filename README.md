@@ -1493,6 +1493,116 @@ MATLAB Phased Array System Toolbox 是 IQ 级雷达仿真的工业标准（MathW
 <details>
 <summary><b>Updates & Bug Fixes / 更新进展与缺陷修复</b></summary>
 
+### 2026-05-18
+
+**TC-DAMS League Algorithm + 5-Bug Pipeline Fix / TC-DAMS 联赛算法 + 5 项管线 Bug 修复**
+
+完成基于 PSRO 联赛的 TC-DAMS（Task-Coverage Diversity-Aware Meta-Solver）+ Elo-band PFSP 多智能体算法的设计、实现与端到端验证。
+
+---
+
+#### 算法架构
+
+```
+FluxLeague (AlphaStar-style 3-role PSRO)
+│
+├─ Meta-Solver (每 PSRO 迭代)
+│   ├─ Nash (LP)           ← R0 baseline
+│   ├─ Rectified Nash      ← PFSP variant
+│   └─ TC-DAMS (NEW)       ← Nash + task-diversity regularizer
+│       └─ max_σ  H( σ^T F )  s.t. σ ∈ Nash(payoff)
+│           F = per-policy task fingerprints [recon, detect, jam, comm]
+│
+├─ Opponent Sampling
+│   ├─ Uniform / PFSP
+│   └─ Elo-band PFSP (NEW) ← band-annealed Elo filter → PFSP softmax
+│
+└─ 3 Roles per Team (×2 teams = 6 agents)
+    ├─ Main Agent           ← PFSP vs full opponent population
+    ├─ Main Exploiter        ← vs opponent's current Main only
+    └─ League Exploiter      ← PFSP vs full population, resettable
+```
+
+**TC-DAMS 核心创新点**：
+- 在 Nash equilibrium 约束下最大化 meta-mixture 的**任务指纹熵**，迫使混合策略覆盖更多样的任务模式（recon/detect/jam/comm），避免种群塌缩到单一策略
+- 采用 Frank-Wolfe 风格迭代：每步解带线性 bonus 的 Nash-LP 子问题，保证输出始终在合法 simplex 上
+- λ=0 严格回退为标准 Nash（不改变 baseline 行为）
+
+**Elo-band PFSP**：
+- 维护每个 policy 的 Elo rating（从 payoff matrix 更新）
+- 对 PFSP 候选对手按 Elo 分段过滤：band(iter) 线性退火（早期宽→后期窄），模拟从"广泛探索"到"专注对抗"的课程学习
+
+---
+
+#### 实验发现：5 项训练管线 Bug 修复
+
+在 5×5 / 25×25 端到端 smoke 测试中发现并修复了 **5 个阻塞性 Bug**：
+
+| # | 位置 | Bug | 影响 | 修复 |
+|---|------|-----|------|------|
+| 1 | `payoff_matrix.py:74` | `for step in range(10000)` 硬编码 | PSRO 评估永久卡死（不会 done 的环境跑满 10000 步 × 36 对） | 提为 `max_steps_per_game` 超参，timeout 算平局 |
+| 2 | `flux_league.py:245` | `for k, v in trainers.items()` 遍历中修改 dict | PSRO 训练阶段 RuntimeError | 遍历前 `list(trainers.keys())` 快照 |
+| 3 | `ppo/buffer.py:47-56` | RolloutBuffer 满时 assert overflow，无保护 | Phase A/B/D 长 episode 必崩 | 添加 `near_full` 属性，caller 检查后提前 update |
+| 4 | `flux_league.py + phased_trainer.py` | 训练循环仅在 ep%N 边界 update，episode 内部 buffer 溢出 | 同 #3 | store_transition 后检查 `near_full` 立即触发 update |
+| 5 | `phased_trainer.py:104,215,326,407` | 4 处硬编码 `for step in range(1000)`，无视 league.max_steps_per_episode | 配置不生效，phase_a 实际步数 = 1000 而非配置值 50 | 改为 `getattr(self.league, "max_steps_per_episode", 1000)` |
+
+---
+
+#### 复现方法（Linux / 远程 GPU）
+
+```bash
+# 1. 环境
+conda create -n fluxphased python=3.10 -y
+conda activate fluxphased
+pip install torch numpy pyyaml  # + Warp (NVIDIA)
+
+# 2. 克隆
+git clone https://github.com/ExuberantWitness/FluxPhased-.git
+cd FluxPhased-
+
+# 3. 5×5 端到端 smoke（~15 秒，验证算法链路通）
+python smoke_tcdams_5.py
+
+# 4. 25×25 smoke（需 ≥16GB VRAM GPU）
+python smoke_tcdams_25.py
+
+# 5. R0/R1/R3 Phase A ablation（5×5 配置，~2 小时）
+python run_tcdams_ablation.py \
+    --config configs/league_tcdams5.yaml \
+    --cells R0 R1 R3 --seed 42 --phase a
+
+# 6. R0/R1/R3 全 A→D pipeline（5×5 配置，~数小时）
+python run_tcdams_ablation.py \
+    --config configs/league_tcdams5.yaml \
+    --cells R0 R1 R3 --seed 42
+
+# 7. 25×25 全流程（RTX PRO 6000 96GB，待验证）
+python run_tcdams_ablation.py \
+    --config configs/league_tcdams.yaml \
+    --cells R0 R1 R3 --seed 42
+```
+
+---
+
+#### 实验条件与经验
+
+| 项目 | 5×5 (已验证) | 25×25 (部分验证) |
+|------|-------------|-----------------|
+| GPU | RTX 2060 6GB | RTX 2060 6GB → **RTX PRO 6000 96GB** |
+| obs_dim | 6,583 | 163,783 |
+| buffer_size | 256 | 128 |
+| 1 PSRO iter 耗时 | ~15s | front-half PASS (~min), back-half 显存不足 |
+| 单 episode 训练耗时 | ~9s (5×5) | 待测 (RTX PRO 6000) |
+| 内存占用 | ~1.5 GB RAM | ~2 GB RAM (buffer 128) |
+| Phase A 三组全跑 | ~2h (5×5) | 待测 |
+
+**已知限制**：
+- 训练管线 buffer 在 CPU 上，高维 obs 时每步 `.cpu()` 同步拷贝形成 PCIe 瓶颈（非 GPU 计算瓶颈）
+- num_envs=1 时 GPU 严重欠饱和，多 env 可大幅加速
+- RTX 2060 6GB 无法支撑 25×25 训练阶段（back-half OOM），需 ≥16GB VRAM
+
+---
+
 ### 2026-05-17
 
 **MATLAB Expanded Cross-Validation (83 Tests) / MATLAB 扩展交叉验证（83 测试）**
