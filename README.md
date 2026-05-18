@@ -1670,7 +1670,7 @@ MATLAB Phased Array System Toolbox 是 IQ 级雷达仿真的工业标准（MathW
 
 **TC-DAMS League Algorithm + 5-Bug Pipeline Fix / TC-DAMS 联赛算法 + 5 项管线 Bug 修复**
 
-完成基于 PSRO 联赛的 TC-DAMS（Task-Coverage Diversity-Aware Meta-Solver）+ Elo-band PFSP 多智能体算法的设计、实现与端到端验证。
+完成基于 PSRO 联赛的 TC-DAMS（Task-Coverage Diversity-Aware Meta-Solver）+ Elo-band PFSP 多智能体算法的**设计、实现与端到端验证**。核心目标：在电子战雷达对抗的非传递博弈结构（detect → jam → recon → detect 循环克制）中，通过种群级训练寻找混合策略 Nash 均衡，避免策略塌缩到单一模式。
 
 ---
 
@@ -1679,31 +1679,108 @@ MATLAB Phased Array System Toolbox 是 IQ 级雷达仿真的工业标准（MathW
 ```
 FluxLeague (AlphaStar-style 3-role PSRO)
 │
-├─ Meta-Solver (每 PSRO 迭代)
-│   ├─ Nash (LP)           ← R0 baseline
-│   ├─ Rectified Nash      ← PFSP variant
+├─ Meta-Solver (每 PSRO 迭代求解混合策略 σ)
+│   ├─ Nash (LP)           ← R0 baseline: 标准 2-player 零和 LP
+│   ├─ Rectified Nash      ← PFSP variant: 低于阈值的权重清零
 │   └─ TC-DAMS (NEW)       ← Nash + task-diversity regularizer
-│       └─ max_σ  H( σ^T F )  s.t. σ ∈ Nash(payoff)
-│           F = per-policy task fingerprints [recon, detect, jam, comm]
+│       └─ max_σ [ min_τ σ^T·U·τ  +  λ·H(σ^T·F) ]
+│           U = payoff matrix [K, K_opp]
+│           F = per-policy task fingerprints [K, 4] on Δ³
+│           H = Shannon entropy in nats
+│           σ ∈ Nash(K-simplex), τ ∈ K_opp-simplex
+│       Solver: Frank-Wolfe (Conditional Gradient), 25 iterations
+│         Linearize H → bonus vector → solve augmented Nash-LP via HiGHS
+│         Step α_k = 2/(k+2), tol = 1e-6 on L2 change
+│         λ=0 → numerically identical to solve_nash (baseline-safe)
 │
-├─ Opponent Sampling
-│   ├─ Uniform / PFSP
+├─ Opponent Sampling (每场训练选择对手)
+│   ├─ Uniform / PFSP     ← baseline
 │   └─ Elo-band PFSP (NEW) ← band-annealed Elo filter → PFSP softmax
+│       └─ band(iter) = linear anneal: 400 → 100 Elo over 15 PSRO iters
+│         Elo updated from payoff matrix with K-factor = 24
+│         Early: wide band (exploration) → Late: narrow band (exploitation)
 │
 └─ 3 Roles per Team (×2 teams = 6 agents)
-    ├─ Main Agent           ← PFSP vs full opponent population
-    ├─ Main Exploiter        ← vs opponent's current Main only
+    ├─ Main Agent           ← PFSP vs full opponent population, deploy-ready
+    ├─ Main Exploiter        ← vs opponent's current Main only, targeted
     └─ League Exploiter      ← PFSP vs full population, resettable
 ```
 
-**TC-DAMS 核心创新点**：
-- 在 Nash equilibrium 约束下最大化 meta-mixture 的**任务指纹熵**，迫使混合策略覆盖更多样的任务模式（recon/detect/jam/comm），避免种群塌缩到单一策略
-- 采用 Frank-Wolfe 风格迭代：每步解带线性 bonus 的 Nash-LP 子问题，保证输出始终在合法 simplex 上
-- λ=0 严格回退为标准 Nash（不改变 baseline 行为）
+**重要源文件**：
 
-**Elo-band PFSP**：
-- 维护每个 policy 的 Elo rating（从 payoff matrix 更新）
-- 对 PFSP 候选对手按 Elo 分段过滤：band(iter) 线性退火（早期宽→后期窄），模拟从"广泛探索"到"专注对抗"的课程学习
+| 文件 | 行数 | 职责 |
+|------|------|------|
+| `training/flux_league.py` | ~459 | 完整三角色联赛管理器（PSRO 迭代编排 + 训练调度） |
+| `training/self_play/meta_solver.py` | ~126 | Nash LP + Rectified Nash + NashConv 计算 |
+| `training/self_play/tc_dams_solver.py` | ~215 | **TC-DAMS**: Frank-Wolfe + 增广 LP + 任务指纹熵梯度 |
+| `training/self_play/elo_band_sampler.py` | ~162 | **Elo-band PFSP**: Elo 维护 + 带宽退火 + 过滤采样 |
+| `training/self_play/opponent_pool.py` | ~160 | 策略池 + PFSP 优先采样 + 胜率记录 |
+| `training/self_play/payoff_matrix.py` | ~200 | 支付矩阵评估 + 指纹累积 + 超参 `max_steps_per_game` |
+| `training/ppo/buffer.py` | ~180 | GAE 回放缓冲 + `near_full` 溢出保护 |
+| `training/curriculum/phased_trainer.py` | ~450 | Phase A→D 四阶段课程编排器 |
+
+---
+
+#### TC-DAMS: 技术细节
+
+**Task Fingerprint（任务指纹）**：每个 policy πᵢ 从 MFARVecEnv 的 `step()` 自动获取，无需额外检测。指纹 F[i] ∈ Δ³ 是该策略长期运行时分配到 {recon, detect, jam, comm} 四类任务的阵元比例平均值，由 `vec_mfar_env.py` 每步累积并随 `info["task_fingerprint"]` 回流。
+
+**优化目标**：
+```
+σ* = arg max_σ [ LP_value(σ) + λ · H( σ^T·F ) ]
+
+其中 LP_value(σ) = min_τ σ^T·U·τ    (零和博弈安全值)
+     H(p) = -Σ_t p_t·log(p_t)      (Shannon entropy, 自然对数)
+     F ∈ R^{K×4}, 每行在 Δ³ 上
+```
+
+**Frank-Wolfe 迭代**（第 k 步）：
+1. 计算熵梯度 ∇_σ H(σ^T·F) → `bonus = λ · ∇H`（centered to zero mean）
+2. 解增广 Nash-LP: `max_σ [ LP_value(σ) + bonus^T·σ ]` → vertex s
+3. 凸组合步进: `σ ← (1 - α_k)·σ + α_k·s`, α_k = 2/(k+2)
+4. 收敛判据: `||σ_new - σ_old||₂ < 10⁻⁶`
+
+**关键性质**：
+- σ 始终在合法 K-simplex 上（LP 约束保证）
+- λ=0 时与标准 Nash LP 数值等价
+- 每迭代仅一次 LP 求解（HiGHS），开销可忽略（<1ms 对 K≤16）
+
+---
+
+#### Elo-band PFSP: 技术细节
+
+**Elo 评分系统**：
+- 初始 Elo = 1500, K-factor = 24
+- 每 PSRO 迭代从 payoff matrix 批量更新: `elo += K · (win_rate - expected)`
+- 期望胜率: `E = 1/(1 + 10^((elo_opp - elo_self)/400))`
+
+**带退火的带宽过滤**：
+```
+band(iter) = (1 - α)·400 + α·100    α = min(iter/15, 1)
+```
+- 早期（iter=0）→ band=400: 几乎所有对手都在带内，广泛探索
+- 后期（iter≥15）→ band=100: 仅匹配相近 ELO 的对手，专注精炼
+- 采样时先按 band 过滤，再在过滤集上应用 PFSP softmax（温度=loss_rate）
+- 若过滤后集合为空，自动回退到全量 PFSP
+
+**存储**：Elo ratings 持久化为 `checkpoints/<exp>/elo.json`，支持中断续训。
+
+---
+
+#### 消融实验矩阵
+
+配置 6 组对照实验，独立评估 TC-DAMS 和 Elo-band PFSP 的贡献：
+
+| Cell | Meta-Solver | λ | Opponent Sampling | 用途 |
+|------|------------|---|--------------------|------|
+| **R0** | Nash (LP) | 0.0 | Standard PFSP | Baseline |
+| **R1** | TC-DAMS | 0.3 | Standard PFSP | 仅 TC-DAMS 贡献 |
+| R1lo | TC-DAMS | 0.1 | Standard PFSP | λ 灵敏度（低） |
+| R1hi | TC-DAMS | 1.0 | Standard PFSP | λ 灵敏度（高） |
+| R2 | Nash (LP) | 0.0 | Elo-band PFSP | 仅 Elo-band 贡献 |
+| **R3** | TC-DAMS | 0.3 | Elo-band PFSP | 联合效果 |
+
+对应 `run_tcdams_ablation.py` 中的 `--cells R0 R1 R3` 预设。
 
 ---
 
@@ -1711,68 +1788,49 @@ FluxLeague (AlphaStar-style 3-role PSRO)
 
 在 5×5 / 25×25 端到端 smoke 测试中发现并修复了 **5 个阻塞性 Bug**：
 
-| # | 位置 | Bug | 影响 | 修复 |
+| # | 文件 | Bug | 影响 | 修复 |
 |---|------|-----|------|------|
-| 1 | `payoff_matrix.py:74` | `for step in range(10000)` 硬编码 | PSRO 评估永久卡死（不会 done 的环境跑满 10000 步 × 36 对） | 提为 `max_steps_per_game` 超参，timeout 算平局 |
-| 2 | `flux_league.py:245` | `for k, v in trainers.items()` 遍历中修改 dict | PSRO 训练阶段 RuntimeError | 遍历前 `list(trainers.keys())` 快照 |
-| 3 | `ppo/buffer.py:47-56` | RolloutBuffer 满时 assert overflow，无保护 | Phase A/B/D 长 episode 必崩 | 添加 `near_full` 属性，caller 检查后提前 update |
+| 1 | `payoff_matrix.py` | `for step in range(10000)` 硬编码 | PSRO 评估永久卡死（不会 done 的环境跑满 10000 步 × 36 对） | 提为 `max_steps_per_game` 超参，timeout 算平局 |
+| 2 | `flux_league.py` | `for k, v in trainers.items()` 遍历中修改 dict | PSRO 训练阶段 RuntimeError | 遍历前 `list(trainers.keys())` 快照 |
+| 3 | `ppo/buffer.py` | RolloutBuffer 满时 assert overflow，无保护 | Phase A/B/D 长 episode 必崩 | 添加 `near_full` 属性，caller 检查后提前 update |
 | 4 | `flux_league.py + phased_trainer.py` | 训练循环仅在 ep%N 边界 update，episode 内部 buffer 溢出 | 同 #3 | store_transition 后检查 `near_full` 立即触发 update |
-| 5 | `phased_trainer.py:104,215,326,407` | 4 处硬编码 `for step in range(1000)`，无视 league.max_steps_per_episode | 配置不生效，phase_a 实际步数 = 1000 而非配置值 50 | 改为 `getattr(self.league, "max_steps_per_episode", 1000)` |
+| 5 | `phased_trainer.py` | 4 处硬编码 `for step in range(1000)`，无视 league.max_steps_per_episode | 配置不生效 | 改为 `getattr(self.league, "max_steps_per_episode", 1000)` |
 
 ---
 
-#### 复现方法（Linux / 远程 GPU）
+#### 端到端 Smoke 验证
 
-```bash
-# 1. 环境
-conda create -n fluxphased python=3.10 -y
-conda activate fluxphased
-pip install torch numpy pyyaml  # + Warp (NVIDIA)
+**smoke_tcdams_5.py**（5×5 小规模）通过 4 项校验：
 
-# 2. 克隆
-git clone https://github.com/ExuberantWitness/FluxPhased-.git
-cd FluxPhased-
+| 检查项 | 验证内容 | 结果 |
+|--------|----------|------|
+| task_fingerprint | `env.step()` 返回 `[E, teams, 4]` 张量，每行在 Δ³ 上 | PASS |
+| fingerprint 累积 | PayoffMatrix 正确记录每个 policy 的任务指纹 | PASS |
+| PSRO 迭代 | 1 轮完整 PSRO 迭代无崩溃 | PASS |
+| diag_history 持久化 | JSON 往返包含 sigma / nash_conv / task_entropy / effective_K | PASS |
 
-# 3. 5×5 端到端 smoke（~15 秒，验证算法链路通）
-python smoke_tcdams_5.py
-
-# 4. 25×25 smoke（需 ≥16GB VRAM GPU）
-python smoke_tcdams_25.py
-
-# 5. R0/R1/R3 Phase A ablation（5×5 配置，~2 小时）
-python run_tcdams_ablation.py \
-    --config configs/league_tcdams5.yaml \
-    --cells R0 R1 R3 --seed 42 --phase a
-
-# 6. R0/R1/R3 全 A→D pipeline（5×5 配置，~数小时）
-python run_tcdams_ablation.py \
-    --config configs/league_tcdams5.yaml \
-    --cells R0 R1 R3 --seed 42
-
-# 7. 25×25 全流程（RTX PRO 6000 96GB，待验证）
-python run_tcdams_ablation.py \
-    --config configs/league_tcdams.yaml \
-    --cells R0 R1 R3 --seed 42
-```
+**smoke_tcdams_25.py**（25×25 全尺寸）：
+- front-half（env 构建 + fingerprint + 初始化 + 1 PSRO iter）PASS
+- back-half（TPPO 训练阶段）需 ≥16 GB VRAM
 
 ---
 
 #### 实验条件与经验
 
-| 项目 | 5×5 (已验证) | 25×25 (部分验证) |
-|------|-------------|-----------------|
-| GPU | RTX 2060 6GB | RTX 2060 6GB → **RTX PRO 6000 96GB** |
+| 项目 | 5×5 (已验证) | 25×25 (front-half 已验证) |
+|------|-------------|---------------------------|
+| GPU | RTX 2060 6GB / RTX 4090 24GB | RTX 4090 24GB |
 | obs_dim | 6,583 | 163,783 |
 | buffer_size | 256 | 128 |
-| 1 PSRO iter 耗时 | ~15s | front-half PASS (~min), back-half 显存不足 |
-| 单 episode 训练耗时 | ~9s (5×5) | 待测 (RTX PRO 6000) |
-| 内存占用 | ~1.5 GB RAM | ~2 GB RAM (buffer 128) |
-| Phase A 三组全跑 | ~2h (5×5) | 待测 |
+| 1 PSRO iter 耗时 | ~15s | ~1 min (smoke check) |
+| 单 episode 训练耗时 | ~9s (5×5) | 待全量测试 |
+| 内存占用 | ~1.5 GB CPU RAM | ~2 GB CPU RAM (buffer 128) |
+| Phase A 三组全跑 | ~2h (5×5) | 待全量测试 |
 
 **已知限制**：
 - 训练管线 buffer 在 CPU 上，高维 obs 时每步 `.cpu()` 同步拷贝形成 PCIe 瓶颈（非 GPU 计算瓶颈）
 - num_envs=1 时 GPU 严重欠饱和，多 env 可大幅加速
-- RTX 2060 6GB 无法支撑 25×25 训练阶段（back-half OOM），需 ≥16GB VRAM
+- 25×25 训练阶段（TPPO back-half）需 ≥16GB VRAM；RTX 4090 24GB 理论可行
 
 ---
 
