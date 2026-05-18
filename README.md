@@ -1668,6 +1668,72 @@ MATLAB Phased Array System Toolbox 是 IQ 级雷达仿真的工业标准（MathW
 
 ### 2026-05-18
 
+**League Training End-to-End + CPI Dual-Mode Architecture / 联赛训练全流程打通 + CPI 双模式架构**
+
+联赛训练四阶段（A→B→C→D）首次在 Linux / RTX 4090 上端到端跑通，同时引入 CPI 缓冲双模式解决显存瓶颈。
+
+---
+
+#### Single-File Consolidation / 单文件整合
+
+原有 16 个训练文件整合为单一 `train_league.py`，消除 YAML 配置和包内相对导入，直接运行：
+
+```bash
+conda activate fluxphased
+python train_league.py --cells R0 --seed 42           # 单 cell 全流程
+python train_league.py --cells R0 R1 R3 --seed 42      # 三组消融
+```
+
+---
+
+#### CPI Dual-Mode: Streaming vs Pre-allocated / CPI 双模式
+
+针对 `_buf_cpi` [E,R,N,P,S] 在 25×25×32 pulses 下 12.8 GB 的瓶颈，新增按 pulse 可选的缓冲策略：
+
+| 模式 | `_buf_cpi` | 25×25×32 pulses VRAM | 适用场景 |
+|------|-----------|---------------------|----------|
+| **Streaming** (`cpi_preallocate=False`) | 不分配 (0 GB) | **2.99 GB** | RTX 4090 24GB 测试 |
+| **Pre-allocated** (`cpi_preallocate=True`) | 12.80 GB | 15.13 GB | RTX PRO 6000 96GB 批量实验 |
+
+**实现**：脉冲循环内直接 FFT → `_buf_raw_fft` [E,R,N,P,bins]（42 MB），后处理统一进行 per-task MF。FFT 线性性质保证两模式数学等价。
+
+---
+
+#### Precision Validation / 精度验证
+
+同一 seed=42 下 streaming vs pre-allocated 输出对比（5×5, 3 steps, 9 tensors）：
+
+| 指标 | Streaming | Pre-allocated | Diff |
+|------|-----------|---------------|------|
+| Spectrum max | 1.013e-03 | 1.013e-03 | **0.00e+00** |
+| State mean | -4.013e-02 | -4.013e-02 | **0.00e+00** |
+| Task fingerprint | [0.22,0.40,0.18,0.20] | [0.22,0.40,0.18,0.20] | **0.00e+00** |
+| Array directivity | 32.93 dB | 32.93 dB | vs MATLAB 32.9 dB (+0.03) |
+| Array 3dB BW | 4.06° | 4.06° | vs MATLAB 4.06° (一致) |
+
+**83/83 MATLAB 交叉验证全部保持通过**（阵列物理、信道、波形、噪声/BPSK/DRFM、互扰、边界）。
+
+---
+
+#### End-to-End League Verification / 联赛端到端验证
+
+R0 (Nash baseline) 在 RTX 4090 + streaming 模式下完整跑通 Phase A→B→C→D：
+
+| Phase | 内容 | 产出 |
+|-------|------|------|
+| A | 单任务预训练（recon/detect/jam） | 3 个 pretrain_*.pt |
+| B | 多任务对抗整合（5 policies） | 5 个 phaseB.pt + policy_pool |
+| C | 2 次 PSRO 迭代（payoff matrix + Nash LP） | diag_history.json + gen1/gen2 checkpoints |
+| D | Exploiter 精炼 + 100 局终评 | Final agents + 胜率报告 |
+
+**修改文件**：
+- `radar_sim/gpu/vec_mfar_env.py` — 新增 `cpi_preallocate` 参数 + streaming 脉冲循环
+- `radar_sim/gpu/vec_element_processor.py` — `process_rx_cpi_unified` 新增 `iq_is_fft` 参数
+- `train_league.py` — **新增**：16 文件整合的单体联赛训练脚本
+- `check_precision.py` — **新增**：streaming vs pre-allocated 精度对比脚本
+
+---
+
 **TC-DAMS League Algorithm + 5-Bug Pipeline Fix / TC-DAMS 联赛算法 + 5 项管线 Bug 修复**
 
 完成基于 PSRO 联赛的 TC-DAMS（Task-Coverage Diversity-Aware Meta-Solver）+ Elo-band PFSP 多智能体算法的**设计、实现与端到端验证**。核心目标：在电子战雷达对抗的非传递博弈结构（detect → jam → recon → detect 循环克制）中，通过种群级训练寻找混合策略 Nash 均衡，避免策略塌缩到单一模式。
