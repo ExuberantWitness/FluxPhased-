@@ -8,8 +8,79 @@
 
 ## Quick Start / 快速开始
 
+### 1. Prerequisites / 前置条件
+
+| Requirement | Minimum | Recommended |
+|-------------|---------|-------------|
+| **OS** | Linux (Ubuntu 20.04+) / Windows 10+ | Ubuntu 22.04 |
+| **GPU** | NVIDIA GPU with ≥8 GB VRAM (CUDA ≥12.0) | RTX 4090 / A100 (24+ GB) |
+| **Driver** | NVIDIA driver ≥525 | 580+ |
+| **RAM** | 16 GB | 32+ GB |
+| **Disk** | 5 GB free | 10+ GB |
+| **Conda** | Miniconda3 / Anaconda3 (latest) | — |
+
+> ⚠️ **No GPU / CPU-only**: The simulation depends on NVIDIA Warp CUDA kernels. CPU fallback is not supported. See [FAQ](#faq) for cloud GPU options.
+
+### 2. Clone / 克隆仓库
+
 ```bash
-conda activate env_isaacsim  # requires warp, torch with CUDA
+# Standard clone
+git clone https://github.com/ExuberantWitness/FluxPhased-.git
+cd FluxPhased-
+
+# If behind a proxy, set environment variables first:
+# Linux / macOS:
+#   export HTTP_PROXY=http://127.0.0.1:6789 HTTPS_PROXY=http://127.0.0.1:6789
+# Windows PowerShell:
+#   $env:HTTP_PROXY="http://127.0.0.1:6789"; $env:HTTPS_PROXY="http://127.0.0.1:6789"
+```
+
+### 3. Create Conda Environment / 创建 conda 环境
+
+```bash
+# Create a dedicated environment with Python 3.10
+conda create -n fluxphased python=3.10 -y
+conda activate fluxphased
+```
+
+### 4. Install Dependencies / 安装依赖
+
+```bash
+# PyTorch with CUDA 12.1 (~2.5 GB, use conda for reliable large-file download)
+conda install pytorch==2.4.1 torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia -y
+
+# NVIDIA Warp GPU kernel framework
+pip install warp-lang==1.10.1
+
+# Multi-agent RL environment wrapper
+pip install pettingzoo==1.24.3
+
+# RL base API
+pip install gym==0.26.2
+pip install gymnasium==1.1.1
+
+# Scientific computing & visualization
+pip install numpy==1.24.4
+pip install scipy==1.10.1
+pip install matplotlib==3.7.5
+
+# YAML config loader
+pip install pyyaml==6.0.3
+
+# Training utilities (optional, for RL training)
+pip install tensorboard==2.14.0
+pip install tqdm==4.67.1
+pip install pandas==2.0.3
+```
+
+### 5. Verify Installation / 验证安装
+
+Run the following commands in order. All tests should pass without errors.
+
+```bash
+conda activate fluxphased
+
+# Validation tests (can run without training deps)
 python radar_sim/gpu/test_gpu_pipeline.py        # single-CPI pipeline test
 python radar_sim/gpu/test_vec_env.py             # vectorized env (smoke + benchmark)
 python radar_sim/gpu/test_2env_25.py             # 2-env precision + usability on 25x25
@@ -17,10 +88,80 @@ python radar_sim/gpu/test_mfar.py                # MFAR 4-task per-element contr
 python radar_sim/gpu/test_missile_env.py          # Missile combat + multi-agent tests
 python radar_sim/pz_gpu/test_pettingzoo.py         # PettingZoo Parallel API tests
 python radar_sim/evaluation/test_evaluation.py     # Effectiveness evaluation metrics tests
-python -m training.verify_training               # PPO training verification (gradients + loss)
+
+# IQ capability validation (6 capabilities)
+python validation/test_iq_capabilities.py
+
+# Precision validation against MATLAB
+python validation/validate_precision.py
+python validation/validate_iq_precision.py
+
+# PPO training verification (gradients + loss)
+python -m training.verify_training
 ```
 
-> Windows GBK 控制台请使用 `PYTHONIOENCODING=utf-8` 前缀执行，否则脚本中的 emoji 会触发 `UnicodeEncodeError`。
+### 6. Smoke Benchmarks / 冒烟基准测试
+
+Quick benchmarks to verify performance on your hardware:
+
+```bash
+python smoke_tcdams_5.py       # 5-step TC-DAMS league smoke test  (~30 sec)
+python smoke_tcdams_25.py      # 25-step TC-DAMS league smoke test (~2 min)
+python run_tcdams_ablation.py  # Full ablation study                 (~10 min)
+```
+
+### 7. Run a Simple Training / 简单训练示例
+
+```bash
+# Start PPO training with default config (YAML-based)
+python training/train.py --config configs/league.yaml --mode train
+
+# Monitor with TensorBoard
+tensorboard --logdir runs/ --port 6006
+```
+
+### Troubleshooting / 常见问题
+
+<details>
+<summary><b>ImportError: No module named 'warp'</b></summary>
+
+Ensure warp-lang is installed in the correct environment:
+```bash
+conda activate fluxphased
+pip install warp-lang==1.10.1
+python -c "import warp; print(warp.__version__)"  # should print 1.10.1
+```
+</details>
+
+<details>
+<summary><b>CUDA / GPU not detected</b></summary>
+
+Verify GPU visibility:
+```bash
+nvidia-smi                                    # should show your GPU
+python -c "import torch; print(torch.cuda.is_available())"  # must print True
+```
+If `nvidia-smi` fails, reinstall NVIDIA drivers. If `torch.cuda.is_available()` is False, reinstall PyTorch with the correct CUDA version.
+</details>
+
+<details>
+<summary><b>UnicodeEncodeError on Windows GBK console</b></summary>
+
+Prefix every Python command with `PYTHONIOENCODING=utf-8`:
+```powershell
+PYTHONIOENCODING=utf-8 python radar_sim/gpu/test_mfar.py
+```
+</details>
+
+<details>
+<summary><b>Out of GPU memory (OOM)</b></summary>
+
+The 25×25 array requires ~2 GB VRAM. If you see CUDA OOM errors, close other GPU processes (check with `nvidia-smi`) and reduce batch size by editing `physics.yaml`:
+```yaml
+num_envs: 1        # decrease from default (e.g., 8 → 2 → 1)
+num_radars: 2      # decrease from default (e.g., 4 → 2)
+```
+</details>
 
 ---
 
