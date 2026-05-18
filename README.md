@@ -45,6 +45,8 @@ conda activate fluxphased
 
 ### 4. Install Dependencies / 安装依赖
 
+#### International / 国外版
+
 ```bash
 # PyTorch with CUDA 12.1 (~2.5 GB, use conda for reliable large-file download)
 conda install pytorch==2.4.1 torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia -y
@@ -71,6 +73,36 @@ pip install pyyaml==6.0.3
 pip install tensorboard==2.14.0
 pip install tqdm==4.67.1
 pip install pandas==2.0.3
+```
+
+#### China Domestic / 国内版（清华镜像）
+
+```bash
+# PyTorch with CUDA 12.1 (~2.5 GB)
+pip install torch==2.11.0 torchvision==0.26.0 torchaudio==2.11.0 -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+
+# NVIDIA Warp GPU kernel framework
+pip install warp-lang==1.10.1 -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+
+# Multi-agent RL environment wrapper
+pip install pettingzoo==1.24.3 -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+
+# RL base API
+pip install gym==0.26.2 -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+pip install gymnasium==1.1.1 -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+
+# Scientific computing & visualization
+pip install numpy==1.24.4 -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+pip install scipy==1.10.1 -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+pip install matplotlib==3.7.5 -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+
+# YAML config loader
+pip install pyyaml==6.0.3 -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+
+# Training utilities (optional, for RL training)
+pip install tensorboard==2.14.0 -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+pip install tqdm==4.67.1 -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+pip install pandas==2.0.3 -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
 ```
 
 ### 5. Verify Installation / 验证安装
