@@ -446,6 +446,339 @@ class RadarActorCritic(nn.Module):
         return log_prob, entropy, value
 
 
+class SubArrayRadarActorCritic(nn.Module):
+    """Sub-array decomposed radar policy for large arrays (25x25+).
+
+    Groups n_elem elements into n_sub sub-arrays (sub_size x sub_size blocks).
+    Internally produces per-sub-array actions (K*22+3 dims), then broadcasts
+    to per-element actions (n_elem*22+3 dims). External interface identical
+    to RadarActorCritic — drop-in replacement requiring no other code changes.
+
+    State layout (from MFARVecEnv._assemble_state):
+      spec_flat   [n_elem * P * B_bins]
+      comm_flat   [n_elem * 2]
+      recon_flat  [n_elem * 4]
+      vehicle     [5]
+      missile     [12]
+      cmd_instr   [num_output_length]
+    """
+
+    def __init__(
+        self,
+        n_elem: int = 625,
+        n_pulses: int = 32,
+        n_bins: int = 1024,
+        sub_array_size: int = 5,
+        spectrum_hidden: int = 256,
+        vehicle_dim: int = 5,
+        missile_dim: int = 12,
+        commander_instr_dim: int = 16,
+    ):
+        super().__init__()
+        self.n_elem = n_elem
+        self.n_pulses = n_pulses
+        self.n_bins = n_bins
+        self.sub_size = sub_array_size
+        self.elem_per_sub = sub_array_size * sub_array_size
+        self.n_sub = n_elem // self.elem_per_sub
+        assert n_elem % self.elem_per_sub == 0, (
+            f"n_elem={n_elem} must be divisible by sub_array_size^2={self.elem_per_sub}"
+        )
+
+        # State layout dimensions
+        self.spectrum_flat_dim = n_elem * n_pulses * n_bins
+        self.comm_flat_dim = n_elem * 2
+        self.recon_flat_dim = n_elem * 4
+        self.other_dim = vehicle_dim + missile_dim + commander_instr_dim
+
+        # Sub-array spectrum encoder: Conv1D per sub-array
+        self.conv = nn.Sequential(
+            nn.Conv1d(n_pulses, 32, kernel_size=7, padding=3, stride=2),
+            nn.ReLU(),
+            nn.Conv1d(32, 64, kernel_size=5, padding=2, stride=2),
+            nn.ReLU(),
+            nn.Conv1d(64, 128, kernel_size=3, padding=1, stride=2),
+            nn.ReLU(),
+        )
+        with torch.no_grad():
+            dummy = torch.zeros(1, n_pulses, n_bins)
+            conv_out = self.conv(dummy)
+            conv_flat = conv_out.shape[1] * conv_out.shape[2]
+        self.proj = nn.Linear(conv_flat, spectrum_hidden)
+
+        # Cross sub-array attention
+        self.attention = nn.MultiheadAttention(
+            embed_dim=spectrum_hidden, num_heads=4, batch_first=True,
+        )
+        self.attn_norm = nn.LayerNorm(spectrum_hidden)
+
+        # Per-sub-array feature MLP (spectrum_hidden + comm(2) + recon(4))
+        per_sub_in = spectrum_hidden + 2 + 4
+        self.shared = nn.Sequential(
+            nn.Linear(per_sub_in, 256),
+            nn.ReLU(),
+        )
+
+        # Action heads (applied per sub-array)
+        self.task_head = nn.Linear(256, 4)
+        self.param_head = nn.Linear(256, 8)
+
+        # Global heads (from pooled sub-array features)
+        self.vehicle_head = nn.Linear(spectrum_hidden + self.other_dim, 3)
+        self.value_head = nn.Linear(spectrum_hidden + self.other_dim, 1)
+
+        # Log-std for continuous params (shared across all sub-arrays)
+        self.log_std_params = nn.Parameter(torch.zeros(8))
+        self.log_std_vehicle = nn.Parameter(torch.zeros(3))
+
+    def _parse_state(self, state: torch.Tensor):
+        """Parse flat state into structured components.
+
+        Returns:
+            spectrum: [B, n_elem, P, B_bins]
+            comm: [B, n_elem, 2]
+            recon: [B, n_elem, 4]
+            other: [B, other_dim] (vehicle + missile + cmd_instr)
+        """
+        B = state.shape[0]
+        off = 0
+
+        spec_flat = state[..., off:off + self.spectrum_flat_dim]
+        off += self.spectrum_flat_dim
+        spectrum = spec_flat.reshape(B, self.n_elem, self.n_pulses, self.n_bins)
+
+        comm_flat = state[..., off:off + self.comm_flat_dim]
+        off += self.comm_flat_dim
+        comm = comm_flat.reshape(B, self.n_elem, 2)
+
+        recon_flat = state[..., off:off + self.recon_flat_dim]
+        off += self.recon_flat_dim
+        recon = recon_flat.reshape(B, self.n_elem, 4)
+
+        other = state[..., off:off + self.other_dim]
+
+        return spectrum, comm, recon, other
+
+    def _encode_sub_arrays(self, spectrum, comm, recon):
+        """Encode spectrum/comm/recon into per-sub-array features.
+
+        Args:
+            spectrum: [B, n_elem, P, B_bins]
+            comm: [B, n_elem, 2]
+            recon: [B, n_elem, 4]
+        Returns:
+            sub_features: [B, n_sub, spectrum_hidden + 6]
+        """
+        B = spectrum.shape[0]
+        K = self.n_sub
+        S2 = self.elem_per_sub
+        P, BINS = self.n_pulses, self.n_bins
+
+        # Reshape to sub-arrays and average pool
+        sub_spec = spectrum.reshape(B, K, S2, P, BINS).mean(dim=2)  # [B, K, P, BINS]
+        sub_comm = comm.reshape(B, K, S2, 2).mean(dim=2)            # [B, K, 2]
+        sub_recon = recon.reshape(B, K, S2, 4).mean(dim=2)          # [B, K, 4]
+
+        # Conv1D per sub-array
+        x = sub_spec.reshape(B * K, P, BINS)
+        x = self.conv(x)
+        x = x.reshape(B * K, -1)
+        x = self.proj(x)  # [B*K, hidden]
+        x = x.reshape(B, K, -1)
+
+        # Cross sub-array attention with residual + norm
+        attn_out, _ = self.attention(x, x, x)
+        x = self.attn_norm(x + attn_out)  # [B, K, hidden]
+
+        # Concatenate comm + recon per sub-array
+        sub_features = torch.cat([x, sub_comm, sub_recon], dim=-1)  # [B, K, hidden+6]
+
+        return sub_features, x  # sub_features, pooled_spectrum
+
+    def _get_distributions(self, state: torch.Tensor):
+        """Build action distributions from state.
+
+        Returns:
+            task_dist, param_dist, vehicle_dist, value, sub_indices
+        """
+        B = state.shape[0]
+        K = self.n_sub
+
+        spectrum, comm, recon, other = self._parse_state(state)
+        sub_feat, pooled_spec = self._encode_sub_arrays(spectrum, comm, recon)
+
+        # Global features for vehicle/value heads
+        global_spec = pooled_spec.mean(dim=1)  # [B, hidden]
+        global_feat = torch.cat([global_spec, other], dim=-1)  # [B, hidden+other]
+
+        # Per-sub-array action features
+        shared_feat = self.shared(sub_feat)  # [B, K, 256]
+
+        # Task distribution per sub-array
+        task_logits = self.task_head(shared_feat)  # [B, K, 4]
+        task_dist = torch.distributions.Categorical(logits=task_logits)
+
+        # Param distribution per sub-array (shared log_std)
+        param_mean = torch.sigmoid(self.param_head(shared_feat))  # [B, K, 8]
+        param_std = torch.exp(self.log_std_params)  # [8]
+        param_dist = torch.distributions.Normal(param_mean, param_std)
+
+        # Vehicle distribution
+        veh_mean = torch.tanh(self.vehicle_head(global_feat))  # [B, 3]
+        veh_std = torch.exp(self.log_std_vehicle)  # [3]
+        vehicle_dist = torch.distributions.Normal(veh_mean, veh_std)
+
+        value = self.value_head(global_feat)  # [B, 1]
+
+        return task_dist, param_dist, vehicle_dist, value
+
+    def _expand_to_elements(
+        self,
+        task_frac: torch.Tensor,  # [B, K, 4]
+        params: torch.Tensor,      # [B, K, 8]
+        vehicle: torch.Tensor,     # [B, 3]
+    ) -> torch.Tensor:
+        """Broadcast sub-array actions to element-level flat action [B, 13753]."""
+        B = task_frac.shape[0]
+        K = self.n_sub
+        S2 = self.elem_per_sub
+        N = self.n_elem
+
+        p = params  # [B, K, 8]
+
+        # Beam steering: same for all tasks per sub-array
+        beam_az = p[..., 0:1].expand(B, K, 4) * 0.5 + 0.5
+        beam_el = p[..., 1:2].expand(B, K, 4) * 0.5 + 0.5
+        beam = torch.stack([beam_az, beam_el], dim=-1).reshape(B, K, 8)
+
+        detect_p = p[..., 2:5]
+        jam_p = p[..., 5:8]
+        comm_p = torch.cat([p[..., 2:3], p[..., 0:1], p[..., 6:7], p[..., 7:8]], dim=-1)
+
+        sub_action = torch.cat([task_frac, beam, detect_p, jam_p, comm_p], dim=-1)  # [B, K, 22]
+
+        # Broadcast: [B, K, 22] → [B, K, S2, 22] → [B, N, 22]
+        elem_action = sub_action.unsqueeze(2).expand(B, K, S2, 22).reshape(B, N, 22)
+
+        flat = elem_action.reshape(B, N * 22)
+        return torch.cat([flat, vehicle], dim=-1)
+
+    def _extract_sub_from_elem(self, actions: torch.Tensor):
+        """Extract sub-array actions from element-level flat action [B, 13753].
+
+        Since all elements in a sub-array share the same action (broadcast),
+        we take the first element of each sub-array.
+        """
+        B = actions.shape[0]
+        K = self.n_sub
+        S2 = self.elem_per_sub
+        N = self.n_elem
+
+        elem_act = actions[..., :N * 22].reshape(B, N, 22)
+        # Take first element of each sub-array
+        indices = torch.arange(K, device=actions.device) * S2
+        sub_act = elem_act[:, indices, :]  # [B, K, 22]
+
+        task_frac = sub_act[..., 0:4]  # [B, K, 4]
+        vehicle = actions[..., -3:]
+
+        # Reconstruct params from the action layout
+        # Layout per element: [task(4), beam(8), detect(3), jam(3), comm(4)]
+        # Beam is interleaved: [az0, el0, az1, el1, az2, el2, az3, el3]
+        # All 4 beam pairs are identical (same az/el for all tasks).
+        # Beam stored as: p[0]*0.5+0.5 (az), p[1]*0.5+0.5 (el).
+        # Invert: p[0] = (az - 0.5) * 2
+        params = torch.cat([
+            (sub_act[..., 4:5] - 0.5) * 2,   # beam_az0 → param[0]
+            (sub_act[..., 5:6] - 0.5) * 2,   # beam_el0 → param[1]
+            sub_act[..., 12:15],               # detect params → param[2:5]
+            sub_act[..., 15:18],               # jam params → param[5:8]
+        ], dim=-1)  # [B, K, 8]
+
+        return task_frac, params, vehicle
+
+    def forward(self, state: torch.Tensor):
+        """Deterministic forward: state → (action [B, 13753], value)."""
+        action, _, value = self.get_action(state, deterministic=True)
+        return action, value
+
+    def get_action(self, state: torch.Tensor, deterministic: bool = False):
+        """Sample action, return (action, log_prob, value).
+
+        Returns:
+            action: [B, n_elem*22+3] flat action for env (drop-in compatible)
+            log_prob: [B]
+            value: [B, 1]
+        """
+        B = state.shape[0]
+        K = self.n_sub
+
+        task_dist, param_dist, vehicle_dist, value = self._get_distributions(state)
+
+        if deterministic:
+            task_choice = task_dist.logits.argmax(dim=-1)  # [B, K]
+            params = param_dist.mean  # [B, K, 8]
+            vehicle = vehicle_dist.mean  # [B, 3]
+        else:
+            task_choice = task_dist.sample()  # [B, K]
+            params = param_dist.rsample().clamp(0.01, 0.99)  # [B, K, 8]
+            vehicle = vehicle_dist.rsample().clamp(-0.999, 0.999)  # [B, 3]
+
+        # Log-prob (per sub-array, not per element)
+        task_logp = task_dist.log_prob(task_choice).sum(dim=-1)  # [B]
+        param_logp = param_dist.log_prob(params).sum(-1).sum(-1)  # [B]
+        veh_logp = vehicle_dist.log_prob(vehicle).sum(dim=-1)     # [B]
+        log_prob = task_logp + param_logp + veh_logp
+
+        # One-hot task assignment
+        task_frac = torch.zeros(B, K, 4, device=state.device)
+        task_frac.scatter_(-1, task_choice.unsqueeze(-1), 1.0)
+
+        # Expand to element-level action
+        action = self._expand_to_elements(task_frac, params, vehicle)
+
+        return action, log_prob, value
+
+    def evaluate_actions(self, state: torch.Tensor, actions: torch.Tensor):
+        """Evaluate log-prob, entropy, value for given actions (PPO update).
+
+        Args:
+            state: [B, state_dim]
+            actions: [B, n_elem*22+3] flat actions (element-level)
+        Returns:
+            log_prob: [B]
+            entropy: [B]
+            value: [B, 1]
+        """
+        task_dist, param_dist, vehicle_dist, value = self._get_distributions(state)
+
+        # Extract sub-array actions from element-level action
+        task_frac, params, vehicle = self._extract_sub_from_elem(actions)
+
+        task_choice = task_frac.argmax(dim=-1)  # [B, K]
+
+        task_logp = task_dist.log_prob(task_choice)  # [B, K]
+        task_ent = task_dist.entropy()               # [B, K]
+
+        param_logp = param_dist.log_prob(params.clamp(0.01, 0.99)).sum(-1).sum(-1)  # [B]
+        veh_logp = vehicle_dist.log_prob(vehicle.clamp(-0.999, 0.999)).sum(dim=-1)  # [B]
+
+        log_prob = task_logp.sum(dim=-1) + param_logp + veh_logp
+        entropy = (task_ent.sum(dim=-1)
+                   + param_dist.entropy().sum(-1).sum(-1)
+                   + vehicle_dist.entropy().sum(dim=-1))
+
+        return log_prob, entropy, value
+
+    def get_distribution(self, state: torch.Tensor):
+        """Get action distributions for PPO.
+
+        Returns:
+            task_dist, param_dist, vehicle_dist, value
+        """
+        return self._get_distributions(state)
+
+
 def create_team_policy(
     team: int,
     n_elem: int = 625,
@@ -454,9 +787,13 @@ def create_team_policy(
     num_output_length: int = 16,
     device: str = "cuda",
     encoder_kwargs: dict = None,
+    sub_array_size: int = 0,
 ) -> dict:
     """Create a full team policy (commander + shared radar).
 
+    Args:
+        sub_array_size: If > 0, use SubArrayRadarActorCritic with this sub-array
+                       block size (e.g., 5 for 5×5 blocks in a 25×25 array).
     Returns:
         dict with "commander" and "radar" actor-critic modules.
     """
@@ -466,18 +803,21 @@ def create_team_policy(
         hidden_dim=256,
     ).to(device)
 
-    # Compute actual n_bins from MFARVecEnv auto-fft logic
-    fft_size = 1
-    while fft_size < 200:  # approximate for typical fs/pri
-        fft_size *= 2
-    # Use provided n_bins directly if > 0
-
-    radar = RadarActorCritic(
-        n_elem=n_elem,
-        n_pulses=n_pulses,
-        n_bins=n_bins,
-        commander_instr_dim=num_output_length,
-        encoder_kwargs=encoder_kwargs,
-    ).to(device)
+    if sub_array_size > 0:
+        radar = SubArrayRadarActorCritic(
+            n_elem=n_elem,
+            n_pulses=n_pulses,
+            n_bins=n_bins,
+            sub_array_size=sub_array_size,
+            commander_instr_dim=num_output_length,
+        ).to(device)
+    else:
+        radar = RadarActorCritic(
+            n_elem=n_elem,
+            n_pulses=n_pulses,
+            n_bins=n_bins,
+            commander_instr_dim=num_output_length,
+            encoder_kwargs=encoder_kwargs,
+        ).to(device)
 
     return {"commander": commander, "radar": radar}

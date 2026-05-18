@@ -3,6 +3,13 @@
 Evaluates win rates between all pairs of policies by running games
 in the vectorized MFARVecEnv. Supports batch evaluation using
 parallel environments.
+
+Also accumulates per-policy *task fingerprints* — the long-run
+mean fraction of array elements assigned to each of the 4 tasks
+(recon/detect/jam/comm) during evaluation games. These are
+consumed by TC-DAMS to bias the meta-solver toward task-axis
+diversity. Fingerprints are recorded per (policy_id, team) since
+a policy plays a single team during any evaluation game.
 """
 
 import torch
@@ -20,12 +27,34 @@ class PayoffMatrix:
         opponent_pool: OpponentPool,
         n_eval_games: int = 50,
         device: str = "cuda",
+        max_steps_per_game: int = 200,
     ):
         self.pool = opponent_pool
         self.n_eval_games = n_eval_games
         self.device = device
+        # Hard cap on env.step() calls per evaluation game. If no team
+        # wins by this many steps, the game is scored as a draw (0.5).
+        # Default 200 keeps a single PSRO eval bounded; raise it if you
+        # genuinely need episodes to run to natural termination.
+        self.max_steps_per_game = max_steps_per_game
         # matrix[i][j] = win rate of policy i against policy j
         self.matrix: Dict[Tuple[str, str], float] = {}
+        # fingerprint[i] = [P(recon), P(detect), P(jam), P(comm)] averaged
+        # over all evaluation games where policy i played.
+        self.fingerprints: Dict[str, np.ndarray] = {}
+        self._fp_counts: Dict[str, int] = {}
+
+    def _accumulate_fingerprint(self, policy_id: str, fp: np.ndarray) -> None:
+        """Update running mean of policy_id's task fingerprint with one sample fp [4]."""
+        fp = np.asarray(fp, dtype=np.float64).reshape(4)
+        n = self._fp_counts.get(policy_id, 0)
+        if n == 0:
+            self.fingerprints[policy_id] = fp.copy()
+        else:
+            self.fingerprints[policy_id] = (
+                self.fingerprints[policy_id] * n + fp
+            ) / (n + 1)
+        self._fp_counts[policy_id] = n + 1
 
     def evaluate_pair(
         self,
@@ -48,7 +77,8 @@ class PayoffMatrix:
             batch = min(E, remaining)
             env.reset()
 
-            for step in range(10000):
+            game_ended = False
+            for step in range(self.max_steps_per_game):
                 with torch.no_grad():
                     # Red team (team 0): deterministic policy
                     red = red_trainer.get_own_actions(env, team=0, deterministic=True)
@@ -70,13 +100,29 @@ class PayoffMatrix:
 
                 result = env.step(actions=actions, commander_actions=commander_actions)
 
+                # Accumulate per-team task fingerprints if env provides them.
+                fp_t = result.get("task_fingerprint", None)
+                if fp_t is not None:
+                    # fp_t: [E, n_teams, 4]; team 0 = red, team 1 = blue.
+                    fp_red = fp_t[:batch, 0].mean(dim=0).detach().cpu().numpy()
+                    fp_blue = fp_t[:batch, 1].mean(dim=0).detach().cpu().numpy()
+                    self._accumulate_fingerprint(red_policy_id, fp_red)
+                    self._accumulate_fingerprint(blue_policy_id, fp_blue)
+
                 if result["dones"].any():
                     for e in range(batch):
                         if result["dones"][e]:
                             if result["winners"][e] == 0:
                                 red_wins += 1
                             total += 1
+                    game_ended = True
                     break
+
+            if not game_ended:
+                # Step cap reached without a natural termination — score
+                # this batch as a draw so PSRO still gets a payoff entry.
+                red_wins += 0.5 * batch
+                total += batch
 
             remaining -= batch
 
@@ -121,7 +167,9 @@ class PayoffMatrix:
         Args:
             team: 0 (red) or 1 (blue)
         Returns:
-            [K, K_opponent] numpy array where K = policies for this team
+            payoff: [K, K_opponent] numpy array, K = policies for this team
+            own_policies: list of K policy_ids
+            opp_policies: list of K_opponent policy_ids
         """
         own_policies = [
             pid for pid, rec in self.pool.policies.items()
@@ -141,6 +189,19 @@ class PayoffMatrix:
                 payoff[i, j] = self.matrix.get((own_id, opp_id), 0.5)
 
         return payoff, own_policies, opp_policies
+
+    def get_fingerprints(self, policy_ids: List[str]) -> np.ndarray:
+        """Stack task fingerprints for the given policies as [K, 4].
+
+        Missing policies (no fingerprint observed yet) get a uniform
+        prior [0.25, 0.25, 0.25, 0.25] so TC-DAMS sees them as neutral.
+        """
+        K = len(policy_ids)
+        F = np.full((K, 4), 0.25, dtype=np.float64)
+        for i, pid in enumerate(policy_ids):
+            if pid in self.fingerprints:
+                F[i] = self.fingerprints[pid]
+        return F
 
     def to_array(self) -> np.ndarray:
         """Export full payoff matrix as numpy array."""

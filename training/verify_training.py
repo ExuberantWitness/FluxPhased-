@@ -314,9 +314,9 @@ def run_verification():
     print(f"Reward changes:  {'PASS' if reward_changes else 'FAIL'} (Δ={last_20 - first_20:+.6f})")
 
     if grad_flows and loss_changes:
-        print(f"\n✓ Training verification PASSED — real gradients, real parameter updates.")
+        print(f"\n[OK] Training verification PASSED -- real gradients, real parameter updates.")
     else:
-        print(f"\n✗ Training verification FAILED — check network architecture.")
+        print(f"\n[FAIL] Training verification FAILED -- check network architecture.")
 
 
 if __name__ == "__main__":

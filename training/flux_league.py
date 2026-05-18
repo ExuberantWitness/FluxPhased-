@@ -21,6 +21,12 @@ from .ppo.ppo_trainer import TeamPPOTrainer
 from .self_play.opponent_pool import OpponentPool
 from .self_play.payoff_matrix import PayoffMatrix
 from .self_play.meta_solver import solve_nash, solve_rectified_nash, nash_conv
+from .self_play.tc_dams_solver import (
+    solve_tc_dams,
+    task_fingerprint_entropy,
+    effective_population_size,
+)
+from .self_play.elo_band_sampler import EloBandSampler
 
 
 ROLE_MAIN = "main"
@@ -54,6 +60,17 @@ class FluxLeague:
         max_steps_per_episode: int = 1000,
         checkpoint_dir: str = "checkpoints/league",
         device: str = "cuda",
+        sub_array_size: int = 0,
+        # TC-DAMS + Elo-band knobs
+        tcdams_lambda: float = 0.3,
+        use_elo_band: bool = False,
+        elo_band_init: float = 400.0,
+        elo_band_final: float = 100.0,
+        elo_anneal_iters: int = 15,
+        # Buffer sizing: for large obs_dim (e.g., 25x25) a huge rollout buffer
+        # can OOM CPU RAM; allow overriding.
+        buffer_size_commander: int = 2048,
+        buffer_size_radar: int = 64,
         # PPO hyperparams
         commander_lr: float = 3e-4,
         radar_lr: float = 1e-4,
@@ -77,6 +94,7 @@ class FluxLeague:
         self.population_cap = population_cap
         self.n_eval_games = n_eval_games
         self.meta_solver_name = meta_solver
+        self.sub_array_size = sub_array_size
         self.pfsp_temperature = pfsp_temperature
         self.exploiter_reset_prob = exploiter_reset_prob
         self.episodes_per_training = episodes_per_training
@@ -112,6 +130,18 @@ class FluxLeague:
         self.trainers: Dict[str, TeamPPOTrainer] = {}
         self.meta_strategies: Dict[int, np.ndarray] = {}
 
+        # TC-DAMS + Elo-band
+        self.tcdams_lambda = tcdams_lambda
+        self.use_elo_band = use_elo_band
+        self.elo_sampler = EloBandSampler(
+            self.pool,
+            band_init=elo_band_init,
+            band_final=elo_band_final,
+            anneal_iters=elo_anneal_iters,
+        ) if use_elo_band else None
+        # Per-iteration diagnostics for the narrative report.
+        self.diag_history: list = []
+
         self.iteration = 0
         os.makedirs(checkpoint_dir, exist_ok=True)
 
@@ -121,7 +151,10 @@ class FluxLeague:
         Args:
             env: MFARVecEnv instance (used to get obs/action dims)
         """
-        self.payoff = PayoffMatrix(self.pool, self.n_eval_games, self.device)
+        self.payoff = PayoffMatrix(
+            self.pool, self.n_eval_games, self.device,
+            max_steps_per_game=self.max_steps_per_episode,
+        )
 
         for team in range(self.n_teams):
             for role in [ROLE_MAIN, ROLE_MAIN_EXPLOITER, ROLE_LEAGUE_EXPLOITER]:
@@ -132,6 +165,7 @@ class FluxLeague:
                     n_bins=self.n_bins,
                     num_output_length=self.num_output_length,
                     device=self.device,
+                    sub_array_size=self.sub_array_size,
                 )
                 trainer = TeamPPOTrainer(
                     commander=policy_dict["commander"],
@@ -170,37 +204,64 @@ class FluxLeague:
         self.payoff.evaluate_all(env, self.trainers)
 
         # Step 2: Compute meta-strategies
+        if self.elo_sampler is not None:
+            self.elo_sampler.update_from_payoff_matrix(self.payoff.matrix)
+        iter_diag = {"iteration": self.iteration, "teams": {}}
         for team in range(self.n_teams):
             payoff_mat, own_ids, opp_ids = self.payoff.get_submatrix(team)
+            F = self.payoff.get_fingerprints(own_ids)  # [K_own, 4]
             if self.meta_solver_name == "nash":
-                self.meta_strategies[team] = solve_nash(payoff_mat)
+                sigma = solve_nash(payoff_mat)
             elif self.meta_solver_name == "rectified_nash":
-                self.meta_strategies[team] = solve_rectified_nash(payoff_mat)
+                sigma = solve_rectified_nash(payoff_mat)
+            elif self.meta_solver_name == "tc_dams":
+                sigma = solve_tc_dams(
+                    payoff_mat, fingerprints=F,
+                    lambda_diversity=self.tcdams_lambda,
+                )
             else:
                 K = len(own_ids)
-                self.meta_strategies[team] = np.ones(K) / K
+                sigma = np.ones(K) / max(K, 1)
+            self.meta_strategies[team] = sigma
 
-            nc = nash_conv(payoff_mat, self.meta_strategies[team])
-            print(f"  Team {team} meta-strategy: {self.meta_strategies[team].round(3)}, "
-                  f"NashConv={nc:.4f}")
+            nc = nash_conv(payoff_mat, sigma)
+            H_task = task_fingerprint_entropy(sigma, F)
+            eff_K = effective_population_size(sigma)
+            print(
+                f"  Team {team} sigma={sigma.round(3)} "
+                f"NashConv={nc:.4f} H_task={H_task:.3f} effK={eff_K:.2f}"
+            )
+            iter_diag["teams"][team] = dict(
+                sigma=sigma.tolist(),
+                nash_conv=float(nc),
+                task_entropy=float(H_task),
+                effective_K=float(eff_K),
+                fingerprints=F.tolist(),
+                own_ids=list(own_ids),
+            )
+        self.diag_history.append(iter_diag)
 
-        # Step 3: Train each active policy against sampled opponents
-        for policy_id, trainer in self.trainers.items():
+        # Step 3: Train each active policy against sampled opponents.
+        # Snapshot keys so add_policy() below (which mutates self.trainers)
+        # does not raise "dictionary changed size during iteration".
+        active_ids = list(self.trainers.keys())
+        for policy_id in active_ids:
+            trainer = self.trainers[policy_id]
             record = self.pool.policies[policy_id]
             if not record.is_active:
                 continue
 
             # Determine opponent based on role
             if record.role == ROLE_MAIN:
-                # Main Agent: PFSP against full opponent population
-                opponents = self.pool.sample_pfsp(policy_id, n_samples=1)
+                # Main Agent: PFSP (Elo-banded if enabled) against full opponent population
+                opponents = self._sample_opponents(policy_id, n_samples=1)
             elif record.role == ROLE_MAIN_EXPLOITER:
                 # Main Exploiter: train against opponent's current Main Agent
                 opp_main = self.pool.get_active_main(1 - record.team)
                 opponents = [opp_main] if opp_main else []
             elif record.role == ROLE_LEAGUE_EXPLOITER:
-                # League Exploiter: PFSP against full population
-                opponents = self.pool.sample_pfsp(policy_id, n_samples=1)
+                # League Exploiter: PFSP (Elo-banded if enabled) against full population
+                opponents = self._sample_opponents(policy_id, n_samples=1)
             else:
                 opponents = self.pool.sample_uniform(policy_id, n_samples=1)
 
@@ -311,6 +372,10 @@ class FluxLeague:
                     :, own["r_start"]:own["r_end"]
                 ].sum().item()
 
+                if (trainer.commander_buffer and trainer.commander_buffer.near_full) or \
+                   (trainer.radar_buffer and trainer.radar_buffer.near_full):
+                    trainer.update()
+
                 if result["dones"].any():
                     if result["winners"][0] == team:
                         wins += 1
@@ -337,6 +402,14 @@ class FluxLeague:
                 print(f"  Resetting {policy_id} to parent checkpoint")
                 trainer.load(parent.checkpoint_path)
 
+    def _sample_opponents(self, policy_id: str, n_samples: int = 1) -> list:
+        """Pick opponents via Elo-band PFSP if enabled, else standard PFSP."""
+        if self.elo_sampler is not None:
+            return self.elo_sampler.sample(
+                policy_id, iteration=self.iteration, n_samples=n_samples,
+            )
+        return self.pool.sample_pfsp(policy_id, n_samples=n_samples)
+
     def get_final_agent(self, team: int) -> str:
         """Get the best policy ID for deployment (meta-strategy weighted)."""
         if team in self.meta_strategies:
@@ -356,9 +429,21 @@ class FluxLeague:
             "iteration": self.iteration,
             "meta_strategies": {k: v.tolist() for k, v in self.meta_strategies.items()},
             "ppo_config": self.ppo_config,
+            "tcdams_lambda": self.tcdams_lambda,
+            "use_elo_band": self.use_elo_band,
+            "meta_solver_name": self.meta_solver_name,
         }
         torch.save(state, os.path.join(self.checkpoint_dir, "league_state.pt"))
         self.pool.save_metadata()
+        # Persist Elo and per-iteration diagnostics as plain JSON for analysis.
+        if self.elo_sampler is not None:
+            self.elo_sampler.save(os.path.join(self.checkpoint_dir, "elo.json"))
+        try:
+            import json
+            with open(os.path.join(self.checkpoint_dir, "diag_history.json"), "w") as f:
+                json.dump(self.diag_history, f, indent=2)
+        except Exception as exc:
+            print(f"[League] WARN: failed to write diag_history: {exc}")
 
     def load(self):
         """Load full league state."""
@@ -370,3 +455,5 @@ class FluxLeague:
                 int(k): np.array(v) for k, v in state["meta_strategies"].items()
             }
         self.pool.load_metadata()
+        if self.elo_sampler is not None:
+            self.elo_sampler.load(os.path.join(self.checkpoint_dir, "elo.json"))

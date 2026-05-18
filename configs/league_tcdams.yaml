@@ -1,0 +1,81 @@
+# FluxPhased League Training - TC-DAMS ablation
+# Target config: 25x25 array, P=4 pulses, FFT bins=64, num_envs=1 (single-env).
+# Run via:
+#   R0 (Nash baseline):
+#     python -m training.train --config configs/league_tcdams.yaml \
+#       --override league.meta_solver=nash --override league.use_elo_band=false \
+#       --override league.checkpoint_dir=checkpoints/league_tcdams/R0
+#   R1 (TC-DAMS lambda=0.3, PFSP):
+#     ... --override league.meta_solver=tc_dams --override league.tcdams_lambda=0.3 \
+#         --override league.use_elo_band=false ...
+#   R2 (Nash + Elo-band):
+#     ... --override league.meta_solver=nash --override league.use_elo_band=true ...
+#   R3 (TC-DAMS + Elo-band):
+#     ... --override league.meta_solver=tc_dams --override league.tcdams_lambda=0.3 \
+#         --override league.use_elo_band=true ...
+#
+# Sensitivity sweeps (R1lo / R1hi): vary league.tcdams_lambda in {0.1, 1.0}.
+
+league:
+  population_cap: 20
+  n_eval_games: 20            # reduced from 50 to keep iteration budget bounded on num_envs=1
+  meta_solver: "nash"          # default; override per ablation cell
+  pfsp_temperature: 1.0
+  exploiter_reset_prob: 0.1
+  episodes_per_training: 200   # per-policy PPO updates per PSRO iter (kept moderate for num_envs=1)
+  max_steps_per_episode: 200
+  checkpoint_dir: "checkpoints/league_tcdams/R0"
+  # TC-DAMS
+  tcdams_lambda: 0.3
+  # Elo-band PFSP
+  use_elo_band: false
+  elo_band_init: 400.0
+  elo_band_final: 100.0
+  elo_anneal_iters: 10
+
+ppo:
+  commander:
+    lr: 3.0e-4
+    clip_range: 0.2
+    entropy_coef: 0.01
+  radar:
+    lr: 1.0e-4
+    clip_range: 0.1
+    entropy_coef: 0.02
+  shared:
+    gamma: 0.99
+    gae_lambda: 0.95
+    value_coef: 0.5
+    max_grad_norm: 0.5
+    n_epochs: 5
+    batch_size: 32
+    buffer_size: 128
+
+curriculum:
+  # Tuned for the requested num_envs=1, 25x25 budget. Reduce episode counts
+  # vs the default 5x5 config so a full A->D pass fits the 8-40h envelope.
+  phase_a_episodes: 500
+  phase_b_episodes: 1000
+  phase_c_iterations: 10
+  phase_c_episodes_per_iter: 200
+  phase_d_episodes: 1000
+
+reward_shaping:
+  detect_snr_weight: 0.1
+  detect_coverage_weight: 0.05
+  jam_effectiveness_weight: 0.1
+  comm_reliability_weight: 0.05
+  recon_intel_weight: 0.03
+  beam_accuracy_weight: 0.02
+  snr_threshold_db: 10.0
+
+env:
+  rows: 25
+  cols: 25
+  num_envs: 1
+  n_radars: 4
+  pulses_per_cpi: 4
+  fft_size: 64
+  device: "cuda"
+  # 50 kW peak X-band MFAR
+  tx_power_w: 50000

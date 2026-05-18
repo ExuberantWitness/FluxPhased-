@@ -45,8 +45,17 @@ class RolloutBuffer:
         self.ptr = 0
 
     def add(self, obs, action, reward, done, value, log_prob):
-        """Add one transition."""
-        assert self.ptr < self.buffer_size, "Buffer overflow"
+        """Add one transition.
+
+        Caller is responsible for calling update() before the buffer
+        fills (see e.g. PhasedTrainer / FluxLeague._train_against,
+        which check `near_full` after every store_transition).
+        """
+        assert self.ptr < self.buffer_size, (
+            f"RolloutBuffer overflow at ptr={self.ptr} "
+            f"(buffer_size={self.buffer_size}); caller must update() "
+            f"before adding past capacity."
+        )
         self.obs[self.ptr] = obs
         self.actions[self.ptr] = action
         self.rewards[self.ptr] = reward
@@ -54,6 +63,11 @@ class RolloutBuffer:
         self.values[self.ptr] = value
         self.log_probs[self.ptr] = log_prob
         self.ptr += 1
+
+    @property
+    def near_full(self) -> bool:
+        """True when only one slot remains; trigger update() now to avoid overflow."""
+        return self.ptr >= self.buffer_size - 1
 
     def compute_returns(self, last_value: float = 0.0):
         """Compute GAE advantages and returns.

@@ -13,11 +13,17 @@ import os
 import time
 import torch
 import numpy as np
+import functools
+import builtins
 from typing import Dict, Optional
 
 from ..flux_league import FluxLeague, ROLE_MAIN, ROLE_MAIN_EXPLOITER, ROLE_LEAGUE_EXPLOITER
 from ..ppo.actor_critic import create_team_policy
 from ..ppo.ppo_trainer import TeamPPOTrainer
+
+# Force every print() in this module to flush immediately so progress lines
+# land in the log file even when stdout is piped through Tee on Windows.
+print = functools.partial(builtins.print, flush=True)
 
 
 class PhasedTrainer:
@@ -92,6 +98,7 @@ class PhasedTrainer:
                 n_pulses=self.league.n_pulses,
                 n_bins=self.league.n_bins,
                 num_output_length=self.league.num_output_length,
+                sub_array_size=self.league.sub_array_size,
             )
             trainer = TeamPPOTrainer(
                 commander=policy["commander"],
@@ -100,9 +107,10 @@ class PhasedTrainer:
             )
             trainer.init_buffers(env.state_dim, env.action_dim)
 
+            max_steps = getattr(self.league, "max_steps_per_episode", 1000)
             for ep in range(self.phase_a_episodes // 3):
                 env.reset()
-                for step in range(1000):
+                for step in range(max_steps):
                     with torch.no_grad():
                         state, commander_obs = trainer._get_observations(env)
 
@@ -165,12 +173,17 @@ class PhasedTrainer:
                     }
                     trainer.store_transition(env, result, transition, team=0)
 
+                    # Flush buffers before they overflow. Cheap when not near full.
+                    if (trainer.commander_buffer and trainer.commander_buffer.near_full) or \
+                       (trainer.radar_buffer and trainer.radar_buffer.near_full):
+                        trainer.update()
+
                     if result["dones"].any():
                         break
 
-                if ep % 100 == 0 and ep > 0:
+                if ep % 5 == 0:
                     metrics = trainer.update()
-                    print(f"    Episode {ep}: {metrics}")
+                    print(f"    Episode {ep}: {metrics}", flush=True)
 
             # Save pre-trained checkpoint
             ckpt_path = os.path.join(
@@ -205,7 +218,7 @@ class PhasedTrainer:
             for ep in range(self.phase_b_episodes):
                 env.reset()
 
-                for step in range(1000):
+                for step in range(getattr(self.league, "max_steps_per_episode", 1000)):
                     with torch.no_grad():
                         # Own team: real policy
                         own = trainer.get_own_actions(env, team)
@@ -237,6 +250,10 @@ class PhasedTrainer:
 
                     result = env.step(actions=actions, commander_actions=commander_actions)
                     trainer.store_transition(env, result, own["transition"], team)
+
+                    if (trainer.commander_buffer and trainer.commander_buffer.near_full) or \
+                       (trainer.radar_buffer and trainer.radar_buffer.near_full):
+                        trainer.update()
 
                     if result["dones"].any():
                         if result["winners"][0] == team:
@@ -312,7 +329,7 @@ class PhasedTrainer:
             for ep in range(self.phase_d_episodes):
                 env.reset()
 
-                for step in range(1000):
+                for step in range(getattr(self.league, "max_steps_per_episode", 1000)):
                     with torch.no_grad():
                         # Exploiter: real policy
                         own = trainer.get_own_actions(env, team)
@@ -352,6 +369,10 @@ class PhasedTrainer:
                     result = env.step(actions=actions, commander_actions=commander_actions)
                     trainer.store_transition(env, result, own["transition"], team)
 
+                    if (trainer.commander_buffer and trainer.commander_buffer.near_full) or \
+                       (trainer.radar_buffer and trainer.radar_buffer.near_full):
+                        trainer.update()
+
                     if result["dones"].any():
                         if result["winners"][0] == team:
                             wins += 1
@@ -389,7 +410,7 @@ class PhasedTrainer:
             n_games = 100
             for game in range(n_games):
                 env.reset()
-                for step in range(1000):
+                for step in range(getattr(self.league, "max_steps_per_episode", 1000)):
                     with torch.no_grad():
                         own = trainer.get_own_actions(env, team, deterministic=True)
 

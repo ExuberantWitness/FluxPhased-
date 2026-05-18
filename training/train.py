@@ -66,6 +66,7 @@ def create_league(config: dict, env: MFARVecEnv) -> FluxLeague:
         max_steps_per_episode=league_cfg.get("max_steps_per_episode", 1000),
         checkpoint_dir=league_cfg.get("checkpoint_dir", "checkpoints/league"),
         device=env.device if hasattr(env, "device") else "cuda",
+        sub_array_size=config.get("sub_array_size", 0),
         commander_lr=cmd.get("lr", 3e-4),
         radar_lr=radar.get("lr", 1e-4),
         gamma=shared.get("gamma", 0.99),
@@ -79,6 +80,11 @@ def create_league(config: dict, env: MFARVecEnv) -> FluxLeague:
         n_epochs=shared.get("n_epochs", 10),
         batch_size=shared.get("batch_size", 64),
         buffer_size=shared.get("buffer_size", 2048),
+        tcdams_lambda=league_cfg.get("tcdams_lambda", 0.3),
+        use_elo_band=league_cfg.get("use_elo_band", False),
+        elo_band_init=league_cfg.get("elo_band_init", 400.0),
+        elo_band_final=league_cfg.get("elo_band_final", 100.0),
+        elo_anneal_iters=league_cfg.get("elo_anneal_iters", 15),
     )
 
 
@@ -93,8 +99,16 @@ def main():
                         help="Path to league state checkpoint to resume from")
     parser.add_argument("--device", type=str, default=None,
                         help="Override device (cuda/cpu)")
+    parser.add_argument("--sub-array-size", type=int, default=0,
+                        help="Sub-array block size (e.g., 5 for 5×5 blocks). "
+                             "0 = per-element policy (default)")
     parser.add_argument("--seed", type=int, default=42,
                         help="Random seed")
+    parser.add_argument(
+        "--override", action="append", default=[],
+        help="Override a config field with KEY=VALUE (dot-separated key, "
+             "e.g. league.meta_solver=tc_dams). Repeatable.",
+    )
     args = parser.parse_args()
 
     # Set seed
@@ -104,8 +118,23 @@ def main():
 
     # Load config
     config = load_config(args.config)
+    # Apply --override KEY=VALUE entries.
+    for spec in args.override:
+        if "=" not in spec:
+            raise SystemExit(f"--override must be KEY=VALUE, got: {spec}")
+        key, raw_val = spec.split("=", 1)
+        # Parse value (yaml handles bool/int/float/string cleanly)
+        val = yaml.safe_load(raw_val)
+        node = config
+        parts = key.split(".")
+        for p in parts[:-1]:
+            node = node.setdefault(p, {})
+        node[parts[-1]] = val
+        print(f"[config] override {key}={val!r}")
     if args.device:
         config["env"]["device"] = args.device
+    if args.sub_array_size > 0:
+        config["sub_array_size"] = args.sub_array_size
 
     print(f"FluxPhased League Training")
     print(f"Config: {args.config}")

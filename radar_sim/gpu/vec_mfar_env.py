@@ -538,11 +538,24 @@ class MFARVecEnv:
             "total_ms": (t_missile - t0) * 1000,
         }
 
+        # TC-DAMS task-allocation fingerprint per team: [E, n_teams, 4]
+        # entry [e, t, k] = fraction of elements on team t assigned task k.
+        # task_ids in {0=recon, 1=detect, 2=jam, 3=comm}, shape [E, R, N].
+        r_per_team = R // self.n_teams
+        one_hot = torch.nn.functional.one_hot(
+            task_ids.clamp(0, 3), num_classes=4,
+        ).to(torch.float32)  # [E, R, N, 4]
+        # Sum over N (elements) then over radars within each team, normalize.
+        team_counts = one_hot.sum(dim=2)  # [E, R, 4]
+        team_counts = team_counts.view(E, self.n_teams, r_per_team, 4).sum(dim=2)
+        task_fingerprint = team_counts / max(r_per_team * N, 1)  # [E, n_teams, 4]
+
         return {
             "state": state,
             "spectrum": spectrum,
             "comm_data": comm_data,
             "task_ids": task_ids,
+            "task_fingerprint": task_fingerprint,
             "commander_obs": commander_obs,
             "radar_instructions": self._commander_instructions,
             "radar_rewards": rewards["radar_rewards"],
