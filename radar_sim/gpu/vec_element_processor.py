@@ -144,7 +144,7 @@ class VecElementProcessor:
                 results[task_id] = torch.abs(raw_fft) ** 2
             else:
                 ref_spectrum = torch.fft.fft(ref, n=self.fft_size, dim=-1)
-                mf = raw_fft * torch.conj(ref_spectrum.unsqueeze(-2))
+                mf = raw_fft * torch.conj(ref_spectrum)
                 results[task_id] = torch.abs(mf) ** 2
 
         return results

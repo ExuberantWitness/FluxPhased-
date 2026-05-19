@@ -706,12 +706,17 @@ class MFARVecEnv:
         return None
 
     def _build_detect_ref(self, wf_types, detect_params):
-        """Build matched filter reference for detection elements."""
+        """Build matched filter reference matching the actual TX waveform."""
         E, R, N = wf_types.shape
         dev = torch.device(self.device)
 
         from .waveform_gpu import generate_lfm
-        ref = generate_lfm(self.pri * 0.1, self.bandwidth, self.fs, dev, "up")
+        # Use the same physical parameter mapping as generate_waveform for detect
+        pw = detect_params[0, 0, 0, 0].item() if detect_params.numel() > 0 else 0.5
+        bw = detect_params[0, 0, 0, 1].item() if detect_params.numel() > 1 else 0.5
+        pw = max(pw, 0.01) * 100e-6  # same scaling as generate_waveform
+        bw = max(bw, 0.01) * self.fs
+        ref = generate_lfm(pw, bw, self.fs, dev, "up")
         if ref.shape[0] < self.n_samples:
             pad = torch.zeros(
                 self.n_samples - ref.shape[0],
