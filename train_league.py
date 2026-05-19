@@ -240,8 +240,7 @@ class DenseRewardShaper:
         total = (detect_reward * self.detect_snr_weight
                  + jam_reward * self.jam_effectiveness_weight
                  + comm_reward * self.comm_reliability_weight
-                 + recon_reward * self.recon_intel_weight
-                 + beam_acc * self.beam_accuracy_weight)
+                 + recon_reward * self.recon_intel_weight)
         return {"detect_reward": detect_reward, "jam_reward": jam_reward,
                 "comm_reward": comm_reward, "recon_reward": recon_reward,
                 "beam_accuracy": beam_acc,
@@ -292,10 +291,10 @@ class DenseRewardShaper:
     def _jam_reward(self, spectrum, task_ids):
         E, R, N, P, B = spectrum.shape
         jam_mask = (task_ids == TASK_JAM).float()
-        jam_fraction = jam_mask.sum(dim=-1) / N
-        jam_energy = (spectrum.mean(dim=-1).mean(dim=-1) * jam_mask).sum(dim=-1)
-        jam_energy_norm = jam_energy / (jam_energy.amax() + 1e-10)
-        return 0.3 * jam_fraction + 0.7 * jam_energy_norm
+        n_jam = jam_mask.sum(dim=-1).clamp(min=1)
+        jam_energy_per_elem = (spectrum.mean(dim=-1).mean(dim=-1) * jam_mask).sum(dim=-1) / n_jam
+        jam_energy_norm = jam_energy_per_elem / (jam_energy_per_elem.amax() + 1e-10)
+        return jam_energy_norm  # pure performance: jam energy per allocated element
 
     def _comm_reward(self, step_output, task_ids):
         E, R, N = task_ids.shape
@@ -305,9 +304,7 @@ class DenseRewardShaper:
             return torch.zeros(E, R, device=dev)
         team_id = torch.tensor([i // (R // 2) for i in range(R)], device=dev)
         crc_per_radar = crc_ok[:, team_id].float()
-        comm_mask = (task_ids == TASK_COMM).float()
-        comm_fraction = comm_mask.sum(dim=-1) / task_ids.shape[-1]
-        return crc_per_radar * (0.5 + 0.5 * comm_fraction)
+        return crc_per_radar  # pure performance: CRC pass rate, independent of allocation fraction
 
     def _recon_reward(self, spectrum, task_ids):
         E, R, N, P, B = spectrum.shape
