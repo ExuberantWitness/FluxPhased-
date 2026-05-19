@@ -120,6 +120,7 @@ class VecElementProcessor:
         self, iq_pulses: torch.Tensor,
         waveform_refs: dict,
         iq_is_fft: bool = False,
+        rx_beam_weights: torch.Tensor = None,
     ) -> dict:
         """Single FFT pass with per-task matched filtering.
 
@@ -130,6 +131,8 @@ class VecElementProcessor:
             waveform_refs: {task_id: ref_waveform_or_None}
                 ref_waveform: broadcastable to [E, R, N, S] complex64
             iq_is_fft: True if iq_pulses is already FFT'd (streaming mode).
+            rx_beam_weights: [E, R, N] complex64 — if provided, coherently
+                beamform elements before |·|^2, giving +10*log10(N) SNR gain.
         Returns:
             {task_id: [E, R, N, P, n_bins] float32 power spectrum}
             task_id 0 (recon) with ref=None returns raw |FFT|^2.
@@ -141,11 +144,19 @@ class VecElementProcessor:
         results = {}
         for task_id, ref in waveform_refs.items():
             if ref is None:
-                results[task_id] = torch.abs(raw_fft) ** 2
+                spec = torch.abs(raw_fft) ** 2
             else:
                 ref_spectrum = torch.fft.fft(ref, n=self.fft_size, dim=-1)
                 mf = raw_fft * torch.conj(ref_spectrum)
-                results[task_id] = torch.abs(mf) ** 2
+                # Coherent RX beamforming: weight and sum over elements
+                if rx_beam_weights is not None:
+                    w = torch.conj(rx_beam_weights).unsqueeze(-1).unsqueeze(-1)
+                    mf = (w * mf).sum(dim=2, keepdim=True)  # [E,R,1,P,B]
+                spec = torch.abs(mf) ** 2
+            # If beamformed, expand back to N elements for task mask compatibility
+            if rx_beam_weights is not None and spec.shape[2] == 1:
+                spec = spec.expand(-1, -1, iq_pulses.shape[2], -1, -1)
+            results[task_id] = spec
 
         return results
 

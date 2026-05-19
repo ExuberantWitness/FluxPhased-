@@ -69,6 +69,7 @@ class MFARVecEnv:
         polarization_loss_db: float = 3.0,
         tx_rx_isolation_db: float = 200.0,  # disable self-interference by default
         cpi_preallocate: bool = True,
+        rx_beamforming: bool = True,  # coherently combine elements on RX (+28dB SNR)
         reset_config: dict = None,
         reward_config: dict = None,
     ):
@@ -95,6 +96,7 @@ class MFARVecEnv:
         self.map_size = map_size
         self.tx_rx_isolation_db = tx_rx_isolation_db
         self.cpi_preallocate = cpi_preallocate
+        self.rx_beamforming = rx_beamforming
         self.reset_config = reset_config or {}
         self.reward_config = reward_config or {}
 
@@ -511,16 +513,30 @@ class MFARVecEnv:
         spectrum = self._buf_spectrum.zero_()
         comm_data = self._buf_comm_data.zero_() if comm_ref is None else self._buf_comm_data
 
+        # RX beamforming weights: coherently combine elements toward (avg_az, avg_el)
+        rx_weights = None
+        if self.rx_beamforming:
+            k = 2.0 * np.pi / self.array.wavelength
+            az_r = avg_az.unsqueeze(-1) * (np.pi / 180.0)
+            el_r = avg_el.unsqueeze(-1) * (np.pi / 180.0)
+            u = torch.sin(az_r) * torch.cos(el_r)
+            v = torch.sin(el_r)
+            ex = self._get_elem_x().view(1, 1, -1)
+            ey = self._get_elem_y().view(1, 1, -1)
+            phase = k * (ex * u + ey * v)
+            rx_weights = torch.exp(1j * phase) / np.sqrt(N)
+
         if wf_refs:
             if self._buf_cpi is not None:
                 # Pre-allocated: batched FFT on full CPI IQ
                 spec_results = self.processor.process_rx_cpi_unified(
-                    self._buf_cpi, wf_refs,
+                    self._buf_cpi, wf_refs, rx_beam_weights=rx_weights,
                 )
             else:
                 # Streaming: use pre-computed per-pulse FFT buffer
                 spec_results = self.processor.process_rx_cpi_unified(
                     self._buf_raw_fft, wf_refs, iq_is_fft=True,
+                    rx_beam_weights=rx_weights,
                 )
             for task_id, spec in spec_results.items():
                 mask = (task_ids == task_id)

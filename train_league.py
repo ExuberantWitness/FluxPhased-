@@ -75,6 +75,7 @@ ENV_DEFAULTS = {
     "pulses_per_cpi": 1, "fft_size": 32768, "device": "cuda",
     "tx_power_w": 50000,
     "cpi_preallocate": False,  # False=streaming (~3GB), True=batch (~15GB, needs 96GB)
+    "rx_beamforming": True,
 }
 
 PPO_DEFAULTS = {
@@ -280,8 +281,14 @@ class DenseRewardShaper:
         n_detect = detect_mask.sum(dim=-1).clamp(min=1).float()
         detect_spectrum = spectrum * detect_mask.unsqueeze(-1).unsqueeze(-1).float()
         peak_power = detect_spectrum.amax(dim=-1).amax(dim=-1)
-        noise_floor = spectrum.median(dim=-1).values.median(dim=-1).values.clamp(min=1e-30)
-        snr_db = 10.0 * torch.log10(peak_power.clamp(min=1e-30) / noise_floor.clamp(min=1e-30))
+        # Noise floor: use early range bins (first B//4) of detect elements.
+        # These are noise-only because targets are at longer range delays.
+        noise_region = detect_spectrum[..., :max(1, B // 4)]
+        noise_floor = noise_region.median(dim=-1).values.median(dim=-1).values.clamp(min=1e-30)
+        # Per-radar noise floor: mean across detect elements
+        nf = (noise_floor * detect_mask.float()).sum(dim=-1) / n_detect.clamp(min=1)  # [E,R]
+        nf = nf.unsqueeze(-1)  # [E,R,1] for broadcast with [E,R,N]
+        snr_db = 10.0 * torch.log10(peak_power.clamp(min=1e-30) / nf.clamp(min=1e-30))
         snr_db = snr_db * detect_mask.float()
         above_thresh = (snr_db > self.snr_threshold_db).float()
         coverage = above_thresh.sum(dim=-1) / n_detect
@@ -1795,6 +1802,7 @@ def main():
                 device=args.device,
                 tx_power_w=ENV_DEFAULTS["tx_power_w"],
                 cpi_preallocate=ENV_DEFAULTS["cpi_preallocate"],
+                rx_beamforming=ENV_DEFAULTS["rx_beamforming"],
             )
 
         env = make_env()
