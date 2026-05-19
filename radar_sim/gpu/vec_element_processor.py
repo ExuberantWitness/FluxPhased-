@@ -119,18 +119,24 @@ class VecElementProcessor:
     def process_rx_cpi_unified(
         self, iq_pulses: torch.Tensor,
         waveform_refs: dict,
+        iq_is_fft: bool = False,
     ) -> dict:
         """Single FFT pass with per-task matched filtering.
 
         Args:
-            iq_pulses: [E, R, N, P, S] complex64
+            iq_pulses: [E, R, N, P, S_or_bins] complex64
+                If iq_is_fft=False: time-domain IQ samples, S = n_samples.
+                If iq_is_fft=True: pre-computed FFT, S_or_bins = n_bins.
             waveform_refs: {task_id: ref_waveform_or_None}
                 ref_waveform: broadcastable to [E, R, N, S] complex64
+            iq_is_fft: True if iq_pulses is already FFT'd (streaming mode).
         Returns:
             {task_id: [E, R, N, P, n_bins] float32 power spectrum}
             task_id 0 (recon) with ref=None returns raw |FFT|^2.
         """
-        raw_fft = torch.fft.fft(iq_pulses, n=self.fft_size, dim=-1)
+        raw_fft = iq_pulses if iq_is_fft else torch.fft.fft(
+            iq_pulses, n=self.fft_size, dim=-1,
+        )
 
         results = {}
         for task_id, ref in waveform_refs.items():

@@ -68,6 +68,7 @@ class MFARVecEnv:
         blue_launch_pos: tuple = (0.0, 10000.0),
         polarization_loss_db: float = 3.0,
         tx_rx_isolation_db: float = 25.0,
+        cpi_preallocate: bool = True,
         reset_config: dict = None,
         reward_config: dict = None,
     ):
@@ -93,6 +94,7 @@ class MFARVecEnv:
         self.noise_figure_db = noise_figure_db
         self.map_size = map_size
         self.tx_rx_isolation_db = tx_rx_isolation_db
+        self.cpi_preallocate = cpi_preallocate
         self.reset_config = reset_config or {}
         self.reward_config = reward_config or {}
 
@@ -146,9 +148,20 @@ class MFARVecEnv:
             E, R, N, S, dtype=torch.complex64, device=dev_torch,
         )
         # CPI buffer: per-element per-pulse IQ [E, R, N, P, S]
-        self._buf_cpi = torch.zeros(
-            E, R, N, self.n_pulses, S, dtype=torch.complex64, device=dev_torch,
-        )
+        # When cpi_preallocate=False, skip this 12.8 GB allocation (streaming path)
+        self._buf_cpi = None
+        self._buf_raw_fft = None
+        if self.cpi_preallocate:
+            self._buf_cpi = torch.zeros(
+                E, R, N, self.n_pulses, S, dtype=torch.complex64, device=dev_torch,
+            )
+        else:
+            # Streaming mode: small FFT accumulator [E, R, N, P, n_bins] complex64
+            # (42 MB for 25×25 vs 12.8 GB for _buf_cpi)
+            self._buf_raw_fft = torch.zeros(
+                E, R, N, self.n_pulses, self.n_bins,
+                dtype=torch.complex64, device=dev_torch,
+            )
 
         # Spectrum and comm output buffers (pre-allocated, reused each step)
         self._buf_spectrum = torch.zeros(
@@ -350,6 +363,21 @@ class MFARVecEnv:
         # --- Phase 3: CPI pulse loop (with missile targets) ---
         waveform_refs = self._build_waveform_refs(task_ids, wf_types, detect_params, comm_params)
 
+        # Build RX waveform refs + masks for both streaming and pre-allocated paths
+        wf_refs = {}
+        recon_mask = (task_ids == 0)
+        detect_mask = (task_ids == 1)
+        comm_mask = (task_ids == 3)
+        if recon_mask.any():
+            wf_refs[0] = None
+        if detect_mask.any():
+            wf_refs[1] = self._build_detect_ref(wf_types, detect_params)
+        if comm_mask.any():
+            comm_ref = self._build_comm_ref(comm_params)
+            wf_refs[3] = comm_ref
+        else:
+            comm_ref = None
+
         missile = self.battlefield.missile
 
         # Pre-compute aspect RCS correction [E, n_teams, R] (constant within CPI)
@@ -443,36 +471,47 @@ class MFARVecEnv:
 
             self.channel.generate_noise(out=self._buf_noise)
             self._buf_rx_signal += self._buf_noise
-            self._buf_cpi[:, :, :, p, :] = self._buf_rx_signal
+
+            if self._buf_cpi is not None:
+                # Pre-allocated mode: store full CPI for batched processing
+                self._buf_cpi[:, :, :, p, :] = self._buf_rx_signal
+            else:
+                # Streaming mode: FFT per-pulse, accumulate into _buf_raw_fft
+                self._buf_raw_fft[:, :, :, p, :] = torch.fft.fft(
+                    self._buf_rx_signal, n=self.n_bins, dim=-1,
+                )
+                # BPSK demod on first pulse only
+                if p == 0 and comm_ref is not None:
+                    comm_xy = self.processor.process_rx_comm(
+                        self._buf_rx_signal.unsqueeze(-2), comm_ref,
+                    )
+                    self._buf_comm_data = torch.where(
+                        comm_mask.unsqueeze(-1), comm_xy, self._buf_comm_data,
+                    )
 
         t_pulses = time.perf_counter()
 
         # --- Phase 3.5: DRFM signal capture ---
-        # Store the mean RX signal per radar for DRFM retransmission next step
-        self._captured_signal = self._buf_cpi[:, :, :, -1, :].mean(dim=2).detach()
+        if self._buf_cpi is not None:
+            self._captured_signal = self._buf_cpi[:, :, :, -1, :].mean(dim=2).detach()
+        else:
+            self._captured_signal = self._buf_rx_signal.mean(dim=2).detach()
 
         # --- Phase 4: RX processing ---
         spectrum = self._buf_spectrum.zero_()
-        comm_data = self._buf_comm_data.zero_()
-
-        # Build waveform refs dict for single-pass FFT
-        wf_refs = {}
-        recon_mask = (task_ids == 0)
-        detect_mask = (task_ids == 1)
-        comm_mask = (task_ids == 3)
-
-        if recon_mask.any():
-            wf_refs[0] = None
-        if detect_mask.any():
-            wf_refs[1] = self._build_detect_ref(wf_types, detect_params)
-        if comm_mask.any():
-            comm_ref = self._build_comm_ref(comm_params)
-            wf_refs[3] = comm_ref
+        comm_data = self._buf_comm_data.zero_() if comm_ref is None else self._buf_comm_data
 
         if wf_refs:
-            spec_results = self.processor.process_rx_cpi_unified(
-                self._buf_cpi, wf_refs,
-            )
+            if self._buf_cpi is not None:
+                # Pre-allocated: batched FFT on full CPI IQ
+                spec_results = self.processor.process_rx_cpi_unified(
+                    self._buf_cpi, wf_refs,
+                )
+            else:
+                # Streaming: use pre-computed per-pulse FFT buffer
+                spec_results = self.processor.process_rx_cpi_unified(
+                    self._buf_raw_fft, wf_refs, iq_is_fft=True,
+                )
             for task_id, spec in spec_results.items():
                 mask = (task_ids == task_id)
                 spectrum = torch.where(
@@ -480,7 +519,8 @@ class MFARVecEnv:
                     spec, spectrum,
                 )
 
-        if comm_mask.any():
+        if comm_mask.any() and self._buf_cpi is not None:
+            # Pre-allocated: BPSK from full CPI
             comm_xy = self.processor.process_rx_comm(self._buf_cpi, wf_refs[3])
             comm_data = torch.where(
                 comm_mask.unsqueeze(-1),
@@ -498,6 +538,11 @@ class MFARVecEnv:
                 recon_mask.unsqueeze(-1),
                 ri, recon_intel,
             )
+
+        # Persist computed spectrum/comm into buffers so next _get_observations
+        # sees the actual values instead of stale zeros
+        self._buf_spectrum.copy_(spectrum)
+        self._buf_comm_data.copy_(comm_data)
 
         t_rx = time.perf_counter()
 
