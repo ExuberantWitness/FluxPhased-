@@ -7,6 +7,7 @@ Warp kernel for delay/Doppler/gain (batched across env×radar×element)
 import numpy as np
 import warp as wp
 import torch
+from typing import Optional
 
 SPEED_OF_LIGHT = 299792458.0
 
@@ -101,6 +102,10 @@ class VecChannel:
         tx_power_w: float = 1.0, rcs_dbsm: float = 20.0,
         array_directivity_db: float = 44.0, system_loss_db: float = 3.0,
         n_elem: int = 625,
+        beam_az: Optional[torch.Tensor] = None,
+        beam_el: Optional[torch.Tensor] = None,
+        array_rotation: Optional[torch.Tensor] = None,
+        bw_az_deg: float = 4.06, bw_el_deg: float = 4.06,
     ):
         """Compute two-way channel parameters via the standard radar equation.
 
@@ -113,13 +118,22 @@ class VecChannel:
         The per-element gain produces correct beamformed-level SNR when the
         RL agent processes all N element spectra.
 
+        Optional beam-aware gain: if beam_az/beam_el are provided, the
+        array_directivity_db is reduced by an off-boresight loss based on
+        angular separation between world-space beam direction and target.
+
         Args:
-            radar_pos: [E, R, 3]
-            radar_vel: [E, R, 3]
-            tgt_pos:   [E, 3] single target position per env
-            tgt_vel:   [E, 3]
+            radar_pos:       [E, R, 3]
+            radar_vel:       [E, R, 3]
+            tgt_pos:         [E, 3] single target position per env
+            tgt_vel:         [E, 3]
             tx_power_w, rcs_dbsm, array_directivity_db, system_loss_db: scalars
-            n_elem: number of array elements (for per-element gain division)
+            n_elem:          number of array elements (for per-element gain division)
+            beam_az:         [E, R] mean array-local azimuth (deg) or None
+            beam_el:         [E, R] mean array-local elevation (deg) or None
+            array_rotation:  [E, R] array rotation angle (deg) or None
+            bw_az_deg:       3dB beamwidth azimuth (deg) for off-boresight loss
+            bw_el_deg:       3dB beamwidth elevation (deg) for off-boresight loss
         Returns:
             delay_samples: [E, R] float32 (round-trip)
             doppler_hz:    [E, R] float32 (two-way)
@@ -135,11 +149,38 @@ class VecChannel:
         radial_vel = (rel_vel * rel).sum(dim=-1) / distance
         doppler_hz = 2.0 * radial_vel * self.fc / SPEED_OF_LIGHT
 
+        # Compute beam-dependent gain if beam direction is provided
+        tx_gain_db = torch.full_like(distance, array_directivity_db)
+        if beam_az is not None and beam_el is not None:
+            # Target world-frame direction from radar
+            tgt_world_az_rad = torch.atan2(rel[..., 1], rel[..., 0])  # [E, R]
+            tgt_world_el_rad = torch.atan2(
+                rel[..., 2], torch.sqrt(rel[..., 0]**2 + rel[..., 1]**2).clamp(min=1.0),
+            )  # [E, R]
+
+            # Beam world-frame direction (array-local + array rotation)
+            rot = array_rotation * (np.pi / 180.0) if array_rotation is not None else 0.0
+            world_beam_az_rad = beam_az * (np.pi / 180.0) + rot
+            world_beam_el_rad = beam_el * (np.pi / 180.0)
+
+            # Off-boresight angles (wrap azimuth to ±π)
+            d_az_rad = world_beam_az_rad - tgt_world_az_rad
+            d_az_rad = torch.atan2(torch.sin(d_az_rad), torch.cos(d_az_rad))
+            d_el_rad = world_beam_el_rad - tgt_world_el_rad
+
+            d_az_deg = d_az_rad * (180.0 / np.pi)
+            d_el_deg = d_el_rad * (180.0 / np.pi)
+
+            # Gaussian beam pattern: -3 dB at BW edge
+            loss_db = (-3.0 * (d_az_deg / bw_az_deg)**2
+                       - 3.0 * (d_el_deg / bw_el_deg)**2)
+            tx_gain_db = array_directivity_db + loss_db
+
         # Standard monostatic radar equation in dB form:
         # Pr = Pt + 2G + σ + 20·log10(λ) - 30·log10(4π) - 40·log10(R) - Lsys
         rx_power_dbm = (
             10.0 * np.log10(tx_power_w * 1000.0)         # Pt (dBm)
-            + 2.0 * array_directivity_db                   # 2G
+            + 2.0 * tx_gain_db                              # 2G (beam-dependent)
             + rcs_dbsm                                     # σ
             + 20.0 * np.log10(self.wavelength)             # λ² term
             - 30.0 * np.log10(4.0 * np.pi)                 # (4π)³ term
@@ -232,6 +273,11 @@ class VecChannel:
         tx_power_w: float = 1.0,
         directivity_db: float = 44.0,
         system_loss_db: float = 3.0,
+        beam_az: Optional[torch.Tensor] = None,
+        beam_el: Optional[torch.Tensor] = None,
+        array_rotation: Optional[torch.Tensor] = None,
+        bw_az_deg: float = 4.06,
+        bw_el_deg: float = 4.06,
     ):
         """One-way channel parameters (radar → missile comm link).
 
@@ -243,6 +289,10 @@ class VecChannel:
             tx_power_w: transmit power in watts
             directivity_db: TX antenna directivity (dB)
             system_loss_db: system losses (dB)
+            beam_az: [E] mean array-local azimuth (deg) or None
+            beam_el: [E] mean array-local elevation (deg) or None
+            array_rotation: [E] array rotation (deg) or None
+            bw_az_deg, bw_el_deg: 3dB beamwidth (deg)
         Returns:
             delay_samples: [E] float32 (one-way)
             doppler_hz:    [E] float32 (one-way)
@@ -263,6 +313,25 @@ class VecChannel:
         else:
             doppler_hz = torch.zeros_like(distance)
 
+        # Beam-dependent directivity (same off-boresight model as two-way)
+        tx_gain_db = torch.full_like(distance, directivity_db)
+        if beam_az is not None and beam_el is not None:
+            tgt_az_rad = torch.atan2(rel[..., 1], rel[..., 0])
+            tgt_el_rad = torch.atan2(
+                rel[..., 2], torch.sqrt(rel[..., 0]**2 + rel[..., 1]**2).clamp(min=1.0),
+            )
+            rot = array_rotation * (np.pi / 180.0) if array_rotation is not None else 0.0
+            world_beam_az_rad = beam_az * (np.pi / 180.0) + rot
+            world_beam_el_rad = beam_el * (np.pi / 180.0)
+            d_az_rad = world_beam_az_rad - tgt_az_rad
+            d_az_rad = torch.atan2(torch.sin(d_az_rad), torch.cos(d_az_rad))
+            d_el_rad = world_beam_el_rad - tgt_el_rad
+            d_az_deg = d_az_rad * (180.0 / np.pi)
+            d_el_deg = d_el_rad * (180.0 / np.pi)
+            loss_db = (-3.0 * (d_az_deg / bw_az_deg)**2
+                       - 3.0 * (d_el_deg / bw_el_deg)**2)
+            tx_gain_db = directivity_db + loss_db
+
         # One-way path loss
         one_way_pl_db = 20.0 * torch.log10(
             4.0 * np.pi * distance / self.wavelength + 1e-10,
@@ -270,7 +339,7 @@ class VecChannel:
 
         rx_power_dbm = (
             10.0 * np.log10(tx_power_w * 1000.0)
-            + directivity_db
+            + tx_gain_db
             - one_way_pl_db
             - system_loss_db
         )

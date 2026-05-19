@@ -390,7 +390,11 @@ class MFARVecEnv:
                 (E, self.n_teams, R), missile.swerling_model, dev,
             )
 
-        # Pre-compute channel params outside the pulse loop (positions constant within CPI)
+        # Beamwidth for off-boresight loss (uniform rectangular array, d=0.5λ)
+        _bw_rad = lambda n: 0.886 / (n * 0.5)
+        bw_az = float(np.degrees(_bw_rad(self.cols)))
+        bw_el = float(np.degrees(_bw_rad(self.rows)))
+
         static_params = []
         for t_idx in range(self.n_targets):
             delay_s, doppler_hz, gain = self.channel.compute_params_batch(
@@ -400,6 +404,9 @@ class MFARVecEnv:
                 rcs_dbsm=self.target_rcs_dbsm,
                 array_directivity_db=self.array.directivity_db,
                 n_elem=self.n_elem,
+                beam_az=avg_az, beam_el=avg_el,
+                array_rotation=self.array_rotation,
+                bw_az_deg=bw_az, bw_el_deg=bw_el,
             )
             static_params.append((delay_s, doppler_hz, gain))
 
@@ -417,6 +424,9 @@ class MFARVecEnv:
                 rcs_dbsm=missile.rcs_dbsm,
                 array_directivity_db=self.array.directivity_db,
                 n_elem=self.n_elem,
+                beam_az=avg_az, beam_el=avg_el,
+                array_rotation=self.array_rotation,
+                bw_az_deg=bw_az, bw_el_deg=bw_el,
             )
             gain = gain * aspect_correction[:, team_idx]
             if swerling_slow is not None:
