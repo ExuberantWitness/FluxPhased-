@@ -67,7 +67,7 @@ class MFARVecEnv:
         red_launch_pos: tuple = (0.0, -10000.0),
         blue_launch_pos: tuple = (0.0, 10000.0),
         polarization_loss_db: float = 3.0,
-        tx_rx_isolation_db: float = 25.0,
+        tx_rx_isolation_db: float = 200.0,  # disable self-interference by default
         cpi_preallocate: bool = True,
         reset_config: dict = None,
         reward_config: dict = None,
@@ -605,6 +605,17 @@ class MFARVecEnv:
         team_counts = team_counts.view(E, self.n_teams, r_per_team, 4).sum(dim=2)
         task_fingerprint = team_counts / max(r_per_team * N, 1)  # [E, n_teams, 4]
 
+        # Beam accuracy: target direction per radar (for beam pointing reward)
+        rel_tgt = self.target_pos.unsqueeze(1) - self.radar_pos  # [E, n_targets, R, 3]
+        tgt_world_az = torch.atan2(rel_tgt[..., 1], rel_tgt[..., 0]) * (180.0 / np.pi)  # [E, n_tgt, R]
+        tgt_world_el = torch.atan2(
+            rel_tgt[..., 2],
+            torch.sqrt(rel_tgt[..., 0]**2 + rel_tgt[..., 1]**2).clamp(min=1.0),
+        ) * (180.0 / np.pi)  # [E, n_tgt, R]
+        # Take first target for beam accuracy
+        tgt_world_az = tgt_world_az[:, 0, :]  # [E, R]
+        tgt_world_el = tgt_world_el[:, 0, :]  # [E, R]
+
         return {
             "state": state,
             "spectrum": spectrum,
@@ -617,6 +628,9 @@ class MFARVecEnv:
             "commander_rewards": rewards["commander_rewards"],
             "dones": dones,
             "winners": winners,
+            "beam_az": avg_az, "beam_el": avg_el,
+            "array_rotation": self.array_rotation,
+            "target_az": tgt_world_az, "target_el": tgt_world_el,
             "missile_pos": missile.missile_pos,
             "kills": kills,
             "timing": timing,

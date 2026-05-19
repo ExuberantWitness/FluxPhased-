@@ -72,7 +72,7 @@ _EPS = 1e-12
 
 ENV_DEFAULTS = {
     "rows": 25, "cols": 25, "num_envs": 1, "n_radars": 4,
-    "pulses_per_cpi": 32, "fft_size": 256, "device": "cuda",
+    "pulses_per_cpi": 1, "fft_size": 32768, "device": "cuda",
     "tx_power_w": 50000,
     "cpi_preallocate": False,  # False=streaming (~3GB), True=batch (~15GB, needs 96GB)
 }
@@ -84,7 +84,7 @@ PPO_DEFAULTS = {
     "commander_entropy": 0.01, "radar_entropy": 0.02,
     "value_coef": 0.5, "max_grad_norm": 0.5,
     "n_epochs": 5, "batch_size": 16,
-    "buffer_size_commander": 256, "buffer_size_radar": 64,
+    "buffer_size_commander": 64, "buffer_size_radar": 16,
 }
 
 LEAGUE_DEFAULTS = {
@@ -236,13 +236,44 @@ class DenseRewardShaper:
         jam_reward = self._jam_reward(spectrum, task_ids)
         comm_reward = self._comm_reward(step_output, task_ids)
         recon_reward = self._recon_reward(spectrum, task_ids)
+        beam_acc = self._beam_accuracy_reward(step_output)
         total = (detect_reward * self.detect_snr_weight
                  + jam_reward * self.jam_effectiveness_weight
                  + comm_reward * self.comm_reliability_weight
-                 + recon_reward * self.recon_intel_weight)
+                 + recon_reward * self.recon_intel_weight
+                 + beam_acc * self.beam_accuracy_weight)
         return {"detect_reward": detect_reward, "jam_reward": jam_reward,
                 "comm_reward": comm_reward, "recon_reward": recon_reward,
+                "beam_accuracy": beam_acc,
                 "total_shaped": total}
+
+    def _beam_accuracy_reward(self, step_output: dict):
+        """Gaussian reward for pointing beam toward target direction.
+
+        World_beam = array_local_beam + array_rotation.
+        Reward = exp(-0.5 * (off_bore / sigma)^2) per radar.
+        """
+        beam_az = step_output.get("beam_az")
+        beam_el = step_output.get("beam_el")
+        tgt_az = step_output.get("target_az")
+        tgt_el = step_output.get("target_el")
+        arr_rot = step_output.get("array_rotation")
+        if beam_az is None or tgt_az is None:
+            return torch.tensor(0.0, device=self.device)
+
+        # World-frame beam direction
+        world_az = beam_az + (arr_rot if arr_rot is not None else 0.0)
+
+        # Off-boresight (wrap azimuth)
+        d_az = world_az - tgt_az
+        d_az = torch.atan2(torch.sin(d_az * np.pi / 180.0),
+                            torch.cos(d_az * np.pi / 180.0)) * (180.0 / np.pi)
+        d_el = beam_el - (tgt_el if tgt_el is not None else 0.0)
+
+        # Gaussian beam penalty (σ ≈ 1.5× BW for smooth gradient)
+        sigma = 6.0  # degrees, gives broad reward catchment
+        r = torch.exp(-0.5 * (d_az / sigma)**2 - 0.5 * (d_el / sigma)**2)
+        return r.mean().to(self.device)
 
     def _detect_reward(self, spectrum, task_ids):
         E, R, N, P, B = spectrum.shape
@@ -512,17 +543,17 @@ class SubArrayRadarActorCritic(nn.Module):
         self.other_dim = vehicle_dim + missile_dim + commander_instr_dim
         # Compact obs: encoded_spec [K*256] + sub_comm [K*2] + sub_recon [K*4] + other [33]
         self.compact_dim = self.n_sub * (spectrum_hidden + 2 + 4) + self.other_dim
-        self.conv = nn.Sequential(
-            nn.Conv1d(n_pulses, 32, kernel_size=7, padding=3, stride=2), nn.ReLU(),
-            nn.Conv1d(32, 64, kernel_size=5, padding=2, stride=2), nn.ReLU(),
-            nn.Conv1d(64, 128, kernel_size=3, padding=1, stride=2), nn.ReLU())
-        with torch.no_grad():
-            dummy = torch.zeros(1, n_pulses, n_bins)
-            conv_out = self.conv(dummy)
-            conv_flat = conv_out.shape[1] * conv_out.shape[2]
-        self.proj = nn.Sequential(
-            nn.Linear(conv_flat, spectrum_hidden * 2), nn.ReLU(),
-            nn.Linear(spectrum_hidden * 2, spectrum_hidden))
+        # Frequency compressor: strided conv stack to compress n_bins → compact features
+        # Replaces the old conv+proj for large-n_bins spectrum preprocessing
+        self.freq_compressor = nn.Sequential(
+            nn.Conv1d(n_pulses, 16, kernel_size=15, stride=8, padding=7), nn.ReLU(),
+            nn.Conv1d(16, 32, kernel_size=15, stride=8, padding=7), nn.ReLU(),
+            nn.Conv1d(32, 64, kernel_size=15, stride=8, padding=7), nn.ReLU(),
+            nn.Conv1d(64, 128, kernel_size=15, stride=8, padding=7), nn.ReLU(),
+            nn.AdaptiveAvgPool1d(16),
+            nn.Flatten(),
+            nn.Linear(128 * 16, spectrum_hidden), nn.ReLU(),
+        )
         self.attention = nn.MultiheadAttention(embed_dim=spectrum_hidden, num_heads=4, batch_first=True)
         self.attn_norm = nn.LayerNorm(spectrum_hidden)
         per_sub_in = spectrum_hidden + 2 + 4
@@ -554,7 +585,7 @@ class SubArrayRadarActorCritic(nn.Module):
         sub_comm = comm.reshape(B, K, S2, 2).max(dim=2).values
         sub_recon = recon.reshape(B, K, S2, 4).max(dim=2).values
         x = sub_spec.reshape(B * K, P, BINS)
-        x = self.conv(x); x = x.reshape(B * K, -1); x = self.proj(x); x = x.reshape(B, K, -1)
+        x = self.freq_compressor(x); x = x.reshape(B, K, -1)
         attn_out, _ = self.attention(x, x, x); x = self.attn_norm(x + attn_out)
         sub_features = torch.cat([x, sub_comm, sub_recon], dim=-1)
         return sub_features, x
