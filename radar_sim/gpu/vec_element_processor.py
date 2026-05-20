@@ -152,7 +152,9 @@ class VecElementProcessor:
                 if rx_beam_weights is not None:
                     w = torch.conj(rx_beam_weights).unsqueeze(-1).unsqueeze(-1)
                     mf = (w * mf).sum(dim=2, keepdim=True)  # [E,R,1,P,B]
-                spec = torch.abs(mf) ** 2
+                # IFFT back to time domain for pulse compression
+                mf_time = torch.fft.ifft(mf, dim=-1)
+                spec = torch.abs(mf_time) ** 2
             # If beamformed, expand back to N elements for task mask compatibility
             if rx_beam_weights is not None and spec.shape[2] == 1:
                 spec = spec.expand(-1, -1, iq_pulses.shape[2], -1, -1)
