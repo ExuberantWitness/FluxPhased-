@@ -860,11 +860,11 @@ class TeamPPOTrainer:
 
     def update(self) -> dict:
         cmd_metrics = {}; radar_metrics = {}
-        if self.commander_buffer and self.commander_buffer.size > self.batch_size:
+        if self.commander_buffer and self.commander_buffer.size >= max(4, self.commander_buffer.buffer_size // 2):
             self.commander_buffer.compute_returns()
             cmd_metrics = self.commander_trainer.update(self.commander_buffer)
             self.commander_buffer.reset()
-        if self.radar_buffer and self.radar_buffer.size > self.batch_size:
+        if self.radar_buffer and self.radar_buffer.size >= max(4, self.radar_buffer.buffer_size // 2):
             self.radar_buffer.compute_returns()
             radar_metrics = self.radar_trainer.update(self.radar_buffer)
             self.radar_buffer.reset()
