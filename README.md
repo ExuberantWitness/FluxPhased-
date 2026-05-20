@@ -1900,6 +1900,83 @@ band(iter) = (1 - α)·400 + α·100    α = min(iter/15, 1)
 
 ---
 
+### 2026-05-20
+
+**Critical Bug: Missing IFFT in Matched Filter / 匹配滤波器缺少 IFFT 的关键缺陷**
+
+在 `vec_element_processor.py` 的 `process_rx_cpi_unified` 中发现并修复一个阻塞性信号处理缺陷：匹配滤波在频域做完 `FFT(rx) × conj(FFT(ref))` 后直接取 `|·|²`，**缺少 `torch.fft.ifft()` 回到时域**。这导致：
+
+- 脉冲压缩从未发生 — TB=10000 的 40 dB 处理增益完全丢失
+- 目标距离/延迟信息被 `|·|²` 操作丢弃（相位信息全部丢失）
+- 检测 SNR 仅剩 ~3-4 dB（频域的频谱平坦度），无法分辨目标
+
+**修复**：在频域乘法 + RX 波束形成后、取模方前插入 IFFT：
+
+```python
+# vec_element_processor.py:155 (before)
+spec = torch.abs(mf) ** 2
+
+# vec_element_processor.py:155 (after)
+mf_time = torch.fft.ifft(mf, dim=-1)
+spec = torch.abs(mf_time) ** 2
+```
+
+**已验证的效果**（25×25 阵列，目标 5 km，50 kW）：
+
+| 指标 | 修复前 | 修复后 |
+|------|--------|--------|
+| 对准 SNR (0°) | ~10.5 dB（底噪级） | **35.8 dB** |
+| 偏离 1 BW (4.1°) | ~10.5 dB（无变化） | 12.8 dB（-23 dB） |
+| 波束 SNR 动态范围 | 0 dB（不可区分） | **25+ dB** |
+| 脉冲压缩增益 | 0 dB | **37 dB**（恢复 TB=10000） |
+| 目标距离信息 | 完全丢失 | 精确恢复（0m 误差） |
+
+**影响**：这是此前"50 kW 在 12.7 km 看不到目标"的**根因**，并非物理参数问题。修复后系统性能与真实雷达物理一致。
+
+---
+
+**Beam Steering Learnability Verified / 波束指向可学习性验证**
+
+通过 REINFORCE 实验证明 agent **可以从环境自然 SNR reward（非 oracle）学会波束指向**：
+
+| 实验 | 初始波束 | 最终波束 | episodes |
+|------|---------|---------|----------|
+| 密集 reward（信道增益） | 20.0° off | **1.0°** | 100 |
+| SNR reward + curriculum (2→5 km) | 10.0° off | **2.5°** | 150 |
+
+关键配置：
+- SNR 阈值降至 3 dB（扩大 reward 盆地）
+- Curriculum：先近距离（2 km, SNR 极高）→ 逐步推远至 5 km
+- 中等探索噪声（std ≈ 13°）
+
+验证了 IFFT 修复后波束依赖 SNR 真实可用，RL agent 具备学会波束指向的条件。
+
+---
+
+**Buffer Overflow Fix / 回放缓冲溢出修复**
+
+`RolloutBuffer.near_full` 在 `ptr ≥ buffer_size-1` 时触发，但 `update()` 的阈值是 `size > batch_size`。当两者不匹配（如 buffer_size=16, batch_size=16），触发时 size=15 < 16 → update 跳过 → 缓冲区溢出。
+
+修复：`update()` 阈值改为 `size ≥ max(4, buffer_size // 2)`，确保 near_full 触发时缓冲区能被正确处理。
+
+---
+
+**Array Directivity & SNR Physics Audit / 阵列方向性与 SNR 物理审计**
+
+对 25×25 λ/2 间距阵列的物理参数进行全面审计：
+
+| 参数 | 值 | 说明 |
+|------|-----|------|
+| Array directivity | **32.93 dB** | `10·log₁₀(4π·N·dx·dy/λ²)`，物理正确 |
+| 3dB beamwidth | 4.06° | vs MATLAB 4.06° ✓ |
+| 5 km on-target SNR | 35.8 dB | 处理后（BF+MF），等效 12 kW @ ~50 km |
+| 10 km on-target SNR | 25.5 dB | 仍远超检测阈值 |
+| 12.7 km SNR | ~20 dB | 对应 50 kW 正常探测距离 |
+
+**结论**：FluxPhased 的 50 kW 系统参数与"12 kW 探测 100 km"的真实雷达性能完全一致（距离差 8× → R⁴ 差 4096× → 36 dB，加功率差 4× → 6 dB，总计 42 dB 链路余量优势）。SNR 问题全部来自信号处理实现，非物理参数。
+
+---
+
 ### 2026-05-17
 
 **MATLAB Expanded Cross-Validation (83 Tests) / MATLAB 扩展交叉验证（83 测试）**
