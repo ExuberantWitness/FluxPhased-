@@ -1977,6 +1977,82 @@ spec = torch.abs(mf_time) ** 2
 
 ---
 
+### 2026-05-20 V2
+
+**Full League Training End-to-End Run + Training Defects Identified / 完整联赛训练端到端运行 + 训练缺陷诊断**
+
+在 RTX 4090D 24GB 上完成完整的四阶段联赛训练（Phase A→B→C→D），使用 25×25 阵列、4 雷达、50 kW、流式模式（~3 GB VRAM）。**训练流程无崩溃全通**，但揭示了阻止有效策略学习的深层训练管线缺陷。
+
+---
+
+#### 联赛训练统计
+
+| Phase | 内容 | 耗时 | 结果 |
+|-------|------|------|------|
+| A | 单任务预训练（recon/detect/jam）各 16 eps | ~5 min | 3× pretrain_*.pt |
+| B | 多任务自对弈（5 trainers × 50 eps） | ~30 min | 5× phaseB.pt |
+| C | 3 次 PSRO 迭代（payoff + Nash LP + 训练） | ~205 min | 种群增长至 20 policies |
+| D | Exploiter 精炼（50 次）+ 100 局终评 | ~60 min | Final agents |
+
+**总耗时**：~5 小时（含 payoff matrix 评估 36 局/iteration）。
+
+---
+
+#### 关键发现：胜率 0% — 策略指纹塌缩
+
+```
+Team 0 final agent (p0021): Win rate 0/100 = 0.00%
+Team 1 final agent (p0023): Win rate 0/100 = 0.00%
+```
+
+**任务指纹分析**（从 `diag_history.json`）：
+
+| Iter | 典型指纹 | 现象 |
+|------|----------|------|
+| 0 | `[0,0,0,1]`, `[1,0,0,0]`, `[0,0,1,0]` | 全部极端坍缩，无 detect |
+| 1 | `[0.25,0,0,0.75]`, `[0,0.5,0,0.5]` | 混合但依然 0% detect |
+| 2 | `[0.5,0,0,0.5]`, `[0,0.25,0,0.75]` | comm/recon/jam 出现，detect 缺失 |
+
+**核心问题**：所有 20 个 policy 几乎完全避开了 detect 任务。没有 detect → 无法发现和跟踪敌方导弹 → 无拦截 → 无击杀 → 双方均不胜 → 支付矩阵全零 → NashConv ≡ 0。
+
+---
+
+#### 根因诊断：3 项训练管线缺陷
+
+| # | 缺陷 | 影响 | 状态 |
+|---|------|------|------|
+| **D1** | `store_transition` 使用 battlefield reward（仅击杀奖励），**未使用 `DenseRewardShaper` 的 shaped reward** | PPO 梯度完全不反映 detect/jam/comm/recon 任务质量；200M 参数空间的梯度来自极稀疏的击杀信号（几乎恒零） | **待修复** |
+| **D2** | Phase A 仅 16 episodes × 50 steps = 800 transitions，观测空间 ~20M 维 | 预训练量不足至少 100-1000×；policy 无法学到任何有意义的任务行为 | **待修复** |
+| **D3** | Payoff matrix 全零（无策略占优）→ Nash LP 总是 trivial 解 σ=[1,0,...] → 博弈压力为零 → PSRO 退化为随机探索 | 种群多样性的任何增长都是偶然的，而非竞争压力驱动 | D1+D2 的衍生后果 |
+
+---
+
+#### PSRO 详细数据
+
+| Iteration | 耗时 | Team 0 策略数 | Team 1 策略数 | NashConv | H_task |
+|-----------|------|-------------|-------------|----------|--------|
+| 0 | 2810s | 2 | 3 | 5e-11 | 0.000 |
+| 1 | 5757s | 4 | 6 | 5e-11 | 0.693 |
+| 2 | 12329s | 8 | 12 | 5e-11 | 0.562 |
+
+- **NashConv ≡ 10⁻¹¹**（机器精度零值）：支付矩阵中所有策略对都打平，无博弈差异
+- **H_task 从 0 → 0.693 → 0.562**：任务熵先升后降，表明初始探索后策略开始收敛到少数模式
+- **Exploiter 重置**（p0009, p0012）：部分 exploiter 表现差于父检查点，自动回退
+
+---
+
+#### 修复路线图
+
+| 优先级 | 修复项 | 说明 |
+|--------|--------|------|
+| **P0** | D1: shaped reward 流入 PPO | 改 `store_transition` 使 `DenseRewardShaper.total_shaped` 作为 PPO 的 reward 信号 |
+| **P0** | D2: 大幅增加训练量 | Phase A: 16→500 eps，Phase B: 50→500 eps per trainer |
+| **P1** | 目标距离/功率调优 | 确保训练期间 SNR 在可探测范围（如 3-5 km），使用更宽的 reward 盆地 |
+| P2 | 观测降维 | 20M→~10K 维压缩后再入 buffer，避免 CPU→GPU 搬运瓶颈 |
+| P3 | 多 env 并行 | num_envs=1 → 4/8，提高 GPU 利用率和样本效率 |
+
+---
+
 ### 2026-05-17
 
 **MATLAB Expanded Cross-Validation (83 Tests) / MATLAB 扩展交叉验证（83 测试）**
