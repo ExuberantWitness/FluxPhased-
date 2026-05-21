@@ -218,7 +218,7 @@ class DenseRewardShaper:
                  jam_effectiveness_weight: float = 0.1,
                  comm_reliability_weight: float = 0.05,
                  recon_intel_weight: float = 0.03,
-                 beam_accuracy_weight: float = 0.02,
+                 beam_accuracy_weight: float = 0.5,
                  snr_threshold_db: float = 10.0,
                  device: str = "cuda"):
         self.detect_snr_weight = detect_snr_weight
@@ -241,7 +241,8 @@ class DenseRewardShaper:
         total = (detect_reward * self.detect_snr_weight
                  + jam_reward * self.jam_effectiveness_weight
                  + comm_reward * self.comm_reliability_weight
-                 + recon_reward * self.recon_intel_weight)
+                 + recon_reward * self.recon_intel_weight
+                 + beam_acc * self.beam_accuracy_weight)
         return {"detect_reward": detect_reward, "jam_reward": jam_reward,
                 "comm_reward": comm_reward, "recon_reward": recon_reward,
                 "beam_accuracy": beam_acc,

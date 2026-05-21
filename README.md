@@ -1666,6 +1666,87 @@ MATLAB Phased Array System Toolbox 是 IQ 级雷达仿真的工业标准（MathW
 <details>
 <summary><b>Updates & Bug Fixes / 更新进展与缺陷修复</b></summary>
 
+### 2026-05-21 V1
+
+**D1 核心 bug 修复 + 最小验证实验 + 方法路线纠正 / D1 Critical Bug Fix + Minimal Verification + Methodology Correction**
+
+定位并修复了本项目第三次"信号路径断裂"类 bug：`DenseRewardShaper._beam_accuracy_reward` 在 line 240 被计算但**从未被加入 `total_shaped`**（line 241-244）。`beam_accuracy_weight` 参数存在但为死代码——beam-pointing reward 这个最直接的信号从来没到过 PPO 优化器。
+
+这解释了此前 5 小时联赛跑出 0% win rate 的真正原因：不是算法不够强，不是缺 curiosity 或 auxiliary task，是 beam 指向的因果链从头到尾没接到梯度。
+
+---
+
+#### 本项目三次"信号路径断裂"模式
+
+| # | Bug | 表现 | 修复 |
+|---|-----|------|------|
+| 1 | encoder 在 `no_grad` 下编码 | encoder 不在计算图 | 移除 `no_grad` wrapper |
+| 2 | `_buf_spectrum` 写不回 | 网络看到全零频谱 | 持久化 buffer 引用 |
+| 3 | `beam_acc` 未加入 `total` | beam 指向对 reward 无影响 | 1 行修改（本次） |
+
+**规律**：每次都是"构建的信号没有正确到达优化器"。不是缺模块，是信号路径在某处断了。
+
+---
+
+#### D1 修复（1 行）
+
+`train_league.py` `DenseRewardShaper.__call__`:
+
+```python
+# Before:
+total = (detect_reward * self.detect_snr_weight
+         + jam_reward * self.jam_effectiveness_weight
+         + comm_reward * self.comm_reliability_weight
+         + recon_reward * self.recon_intel_weight)
+
+# After:
+total = (detect_reward * self.detect_snr_weight
+         + jam_reward * self.jam_effectiveness_weight
+         + comm_reward * self.comm_reliability_weight
+         + recon_reward * self.recon_intel_weight
+         + beam_acc * self.beam_accuracy_weight)   # ← 加上这行
+```
+
+同时 `beam_accuracy_weight` 默认值 0.02 → 0.5，确保信号在 total 中可见。
+
+---
+
+#### 最小验证实验（`tests/minimal_detect_test.py`）
+
+按照"在最小规模上确认信号到达优化器，再加任何东西"的工程纪律，新建了最小验证脚本：
+
+- 1 agent, 1 任务（仅 detect）, 静止目标 @ 12.7 km, RCS=20 dBsm
+- 25×25 阵列, 50 kW, array_rotation=0
+- 关掉 self-play、PSRO、exploiter、payoff matrix、league
+- 50k PPO steps
+
+**结果**（训练进行中，已完成 ~28k/50k steps）：
+
+| 指标 | 随机基线 | 训练峰值 | 现状 |
+|------|----------|----------|------|
+| beam_accuracy | 0.03 | 0.47 | 振荡在 0-0.47 |
+| total_shaped | 0.06 | 0.29 | 振荡 |
+| beam_acc > 0.1 命中率 | ~4% | 28% (10k-15k段) | 回落至 ~17% |
+
+**趋势**：网络**能**学会指向目标（beam_acc 峰值 0.47 远超随机 0.03），但学习不稳定——命中率在 20-30% 振荡且最近回落。根因：`buffer_size_radar=16` / `batch_size=16` 导致 PPO 更新方差过大，策略在"学会→遗忘→再学会"之间循环。
+
+---
+
+#### 方法路线纠正
+
+此前在核心 RL（单 agent 单任务 detect）未确认能学的前提下，先建好了 self-play + 3 轮 PSRO + Nash LP + exploiter 精炼的整套竞争训练机器。这是顺序倒置。
+
+**正确的能力建设顺序**：
+1. 单 agent 单任务 detect 静止目标能学 ← **当前所处位置**
+2. 单 agent 单任务 detect 运动目标能学
+3. 单 agent 四任务联合能学（jam/comm/recon beam 奖励路径逐个验证）
+4. 双 agent self-play 能产生非零 payoff
+5. 才有意义跑 PSRO / league / exploiter
+
+**当前最优先动作**：增大 buffer_size_radar (16→64) 和 batch_size (16→32) 稳定 PPO 更新，确认 detect beam 能稳定收敛到目标方向。不重跑联赛、不加多任务、不改距离/功率——直到这一步通过。
+
+---
+
 ### 2026-05-20 V2
 
 **Full League Training End-to-End Run + Training Defects Identified / 完整联赛训练端到端运行 + 训练缺陷诊断**
