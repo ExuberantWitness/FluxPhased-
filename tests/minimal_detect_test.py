@@ -45,10 +45,10 @@ PPO_CFG = {
     "commander_lr": 3e-4, "radar_lr": 1e-4,
     "gamma": 0.99, "gae_lambda": 0.95,
     "commander_clip": 0.2, "radar_clip": 0.1,
-    "commander_entropy": 0.01, "radar_entropy": 0.02,
-    "value_coef": 0.5, "max_grad_norm": 0.5,
-    "n_epochs": 5, "batch_size": 16,
-    "buffer_size_commander": 64, "buffer_size_radar": 16,
+    "commander_entropy": 0.01, "radar_entropy": 0.01,
+    "value_coef": 1.0, "max_grad_norm": 0.5,
+    "n_epochs": 5, "batch_size": 32,
+    "buffer_size_commander": 128, "buffer_size_radar": 64,
 }
 
 # Dense reward shaper weights — beam_accuracy_weight is the key one
@@ -57,7 +57,8 @@ REWARD_WEIGHTS = {
     "jam_effectiveness_weight": 0.1,
     "comm_reliability_weight": 0.05,
     "recon_intel_weight": 0.03,
-    "beam_accuracy_weight": 0.5,   # high weight to ensure signal visible
+    "beam_accuracy_weight": 5.0,  # dominant signal for beam learning
+    "beam_sigma": 15.0,           # max gradient at dAz=15° (initial offset)
     "snr_threshold_db": 10.0,
 }
 
@@ -87,6 +88,7 @@ def set_static_target(env: MFARVecEnv):
     env.target_pos[:, 0, 2] = 0.0
     env.target_vel.zero_()
     env.array_rotation.zero_()
+    env.radar_pos.zero_()  # both radars at origin → target_az = 15° for both
 
 
 def force_detect_task(env: MFARVecEnv, actions: torch.Tensor):
@@ -95,7 +97,6 @@ def force_detect_task(env: MFARVecEnv, actions: torch.Tensor):
         base = e * 22
         actions[:, :, base:base + 4].zero_()
         actions[:, :, base + 1] = 1.0  # TASK_DETECT = 1
-
 
 def compute_random_baseline(env: MFARVecEnv, n_steps: int = 200) -> dict:
     """Run random actions to establish baseline reward levels."""
@@ -107,7 +108,6 @@ def compute_random_baseline(env: MFARVecEnv, n_steps: int = 200) -> dict:
     beam_acc_vals = []
     for _ in range(n_steps):
         actions = torch.randn(1, env.n_radars, env.action_dim, device=env.device)
-        force_detect_task(env, actions)
         commander_actions = torch.zeros(1, env.n_teams, env.battlefield.commander_action_dim,
                                         device=env.device)
         result = env.step(actions=actions, commander_actions=commander_actions)
@@ -146,7 +146,7 @@ def run(device: str = "cuda", total_steps: int = 50000, log_interval: int = 200)
         0, device=device, n_elem=env.n_elem,
         n_pulses=n_pulses, n_bins=n_bins,
         num_output_length=env.num_output_length,
-        sub_array_size=5,
+        sub_array_size=25,  # single sub-array, zero gradient dilution
     )
     trainer = TeamPPOTrainer(
         commander=policy["commander"],
@@ -168,6 +168,7 @@ def run(device: str = "cuda", total_steps: int = 50000, log_interval: int = 200)
         device=device,
     )
     trainer.init_buffers(env.state_dim, env.action_dim)
+    # dummy_obs=False: use real spectrum → detect SNR reward provides signal
     # Override reward shaper with tuned weights
     trainer.reward_shaper = DenseRewardShaper(device=device, **REWARD_WEIGHTS)
 
@@ -208,14 +209,15 @@ def run(device: str = "cuda", total_steps: int = 50000, log_interval: int = 200)
             opp_r_end = opp_r_start + (env.n_radars // env.n_teams)
             actions[:, opp_r_start:opp_r_end, :] = torch.randn(
                 E, opp_r_end - opp_r_start, env.action_dim, device=device)
-            # Force ALL radars to detect task
-            force_detect_task(env, actions)
-
+            # Network freely chooses tasks via task_head (no force)
             # Commander actions: team 0 = zeros (no missiles), team 1 = random
             commander_actions = torch.zeros(
                 E, env.n_teams, env.battlefield.commander_action_dim, device=device)
 
             result = env.step(actions=actions, commander_actions=commander_actions)
+
+            # Keep array rotation zeroed — only test raw beam steering
+            env.array_rotation.zero_()
 
             # Evaluate actions for team 0 only
             rep_obs = own["transition"]["radar_obs"]
@@ -240,7 +242,9 @@ def run(device: str = "cuda", total_steps: int = 50000, log_interval: int = 200)
 
             # Log beam angles
             if step % log_interval == 0:
-                beam_az = result["beam_az"].mean().item()
+                beam_az_all = result["beam_az"]  # [E, R]
+                beam_az_t0 = beam_az_all[..., 0:1].mean().item()  # team 0 only
+                beam_az = beam_az_all.mean().item()  # overall mean
                 beam_el = result["beam_el"].mean().item()
                 beam_acc = reward_info["shaped_rewards"]["beam_accuracy"].item()
                 total = reward_info["shaped_rewards"]["total_shaped"].mean().item()
@@ -251,19 +255,34 @@ def run(device: str = "cuda", total_steps: int = 50000, log_interval: int = 200)
 
                 elapsed = time.time() - t_start
                 steps_per_sec = step / max(elapsed, 0.1) if step > 0 else 0
+                # Task distribution from result
+                task_ids = result.get("task_ids")  # [E, R, N]
+                if task_ids is not None:
+                    t0_tasks = task_ids[0, 0, :]  # team 0, all elements
+                    n_detect = (t0_tasks == 1).sum().item()
+                    n_recon = (t0_tasks == 0).sum().item()
+                    n_jam = (t0_tasks == 2).sum().item()
+                    n_comm = (t0_tasks == 3).sum().item()
+                    task_str = f"D:{n_detect} R:{n_recon} J:{n_jam} C:{n_comm}"
+                else:
+                    task_str = "?"
                 print(f"[{step:6d}] total_shaped={total:.4f} beam_acc={beam_acc:.3f} "
-                      f"beam_az={beam_az:+.1f}° (tgt={target_az:+.1f}°) "
-                      f"beam_el={beam_el:+.1f}°  steps/s={steps_per_sec:.1f}")
+                      f"beam_az_t0={beam_az_t0:+.1f}° (tgt={target_az:+.1f}°) "
+                      f"el={beam_el:+.1f}° {task_str}  steps/s={steps_per_sec:.1f}")
 
             if (trainer.commander_buffer and trainer.commander_buffer.near_full) or \
                (trainer.radar_buffer and trainer.radar_buffer.near_full):
-                trainer.update()
+                metrics = trainer.update()
+                if metrics.get("radar"):
+                    print(f"[{step:6d}] PPO-update radar: {metrics['radar']}")
 
             step += 1
 
         ep += 1
         # Force update at end of episode
-        trainer.update()
+        metrics = trainer.update()
+        if metrics.get("radar") and step % 1000 < 200:
+            print(f"[{step:6d}] PPO-ep-update radar: {metrics['radar']}")
 
     # ── Final metrics ─────────────────────────────────────────────────
     elapsed = time.time() - t_start

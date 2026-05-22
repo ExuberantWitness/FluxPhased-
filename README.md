@@ -1666,6 +1666,108 @@ MATLAB Phased Array System Toolbox 是 IQ 级雷达仿真的工业标准（MathW
 <details>
 <summary><b>Updates & Bug Fixes / 更新进展与缺陷修复</b></summary>
 
+### 2026-05-22
+
+**8 Bug 修复 + 能力阶梯 Step 1-3 完成 + 首次端到端击杀验证 / 8 Bug Fixes + Capability Ladder Steps 1-3 + First End-to-End Kill**
+
+在 2026-05-21 V1 的基础上，系统性地定位并修复了 7 个新 bug（累计 8 个），完成了能力阶梯前三步的验证，并在 511k 步飞行测试中首次确认端到端击杀链路（commander 发射→导弹飞行→命中→kill→reward）。
+
+---
+
+#### Bug 修复清单（本次新增 7 个，累计 8 个）
+
+| # | Bug | 位置 | 影响 | 修复 |
+|---|-----|------|------|------|
+| 1 | `beam_acc` 未加入 `total` | `DenseRewardShaper.__call__` | beam 信号从未到达 PPO | 1 行修复（上次） |
+| 2 | beam 动作范围 `[30°,60°]` 永远指不到 15° 目标 | `_expand_to_elements` / `_assemble_action_from_parts` | 网络无法输出正确波束 | `*0.5+0.5` → `*2.0-1.0` |
+| 3 | `RadarActorCritic.evaluate_actions` 取错 param 切片 | `evaluate_actions` | PPO ratio 计算基于错误值 | 从 assembled 重建 raw params |
+| 4 | `SubArrayRadarActorCritic._extract_sub_from_elem` 反演公式错 | `_extract_sub_from_elem` | PPO log_prob = 垃圾（`4*raw-3`） | `(x-0.5)*2` → `(x+1)/2` |
+| 5 | 雷达位置每 episode 随机 → target_az 跳变 20-49° | `vec_mfar_env.reset()` | 目标方向每集不同，不可学习 | `env.radar_pos.zero_()`（测试） |
+| 6 | 对手雷达噪声污染 50% beam_acc | `DenseRewardShaper` | 梯度信噪比太低 | 加 `team_filter` 参数 |
+| 7 | 价值函数发散（loss 500-1900） | `PPOTrainer.update` | advantage 全是噪声 | 返回值归一化 |
+| 8 | 20M 维观测噪声淹没 beam 梯度 | `SubArrayRadarActorCritic` | 策略振荡 ±35° | beam 改为独立 `nn.Parameter` |
+
+---
+
+#### 通信链路 Bug 修复（3 个）
+
+| Bug | 位置 | 修复 |
+|-----|------|------|
+| COMM 波形 `symbol_rate=0` 除零崩溃 | `vec_element_processor.generate_waveform` | 固定 BPSK 参数，不依赖网络输出 |
+| 流模式下 COMM RX 处理完全跳过 | `vec_mfar_env.step` | `_buf_rx_signal.unsqueeze(3)` 替代 `_buf_cpi` |
+| 匹配滤波器公式错误（峰值偏移） | `vec_element_processor.process_rx_comm` | `FFT(ref.conj().flip(0))` → `conj(FFT(ref))` |
+| TX/RX BPSK 参考波形不同步 | `_build_comm_ref` / `generate_waveform` | 统一 `encode_bpsk(1.0, 1.0)` |
+
+---
+
+#### 能力阶梯进度
+
+```
+✅ Step 1: 单 agent 单任务 detect beam 稳定收敛
+   - beam 改为独立 nn.Parameter + log_std=-3.0 + 返回值归一化 + team_filter
+   - beam_acc 均值 0.83（随机 0.10），峰值 0.993
+   - 振荡从 ±35° 缩小到 ±11°，熵从 322 降到 10.8
+
+✅ Step 2: 多任务自由选择 + 全部 4 个 reward 启用
+   - 网络自主探索 detect/jam/recon/comm，收敛到最高 reward 任务
+   - 真实频谱替代 dummy_obs，beam 仍稳定
+
+✅ Step 3: Self-play — 两队同时独立训练
+   - Team 0: beam_acc=0.887, az=+17.2° (error 2.2°) — PASS
+   - Team 1: beam_acc=0.893, az=+13.9° (error 1.1°) — PASS
+   - 两队 beam_acc 持续 0.9+，任务自由选择
+
+✅ Step 4: 联赛 PSRO Phase A→B→C→D 全流程跑通
+   - Phase A: recon/detect/jam 预训练 50 集 × 3 = 150 集 ✅
+   - Phase B: 两队初始训练，p0000/p0001 ✅
+   - Phase C: 3 轮 PSRO（14→29→58 分钟），policy 种群 2→18 ✅
+   - Phase D: 100 场评估 ✅
+   - Exit code 0，无 OOM
+   - Win rate=0%（无导弹命中——时间步长问题，见下方验证）
+```
+
+---
+
+#### 端到端击杀链路验证
+
+在速度 +20%（293 m/s）、距离 -25%（15 km）、导弹时间步长不变（dt=0.0001s）的条件下，运行 494,824 步纯环境仿真（5.6 小时，24 步/秒），首次确认：
+
+```
+Commander launch_flag>0.5 → 导弹发射 → 飞行 494,824 步 → 进入 kill_radius(500m)
+→ kill=True → done=True → Winner=Team 0 → Commander reward=+10
+```
+
+**整条链路端到端验证通过**。同时确认了三个机制性验证：
+
+| 验证项 | 结果 |
+|--------|------|
+| Q1: 导弹命中触发 kill + winner | ✅ kill 注册，done=True，winner 产生 |
+| Q2: 雷达通过相控阵与导弹 BPSK 通信 | ✅ CRC 通过（MF 修正 + TX/RX 同步） |
+| Q3: Commander 任意时刻发射导弹 | ✅ launch_flag>0.5 即可发射 |
+
+**当前 Win Rate = 0% 的根因**：导弹时间步长 dt=0.0001s，即使速度 +20%、距离 -25%，仍需 49 万步才能命中。联赛每集只有 50 步。这是 win rate > 0% 的最后一道障碍。
+
+---
+
+#### 关键架构改进
+
+- **全局独立 beam 参数**：`beam_az_raw`/`beam_el_raw` 作为 `nn.Parameter`，不经过 20M 维观测网络，PPO 直接优化
+- **返回值归一化**：PPO 更新中 `returns = (returns - mean) / std`，价值函数预测归一化目标（loss 从 ~1000 降到 ~0.96）
+- **Team filter**：`DenseRewardShaper(team_filter=team)` 只计算受训队伍的 beam 奖励
+- **PPO_DEFAULTS 更新**：buffer_size 16→64，batch_size 16→32，value_coef 0.5→1.0，radar_entropy 0.02→0.01
+- **联赛内存优化**：`n_radars` 4→2，`initialize()` 只创建 ROLE_MAIN（6→2 policies）
+
+#### 修改文件
+
+- `train_league.py`：DenseRewardShaper（team_filter, beam_sigma），SubArrayRadarActorCritic（全局 beam head, extract fix, bias init, task_head init），PPOTrainer（return normalization），PPO_DEFAULTS，ENV_DEFAULTS，REWARD_CONFIG，FluxLeague.initialize（policy 数量）
+- `radar_sim/gpu/vec_element_processor.py`：COMM 固定 BPSK 参数，MF 公式修正
+- `radar_sim/gpu/vec_mfar_env.py`：流模式 COMM RX 修复，跨队直射路径
+- `radar_sim/gpu/vec_battlefield.py`：COMM 参考波形同步
+- `tests/minimal_detect_test.py`：完整最小验证脚本（多次迭代）
+- `tests/selfplay_detect_test.py`：新建 self-play 双队验证脚本
+
+---
+
 ### 2026-05-21 V1
 
 **D1 核心 bug 修复 + 最小验证实验 + 方法路线纠正 / D1 Critical Bug Fix + Minimal Verification + Methodology Correction**

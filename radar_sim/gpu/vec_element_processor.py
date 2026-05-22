@@ -178,7 +178,7 @@ class VecElementProcessor:
         n_fft = 1
         while n_fft < self.n_samples * 2:
             n_fft *= 2
-        mf_ref = torch.fft.fft(waveform_ref.conj().flip(0), n=n_fft)
+        mf_ref = torch.fft.fft(waveform_ref, n=n_fft).conj()
         sig_fft = torch.fft.fft(first_pulse, n=n_fft, dim=-1)
         filtered = torch.fft.ifft(sig_fft * mf_ref, dim=-1)[..., :self.n_samples]
 
@@ -346,16 +346,9 @@ class VecElementProcessor:
                     return generate_noise_broadband(n_samples, power, dev)
 
         elif task_id == TASK_COMM:
-            data_x = params[0].item() if params.numel() > 0 else 0.0
-            data_y = params[1].item() if params.numel() > 1 else 0.0
-            sym_rate = params[2].item() if params.numel() > 2 else self.symbol_rate
-            sym_rate = sym_rate * self.fs * 0.01  # normalize to physical rate
-
-            bits = encode_bpsk(
-                float(np.clip(data_x, -1, 1)),
-                float(np.clip(data_y, -1, 1)),
-                device=dev,
-            )
+            # Use fixed BPSK params (no network learning needed for comm PHY)
+            sym_rate = self.symbol_rate  # default 1e6 Hz
+            bits = encode_bpsk(1.0, 1.0, device=dev)  # fixed test pattern
             return modulate_bpsk(bits, n_samples, self.fs, sym_rate, dev)
 
         return None

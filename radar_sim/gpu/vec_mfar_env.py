@@ -481,6 +481,21 @@ class MFARVecEnv:
                 si = tx_signal * coupling      # [E, R, N, S]
                 self._buf_rx_signal += si * rx_active.unsqueeze(-1).float()
 
+            # Cross-team direct path: each radar's TX → other radar's RX (COMM link)
+            if self.n_radars >= 2 and self.n_teams == 2:
+                r_per_team = self.n_radars // self.n_teams
+                for t in range(self.n_teams):
+                    tx_r = t * r_per_team
+                    rx_r = (1 - t) * r_per_team
+                    dist = (self.radar_pos[:, tx_r, :] - self.radar_pos[:, rx_r, :]).norm(dim=-1)
+                    dist = dist.clamp(min=1.0)
+                    delay_samp = (dist / 3e8 * self.fs).long().clamp(0, S - 1)  # [E]
+                    gain = (self.array.wavelength / (4 * np.pi * dist))  # [E]
+                    for e_idx in range(E):
+                        sig = tx_signal[e_idx, tx_r, :, :]  # [N, S]
+                        delayed = torch.roll(sig, shifts=-delay_samp[e_idx].item(), dims=-1)
+                        self._buf_rx_signal[e_idx, rx_r, :, :] += delayed * gain[e_idx]
+
             self.channel.generate_noise(out=self._buf_noise)
             self._buf_rx_signal += self._buf_noise
 
@@ -545,13 +560,20 @@ class MFARVecEnv:
                     spec, spectrum,
                 )
 
-        if comm_mask.any() and self._buf_cpi is not None:
-            # Pre-allocated: BPSK from full CPI
-            comm_xy = self.processor.process_rx_comm(self._buf_cpi, wf_refs[3])
-            comm_data = torch.where(
-                comm_mask.unsqueeze(-1),
-                comm_xy, comm_data,
-            )
+        if comm_mask.any():
+            # Use _buf_cpi (pre-allocated) or _buf_rx_signal (streaming)
+            if self._buf_cpi is not None:
+                cpi_data = self._buf_cpi
+            elif self._buf_rx_signal is not None:
+                cpi_data = self._buf_rx_signal.unsqueeze(3)  # add pulse dim [E,R,N,1,S]
+            else:
+                cpi_data = None
+            if cpi_data is not None:
+                comm_xy = self.processor.process_rx_comm(cpi_data, wf_refs[3])
+                comm_data = torch.where(
+                    comm_mask.unsqueeze(-1),
+                    comm_xy, comm_data,
+                )
 
         # Recon intelligence: extract signal parameters from recon spectrum
         recon_intel = torch.zeros(
@@ -747,7 +769,7 @@ class MFARVecEnv:
         dev = torch.device(self.device)
 
         from .waveform_gpu import encode_bpsk, modulate_bpsk
-        bits = encode_bpsk(0.0, 0.0)
+        bits = encode_bpsk(1.0, 1.0)  # match TX fixed pattern
         ref = modulate_bpsk(bits, self.n_samples, self.fs, self.processor.symbol_rate, dev)
         return ref
 

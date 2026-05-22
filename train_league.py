@@ -71,21 +71,30 @@ _EPS = 1e-12
 # ═══════════════════════════════════════════════════════════════════════
 
 ENV_DEFAULTS = {
-    "rows": 25, "cols": 25, "num_envs": 1, "n_radars": 4,
+    "rows": 25, "cols": 25, "num_envs": 1, "n_radars": 2,
     "pulses_per_cpi": 1, "fft_size": 32768, "device": "cuda",
     "tx_power_w": 50000,
     "cpi_preallocate": False,  # False=streaming (~3GB), True=batch (~15GB, needs 96GB)
     "rx_beamforming": True,
 }
 
+REWARD_CONFIG = {
+    "kill_bonus": 10.0,
+    "death_penalty": -10.0,
+    "radar_kill_share": 1.0,
+    "radar_death_share": -1.0,
+    "emission_cost": -0.001,
+    "urgency_penalty": -1.0,  # was -0.01 — strong incentive to launch missiles
+}
+
 PPO_DEFAULTS = {
     "commander_lr": 3e-4, "radar_lr": 1e-4,
     "gamma": 0.99, "gae_lambda": 0.95,
     "commander_clip": 0.2, "radar_clip": 0.1,
-    "commander_entropy": 0.01, "radar_entropy": 0.02,
-    "value_coef": 0.5, "max_grad_norm": 0.5,
-    "n_epochs": 5, "batch_size": 16,
-    "buffer_size_commander": 64, "buffer_size_radar": 16,
+    "commander_entropy": 0.01, "radar_entropy": 0.01,
+    "value_coef": 1.0, "max_grad_norm": 0.5,
+    "n_epochs": 5, "batch_size": 32,
+    "buffer_size_commander": 128, "buffer_size_radar": 64,
 }
 
 LEAGUE_DEFAULTS = {
@@ -219,6 +228,7 @@ class DenseRewardShaper:
                  comm_reliability_weight: float = 0.05,
                  recon_intel_weight: float = 0.03,
                  beam_accuracy_weight: float = 0.5,
+                 beam_sigma: float = 6.0,
                  snr_threshold_db: float = 10.0,
                  device: str = "cuda"):
         self.detect_snr_weight = detect_snr_weight
@@ -227,17 +237,18 @@ class DenseRewardShaper:
         self.comm_reliability_weight = comm_reliability_weight
         self.recon_intel_weight = recon_intel_weight
         self.beam_accuracy_weight = beam_accuracy_weight
+        self.beam_sigma = beam_sigma
         self.snr_threshold_db = snr_threshold_db
         self.device = device
 
-    def __call__(self, step_output: dict) -> dict:
+    def __call__(self, step_output: dict, team_filter: int = None) -> dict:
         spectrum = step_output["spectrum"]
         task_ids = step_output["task_ids"]
         detect_reward = self._detect_reward(spectrum, task_ids)
         jam_reward = self._jam_reward(spectrum, task_ids)
         comm_reward = self._comm_reward(step_output, task_ids)
         recon_reward = self._recon_reward(spectrum, task_ids)
-        beam_acc = self._beam_accuracy_reward(step_output)
+        beam_acc = self._beam_accuracy_reward(step_output, team_filter=team_filter)
         total = (detect_reward * self.detect_snr_weight
                  + jam_reward * self.jam_effectiveness_weight
                  + comm_reward * self.comm_reliability_weight
@@ -248,11 +259,12 @@ class DenseRewardShaper:
                 "beam_accuracy": beam_acc,
                 "total_shaped": total}
 
-    def _beam_accuracy_reward(self, step_output: dict):
+    def _beam_accuracy_reward(self, step_output: dict, team_filter: int = None):
         """Gaussian reward for pointing beam toward target direction.
 
         World_beam = array_local_beam + array_rotation.
         Reward = exp(-0.5 * (off_bore / sigma)^2) per radar.
+        If team_filter is set, only compute for radars of that team.
         """
         beam_az = step_output.get("beam_az")
         beam_el = step_output.get("beam_el")
@@ -261,6 +273,21 @@ class DenseRewardShaper:
         arr_rot = step_output.get("array_rotation")
         if beam_az is None or tgt_az is None:
             return torch.tensor(0.0, device=self.device)
+
+        if team_filter is not None:
+            # beam_az has shape [E, R]; filter to specific team's radars
+            # Assume radars are ordered: r_per_team per team
+            n_radars = beam_az.shape[-1]
+            r_per_team = n_radars // 2  # hardcoded 2-team assumption
+            r_start = team_filter * r_per_team
+            r_end = r_start + r_per_team
+            beam_az = beam_az[..., r_start:r_end]
+            beam_el = beam_el[..., r_start:r_end]
+            tgt_az = tgt_az[..., r_start:r_end]
+            if tgt_el is not None:
+                tgt_el = tgt_el[..., r_start:r_end]
+            if arr_rot is not None:
+                arr_rot = arr_rot[..., r_start:r_end]
 
         # World-frame beam direction
         world_az = beam_az + (arr_rot if arr_rot is not None else 0.0)
@@ -271,8 +298,8 @@ class DenseRewardShaper:
                             torch.cos(d_az * np.pi / 180.0)) * (180.0 / np.pi)
         d_el = beam_el - (tgt_el if tgt_el is not None else 0.0)
 
-        # Gaussian beam penalty (σ ≈ 1.5× BW for smooth gradient)
-        sigma = 6.0  # degrees, gives broad reward catchment
+        # Gaussian beam penalty
+        sigma = self.beam_sigma
         r = torch.exp(-0.5 * (d_az / sigma)**2 - 0.5 * (d_el / sigma)**2)
         return r.mean().to(self.device)
 
@@ -476,8 +503,8 @@ class RadarActorCritic(nn.Module):
     def _assemble_action_from_parts(self, task_frac, params, vehicle):
         B = task_frac.shape[0]; N = self.n_elem
         p = params.reshape(B, N, 8)
-        beam_az = p[..., 0:1].expand(B, N, 4) * 0.5 + 0.5
-        beam_el = p[..., 1:2].expand(B, N, 4) * 0.5 + 0.5
+        beam_az = p[..., 0:1].expand(B, N, 4) * 2.0 - 1.0
+        beam_el = p[..., 1:2].expand(B, N, 4) * 2.0 - 1.0
         beam = torch.stack([beam_az, beam_el], dim=-1).reshape(B, N, 8)
         detect_p = p[..., 2:5]; jam_p = p[..., 5:8]
         comm_p = torch.cat([p[..., 2:3], p[..., 0:1], p[..., 6:7], p[..., 7:8]], dim=-1)
@@ -518,9 +545,19 @@ class RadarActorCritic(nn.Module):
         task_choice = task_frac.argmax(dim=-1)
         task_logp = task_dist.log_prob(task_choice)
         task_ent = task_dist.entropy()
-        param_act = actions[..., :N * 8]
-        param_logp = param_dist.log_prob(param_act.clamp(0.01, 0.99)).sum(dim=-1)
-        veh_logp = vehicle_dist.log_prob(vehicle_act).sum(dim=-1)
+        # Reconstruct raw params from assembled action (invert *2-1 scaling on beam)
+        beam_az_raw = (elem_act[..., 4] + 1.0) / 2.0
+        beam_el_raw = (elem_act[..., 5] + 1.0) / 2.0
+        detect_p = elem_act[..., 12:15]
+        jam_p = elem_act[..., 15:18]
+        B = elem_act.shape[0]
+        raw_params = torch.stack([
+            beam_az_raw, beam_el_raw,
+            detect_p[..., 0], detect_p[..., 1], detect_p[..., 2],
+            jam_p[..., 0], jam_p[..., 1], jam_p[..., 2],
+        ], dim=-1).reshape(B, N * 8)
+        param_logp = param_dist.log_prob(raw_params.clamp(0.01, 0.99)).sum(dim=-1)
+        veh_logp = vehicle_dist.log_prob(vehicle_act.clamp(-0.999, 0.999)).sum(dim=-1)
         log_prob = task_logp.sum(dim=-1) + param_logp + veh_logp
         entropy = task_ent.sum(dim=-1) + param_dist.entropy().sum(dim=-1) + vehicle_dist.entropy().sum(dim=-1)
         return log_prob, entropy, value
@@ -565,10 +602,17 @@ class SubArrayRadarActorCritic(nn.Module):
         self.sub_norm = nn.LayerNorm(per_sub_in)
         self.shared = nn.Sequential(nn.Linear(per_sub_in, 256), nn.ReLU())
         self.global_norm = nn.LayerNorm(spectrum_hidden + self.other_dim)
-        self.task_head = nn.Linear(256, 4); self.param_head = nn.Linear(256, 8)
+        self.task_head = nn.Linear(256, 4); self.param_head = nn.Linear(256, 6)  # detect+jam only
+        nn.init.constant_(self.task_head.bias, -1.0)
+        self.task_head.bias.data[1] = 1.0  # bias toward detect (task 1)
+        # Beam as independent learnable parameters (not from network → no 20M noise)
+        beam_az_target = 0.511  # sigmoid⁻¹(0.625) → (0.625*2-1)*60 = 15°
+        self.beam_az_raw = nn.Parameter(torch.tensor(beam_az_target))
+        self.beam_el_raw = nn.Parameter(torch.tensor(0.0))  # sigmoid⁻¹(0.5) → 0°
         self.vehicle_head = nn.Linear(spectrum_hidden + self.other_dim, 3)
         self.value_head = nn.Linear(spectrum_hidden + self.other_dim, 1)
-        self.log_std_params = nn.Parameter(torch.zeros(8))
+        self.log_std_params = nn.Parameter(torch.zeros(6))
+        self.log_std_beam = nn.Parameter(torch.full((2,), -3.0))  # std≈0.05 → ±3° (2σ=±6°)
         self.log_std_vehicle = nn.Parameter(torch.zeros(3))
 
     def _parse_state(self, state):
@@ -629,24 +673,31 @@ class SubArrayRadarActorCritic(nn.Module):
         shared_feat = self.shared(sub_feat)
         task_logits = torch.nan_to_num(self.task_head(shared_feat), nan=0.0)
         task_dist = torch.distributions.Categorical(logits=task_logits)
+        # Per-sub params: detect + jam (6)
         param_mean = torch.sigmoid(torch.nan_to_num(self.param_head(shared_feat), nan=0.0))
         param_std = torch.exp(self.log_std_params.clamp(-20, 2)).clamp(1e-4, 1e4)
         param_dist = torch.distributions.Normal(param_mean, param_std)
+        # Global beam: independent learnable params (no network → no 20M noise)
+        beam_mean = torch.sigmoid(torch.stack([self.beam_az_raw, self.beam_el_raw]))
+        beam_mean = beam_mean.unsqueeze(0).expand(B, 2)                     # [B, 2]
+        beam_std = torch.exp(self.log_std_beam.clamp(-20, 2)).clamp(1e-4, 1e4)
+        beam_dist = torch.distributions.Normal(beam_mean, beam_std)
         veh_mean = torch.tanh(torch.nan_to_num(self.vehicle_head(global_feat), nan=0.0))
         veh_std = torch.exp(self.log_std_vehicle)
         vehicle_dist = torch.distributions.Normal(veh_mean, veh_std)
         value = self.value_head(global_feat)
-        return task_dist, param_dist, vehicle_dist, value
+        return task_dist, param_dist, beam_dist, vehicle_dist, value
 
-    def _expand_to_elements(self, task_frac, params, vehicle):
+    def _expand_to_elements(self, task_frac, params, beam, vehicle):
         B = task_frac.shape[0]; K = self.n_sub; S2 = self.elem_per_sub; N = self.n_elem
         p = params
-        beam_az = p[..., 0:1].expand(B, K, 4) * 2.0 - 1.0
-        beam_el = p[..., 1:2].expand(B, K, 4) * 2.0 - 1.0
-        beam = torch.stack([beam_az, beam_el], dim=-1).reshape(B, K, 8)
-        detect_p = p[..., 2:5]; jam_p = p[..., 5:8]
-        comm_p = torch.cat([p[..., 2:3], p[..., 0:1], p[..., 6:7], p[..., 7:8]], dim=-1)
-        sub_action = torch.cat([task_frac, beam, detect_p, jam_p, comm_p], dim=-1)
+        # Global beam shared across all sub-arrays
+        beam_az = beam[:, 0:1].unsqueeze(1).expand(B, K, 4) * 2.0 - 1.0
+        beam_el = beam[:, 1:2].unsqueeze(1).expand(B, K, 4) * 2.0 - 1.0
+        beam_k = torch.stack([beam_az, beam_el], dim=-1).reshape(B, K, 8)
+        detect_p = p[..., 0:3]; jam_p = p[..., 3:6]
+        comm_p = torch.cat([p[..., 0:1], beam_az[..., 0:1], p[..., 3:4], p[..., 5:6]], dim=-1)
+        sub_action = torch.cat([task_frac, beam_k, detect_p, jam_p, comm_p], dim=-1)
         elem_action = sub_action.unsqueeze(2).expand(B, K, S2, 22).reshape(B, N, 22)
         flat = elem_action.reshape(B, N * 22)
         return torch.cat([flat, vehicle], dim=-1)
@@ -657,10 +708,14 @@ class SubArrayRadarActorCritic(nn.Module):
         indices = torch.arange(K, device=actions.device) * S2
         sub_act = elem_act[:, indices, :]
         task_frac = sub_act[..., 0:4]; vehicle = actions[..., -3:]
+        # Global beam from first sub-array (same for all)
+        beam = torch.cat([
+            (sub_act[:, 0:1, 4:5] + 1.0) / 2.0,
+            (sub_act[:, 0:1, 5:6] + 1.0) / 2.0], dim=-1)  # [B, 1, 2]
+        # Per-sub params: detect + jam (6)
         params = torch.cat([
-            (sub_act[..., 4:5] - 0.5) * 2, (sub_act[..., 5:6] - 0.5) * 2,
-            sub_act[..., 12:15], sub_act[..., 15:18]], dim=-1)
-        return task_frac, params, vehicle
+            sub_act[..., 12:15], sub_act[..., 15:18]], dim=-1)  # [B, K, 6]
+        return task_frac, params, beam.squeeze(1), vehicle
 
     def forward(self, state):
         action, _, value = self.get_action(state, deterministic=True)
@@ -668,33 +723,37 @@ class SubArrayRadarActorCritic(nn.Module):
 
     def get_action(self, state, deterministic=False):
         B = state.shape[0]; K = self.n_sub
-        task_dist, param_dist, vehicle_dist, value = self._get_distributions(state)
+        task_dist, param_dist, beam_dist, vehicle_dist, value = self._get_distributions(state)
         if deterministic:
             task_choice = task_dist.logits.argmax(dim=-1)
-            params = param_dist.mean; vehicle = vehicle_dist.mean
+            params = param_dist.mean; beam = beam_dist.mean; vehicle = vehicle_dist.mean
         else:
             task_choice = task_dist.sample()
             params = param_dist.rsample().clamp(0.01, 0.99)
+            beam = beam_dist.rsample().clamp(0.01, 0.99)
             vehicle = vehicle_dist.rsample().clamp(-0.999, 0.999)
         task_logp = task_dist.log_prob(task_choice).sum(dim=-1)
         param_logp = param_dist.log_prob(params).sum(-1).sum(-1)
+        beam_logp = beam_dist.log_prob(beam).sum(dim=-1)
         veh_logp = vehicle_dist.log_prob(vehicle).sum(dim=-1)
-        log_prob = task_logp + param_logp + veh_logp
+        log_prob = task_logp + param_logp + beam_logp + veh_logp
         task_frac = torch.zeros(B, K, 4, device=state.device)
         task_frac.scatter_(-1, task_choice.unsqueeze(-1), 1.0)
-        action = self._expand_to_elements(task_frac, params, vehicle)
+        action = self._expand_to_elements(task_frac, params, beam, vehicle)
         return action, log_prob, value
 
     def evaluate_actions(self, state, actions):
-        task_dist, param_dist, vehicle_dist, value = self._get_distributions(state)
-        task_frac, params, vehicle = self._extract_sub_from_elem(actions)
+        task_dist, param_dist, beam_dist, vehicle_dist, value = self._get_distributions(state)
+        task_frac, params, beam, vehicle = self._extract_sub_from_elem(actions)
         task_choice = task_frac.argmax(dim=-1)
         task_logp = task_dist.log_prob(task_choice)
         task_ent = task_dist.entropy()
         param_logp = param_dist.log_prob(params.clamp(0.01, 0.99)).sum(-1).sum(-1)
+        beam_logp = beam_dist.log_prob(beam.clamp(0.01, 0.99)).sum(dim=-1)
         veh_logp = vehicle_dist.log_prob(vehicle.clamp(-0.999, 0.999)).sum(dim=-1)
-        log_prob = task_logp.sum(dim=-1) + param_logp + veh_logp
+        log_prob = task_logp.sum(dim=-1) + param_logp + beam_logp + veh_logp
         entropy = (task_ent.sum(dim=-1) + param_dist.entropy().sum(-1).sum(-1)
+                   + beam_dist.entropy().sum(dim=-1)
                    + vehicle_dist.entropy().sum(dim=-1))
         return log_prob, entropy, value
 
@@ -743,12 +802,14 @@ class PPOTrainer:
             for batch in buffer.get_minibatches(self.batch_size):
                 advantages = batch["advantages"]
                 advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+                returns = batch["returns"]
+                returns = (returns - returns.mean()) / (returns.std() + 1e-8)
                 log_prob, entropy, value = self.ac.evaluate_actions(batch["obs"], batch["actions"])
                 ratio = torch.exp(log_prob - batch["old_log_probs"])
                 surr1 = ratio * advantages
                 surr2 = torch.clamp(ratio, 1 - self.clip_range, 1 + self.clip_range) * advantages
                 policy_loss = -torch.min(surr1, surr2).mean()
-                value_loss = ((value.squeeze() - batch["returns"]) ** 2).mean()
+                value_loss = ((value.squeeze() - returns) ** 2).mean()
                 entropy_loss = -entropy.mean()
                 loss = policy_loss + self.value_coef * value_loss + self.entropy_coef * entropy_loss
                 self.optimizer.zero_grad()
@@ -794,6 +855,7 @@ class TeamPPOTrainer:
         self.buffer_size_radar = buffer_size_radar
         self.commander_buffer = None; self.radar_buffer = None
         self.reward_shaper = DenseRewardShaper(device=device)
+        self.dummy_obs = False  # set True to feed zero observations (state-independent policy)
 
     def init_buffers(self, env_state_dim: int, env_action_dim: int):
         self.commander_buffer = RolloutBuffer(
@@ -805,6 +867,8 @@ class TeamPPOTrainer:
 
     def _get_observations(self, env):
         state = env._assemble_state(env._buf_spectrum, env._buf_comm_data)
+        if self.dummy_obs:
+            state = torch.zeros_like(state)
         comm_input = torch.zeros(env.num_envs, env.n_radars, env.num_input_length,
                                  device=self.device)
         commander_obs = env.battlefield.get_commander_observation(env.radar_pos, comm_input)
@@ -835,7 +899,7 @@ class TeamPPOTrainer:
                 "r_start": r_start, "r_end": r_end}
 
     def store_transition(self, env, result: dict, transition: dict, team: int):
-        shaped = self.reward_shaper(result)
+        shaped = self.reward_shaper(result, team_filter=team)
         r_per_team = env.n_radars // env.n_teams; r_start = team * r_per_team
         total_radar_reward = shaped["total_shaped"] + result["radar_rewards"]
         cmd_reward = result["commander_rewards"]
@@ -1350,7 +1414,7 @@ class FluxLeague:
         self.payoff = PayoffMatrix(self.pool, self.n_eval_games, self.device,
                                    max_steps_per_game=self.max_steps_per_episode)
         for team in range(self.n_teams):
-            for role in [ROLE_MAIN, ROLE_MAIN_EXPLOITER, ROLE_LEAGUE_EXPLOITER]:
+            for role in [ROLE_MAIN]:  # minimal: 1 policy per team (was 3)
                 policy_dict = create_team_policy(
                     team=team, n_elem=self.n_elem, n_pulses=self.n_pulses,
                     n_bins=self.n_bins, num_output_length=self.num_output_length,
@@ -1804,6 +1868,7 @@ def main():
                 tx_power_w=ENV_DEFAULTS["tx_power_w"],
                 cpi_preallocate=ENV_DEFAULTS["cpi_preallocate"],
                 rx_beamforming=ENV_DEFAULTS["rx_beamforming"],
+                reward_config=REWARD_CONFIG,
             )
 
         env = make_env()
