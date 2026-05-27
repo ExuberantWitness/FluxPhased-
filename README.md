@@ -14,7 +14,8 @@
 |-------------|---------|-------------|
 | **OS** | Linux (Ubuntu 20.04+) / Windows 10+ | Ubuntu 22.04 |
 | **GPU** | NVIDIA GPU with ≥8 GB VRAM (CUDA ≥12.0) | RTX 4090 / A100 (24+ GB) |
-| **Driver** | NVIDIA driver ≥525 | 580+ |
+| **GPU (Blackwell)** | RTX 50xx / PRO 6000 (sm_120) — requires PyTorch ≥2.11 + CUDA ≥13.0 | RTX PRO 6000 Blackwell |
+| **Driver** | NVIDIA driver ≥525 | 580+ (Blackwell: ≥570) |
 | **RAM** | 16 GB | 32+ GB |
 | **Disk** | 5 GB free | 10+ GB |
 | **Conda** | Miniconda3 / Anaconda3 (latest) | — |
@@ -48,8 +49,16 @@ conda activate fluxphased
 #### International / 国外版
 
 ```bash
-# PyTorch with CUDA 12.1 (~2.5 GB, use conda for reliable large-file download)
+# PyTorch — choose ONE of the following:
+#
+# A) Standard GPUs (RTX 4090 / A100 / RTX 30xx, CUDA 12.1):
 conda install pytorch==2.4.1 torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia -y
+#
+# B) Blackwell GPUs (RTX 50xx / RTX PRO 6000, sm_120) — requires PyTorch ≥2.11 + CUDA ≥13.0:
+conda install pytorch==2.12.0 torchvision torchaudio pytorch-cuda=13.2 -c pytorch -c nvidia -y
+
+# Intel ITT library (fixes "undefined symbol: iJIT_NotifyEvent" if using conda PyTorch)
+conda install ittapi -c conda-forge -y
 
 # NVIDIA Warp GPU kernel framework
 pip install warp-lang==1.10.1
@@ -78,8 +87,16 @@ pip install pandas==2.0.3
 #### China Domestic / 国内版（清华镜像）
 
 ```bash
-# PyTorch with CUDA 12.1 (~2.5 GB)
-pip install torch==2.11.0 torchvision==0.26.0 torchaudio==2.11.0 -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+# PyTorch — choose ONE of the following:
+#
+# A) Standard GPUs (RTX 4090 / A100 / RTX 30xx, CUDA 12.1):
+pip install torch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cu121
+#
+# B) Blackwell GPUs (RTX 50xx / RTX PRO 6000, sm_120) — requires PyTorch ≥2.11 + CUDA ≥13.0:
+pip install torch==2.12.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu132
+
+# Intel ITT library (fixes "undefined symbol: iJIT_NotifyEvent" if using conda PyTorch)
+pip install ittapi
 
 # NVIDIA Warp GPU kernel framework
 pip install warp-lang==1.10.1 -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
@@ -107,10 +124,13 @@ pip install pandas==2.0.3 -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simpl
 
 ### 5. Verify Installation / 验证安装
 
-Run the following commands in order. All tests should pass without errors.
+Run the following commands in order from the project root. All tests should pass without errors.
 
 ```bash
 conda activate fluxphased
+
+# If you see "ModuleNotFoundError: No module named 'radar_sim'", set PYTHONPATH first:
+export PYTHONPATH=$(pwd)
 
 # Validation tests (can run without training deps)
 python radar_sim/gpu/test_gpu_pipeline.py        # single-CPI pipeline test
@@ -174,6 +194,52 @@ nvidia-smi                                    # should show your GPU
 python -c "import torch; print(torch.cuda.is_available())"  # must print True
 ```
 If `nvidia-smi` fails, reinstall NVIDIA drivers. If `torch.cuda.is_available()` is False, reinstall PyTorch with the correct CUDA version.
+</details>
+
+<details>
+<summary><b>ImportError: undefined symbol: iJIT_NotifyEvent</b></summary>
+
+This occurs when PyTorch was installed via conda but the Intel ITT shared library is missing. Install it:
+
+```bash
+conda activate fluxphased
+conda install ittapi -c conda-forge -y
+# Or via pip:  pip install ittapi
+```
+
+If the error persists, create a stub library:
+
+```bash
+cat > /tmp/itt_stub.c << 'EOF'
+void iJIT_NotifyEvent(void) {}
+int  iJIT_IsProfilingActive(void) { return 0; }
+int  iJIT_GetNewMethodID(void) { return 0; }
+EOF
+gcc -shared -fPIC -o $CONDA_PREFIX/lib/python3.10/site-packages/torch/lib/libittnotify.so /tmp/itt_stub.c
+```
+</details>
+
+<details>
+<summary><b>CUDA error: no kernel image is available for execution on the device</b></summary>
+
+This means your GPU architecture (e.g., Blackwell sm_120) is not supported by the installed PyTorch version. Blackwell GPUs (RTX 50xx, RTX PRO 6000) require PyTorch ≥ 2.11 with CUDA ≥ 13.0.
+
+Check your GPU compute capability:
+```bash
+nvidia-smi --query-gpu=compute_cap --format=csv
+```
+
+If it shows sm_120 or higher, upgrade PyTorch:
+```bash
+conda activate fluxphased
+conda remove pytorch torchvision torchaudio pytorch-cuda pytorch-mutex -y
+conda install pytorch==2.12.0 torchvision torchaudio pytorch-cuda=13.2 -c pytorch -c nvidia -y
+```
+
+For pip users:
+```bash
+pip install torch==2.12.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu132
+```
 </details>
 
 <details>
