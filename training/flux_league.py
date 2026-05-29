@@ -14,7 +14,17 @@ import os
 import time
 import torch
 import numpy as np
+import functools
+import builtins
 from typing import Dict, Optional
+
+try:
+    import wandb
+    WANDB_AVAILABLE = True
+except ImportError:
+    WANDB_AVAILABLE = False
+
+print = functools.partial(builtins.print, flush=True)
 
 from .ppo.actor_critic import create_team_policy
 from .ppo.ppo_trainer import TeamPPOTrainer
@@ -85,6 +95,7 @@ class FluxLeague:
         n_epochs: int = 10,
         batch_size: int = 64,
         buffer_size: int = 2048,
+        stealth_weight: float = 0.1,
     ):
         self.n_elem = n_elem
         self.n_pulses = n_pulses
@@ -117,7 +128,10 @@ class FluxLeague:
             n_epochs=n_epochs,
             batch_size=batch_size,
             buffer_size=buffer_size,
+            buffer_size_commander=buffer_size_commander,
+            buffer_size_radar=buffer_size_radar,
             device=device,
+            stealth_weight=stealth_weight,
         )
 
         # Components
@@ -239,6 +253,40 @@ class FluxLeague:
                 fingerprints=F.tolist(),
                 own_ids=list(own_ids),
             )
+
+            # WandB: meta-strategy metrics per team
+            if WANDB_AVAILABLE and wandb.run is not None:
+                wandb.log({
+                    f"meta/team{team}/nash_conv": float(nc),
+                    f"meta/team{team}/task_entropy": float(H_task),
+                    f"meta/team{team}/effective_K": float(eff_K),
+                    "meta/iteration": self.iteration,
+                })
+
+        # WandB: payoff matrix summary stats
+        if WANDB_AVAILABLE and wandb.run is not None:
+            all_payoffs = [v for v in self.payoff.matrix.values()]
+            if all_payoffs:
+                n_active = sum(1 for r in self.pool.policies.values() if r.is_active)
+                wandb.log({
+                    "eval/mean_payoff": float(np.mean(all_payoffs)),
+                    "eval/max_payoff": float(np.max(all_payoffs)),
+                    "eval/min_payoff": float(np.min(all_payoffs)),
+                    "eval/population_size": n_active,
+                    "eval/iteration": self.iteration,
+                })
+                # Per-team max/min win rate
+                for team in range(self.n_teams):
+                    team_payoffs = [
+                        v for (own_id, _), v in self.payoff.matrix.items()
+                        if self.pool.policies[own_id].team == team
+                    ]
+                    if team_payoffs:
+                        wandb.log({
+                            f"eval/team{team}/max_win_rate": float(np.max(team_payoffs)),
+                            f"eval/team{team}/min_win_rate": float(np.min(team_payoffs)),
+                        })
+
         self.diag_history.append(iter_diag)
 
         # Step 3: Train each active policy against sampled opponents.
@@ -374,24 +422,62 @@ class FluxLeague:
 
                 if (trainer.commander_buffer and trainer.commander_buffer.near_full) or \
                    (trainer.radar_buffer and trainer.radar_buffer.near_full):
-                    trainer.update()
+                    update_metrics = trainer.update()
+                    if WANDB_AVAILABLE and wandb.run is not None:
+                        self._log_ppo_metrics(update_metrics, record, episodes)
 
-                if result["dones"].any():
-                    if result["winners"][0] == team:
-                        wins += 1
+                done_mask = result["dones"]
+                if done_mask.any():
+                    winners = result["winners"]
+                    for e in range(env.num_envs):
+                        if done_mask[e] and winners[e] == team:
+                            wins += 1
                     break
 
             total_rewards += episode_reward
             episodes += 1
 
+            wr = wins / max(episodes, 1)
+            avg_r = total_rewards / max(episodes, 1)
+
+            # Terminal progress every 5 episodes
+            if episodes % 5 == 0:
+                print(f"    ep {episodes}/{self.episodes_per_training}  "
+                      f"wr={wr:.2f}", flush=True)
+
+            # WandB update every episode
+            if WANDB_AVAILABLE and wandb.run is not None:
+                wandb.log({
+                    f"train/{record.role}_team{record.team}/episode": episodes,
+                    f"train/{record.role}_team{record.team}/win_rate": float(wr),
+                    f"train/{record.role}_team{record.team}/avg_reward": float(avg_r),
+                    "train/iteration": self.iteration,
+                })
+
             if episodes % 10 == 0:
-                trainer.update()
+                update_metrics = trainer.update()
+                if WANDB_AVAILABLE and wandb.run is not None and update_metrics:
+                    self._log_ppo_metrics(update_metrics, record, episodes)
 
         return {
             "episodes": episodes,
             "win_rate": wins / max(episodes, 1),
             "avg_reward": total_rewards / max(episodes, 1),
         }
+
+    def _log_ppo_metrics(self, update_metrics: dict, record, episode: int):
+        """Log PPO update metrics to WandB with policy context."""
+        prefix = f"ppo/{record.role}_team{record.team}"
+        cmd = update_metrics.get("commander", {})
+        radar = update_metrics.get("radar", {})
+        log_dict = {"ppo/episode": episode, "ppo/iteration": self.iteration}
+        if cmd:
+            for k, v in cmd.items():
+                log_dict[f"{prefix}/commander/{k}"] = float(v)
+        if radar:
+            for k, v in radar.items():
+                log_dict[f"{prefix}/radar/{k}"] = float(v)
+        wandb.log(log_dict)
 
     def _maybe_reset(self, policy_id: str, trainer: TeamPPOTrainer):
         """Maybe reset exploiter to an earlier checkpoint."""
@@ -401,6 +487,179 @@ class FluxLeague:
             if os.path.exists(parent.checkpoint_path):
                 print(f"  Resetting {policy_id} to parent checkpoint")
                 trainer.load(parent.checkpoint_path)
+
+    def pretrain_critic(self, data: dict, n_epochs: int = 50, batch_size: int = 256):
+        """Pre-train all critic value heads via supervised regression on MC returns.
+
+        Uses collected rollout data from scripted policies. Only pre-trains the
+        critic (both deployment value_head and privileged_value_head) — the actor
+        weights are unchanged.
+
+        Args:
+            data: dict from RolloutDataCollector.collect() with keys:
+                  obs, returns, privileged_infos, commander_obs, commander_returns
+            n_epochs: number of supervised training epochs
+            batch_size: minibatch size
+        """
+        import torch.nn.functional as F
+
+        obs = data["obs"].to(self.device)
+        returns = data["returns"].to(self.device)
+        priv = data["privileged_infos"].to(self.device)
+
+        print(f"\n[CriticPretrain] Pre-training critics on {obs.shape[0]} transitions "
+              f"({n_epochs} epochs)...", flush=True)
+
+        # Pre-train each trainer's critic heads
+        for policy_id, trainer in self.trainers.items():
+            record = self.pool.policies[policy_id]
+            if not record.is_active:
+                continue
+
+            ac = trainer.radar_trainer.ac
+            opt = trainer.radar_trainer.optimizer
+
+            # Prepare minibatch sampler
+            T = obs.shape[0]
+            indices = torch.randperm(T)
+
+            for epoch in range(n_epochs):
+                epoch_loss = 0.0
+                epoch_priv_loss = 0.0
+                n_batches = 0
+
+                for start in range(0, T, batch_size):
+                    batch_idx = indices[start:start + batch_size]
+                    batch_obs = obs[batch_idx]
+                    batch_returns = returns[batch_idx].unsqueeze(-1)  # [B, 1]
+                    batch_priv = priv[batch_idx]
+
+                    # Forward pass: get both value estimates
+                    _, _, _, value, privileged_value = ac._get_distributions(
+                        batch_obs, batch_priv,
+                    )
+
+                    # Deployment value head loss
+                    value_loss = F.mse_loss(value, batch_returns)
+
+                    # Privileged value head loss
+                    priv_value_loss = F.mse_loss(privileged_value, batch_returns)
+
+                    total_loss = value_loss + priv_value_loss
+
+                    opt.zero_grad()
+                    total_loss.backward()
+                    torch.nn.utils.clip_grad_norm_(ac.parameters(), 0.5)
+                    opt.step()
+
+                    epoch_loss += value_loss.item()
+                    epoch_priv_loss += priv_value_loss.item()
+                    n_batches += 1
+
+                if epoch % 10 == 0 or epoch == n_epochs - 1:
+                    print(f"  [{policy_id}] epoch {epoch}/{n_epochs}: "
+                          f"value_loss={epoch_loss / max(n_batches, 1):.4f} "
+                          f"priv_loss={epoch_priv_loss / max(n_batches, 1):.4f}",
+                          flush=True)
+
+        print("[CriticPretrain] Done.", flush=True)
+
+    def pretrain_actor_bc(self, data: dict, n_epochs: int = 30, batch_size: int = 128):
+        """Pre-train actor via behavior cloning on scripted demonstration actions.
+
+        The actor learns to imitate the scripted policy's task selection
+        (cross-entropy) and continuous parameters (MSE). This gives the actor
+        a reasonable starting point before PPO fine-tuning.
+
+        Args:
+            data: dict from RolloutDataCollector.collect() with keys:
+                  obs, actions, privileged_infos
+            n_epochs: number of supervised training epochs
+            batch_size: minibatch size
+        """
+        import torch.nn.functional as F
+
+        obs = data["obs"].to(self.device)
+        target_actions = data["actions"].to(self.device)
+        priv = data["privileged_infos"].to(self.device)
+
+        print(f"\n[BCPretrain] Behavior cloning on {obs.shape[0]} transitions "
+              f"({n_epochs} epochs)...", flush=True)
+
+        for policy_id, trainer in self.trainers.items():
+            record = self.pool.policies[policy_id]
+            if not record.is_active:
+                continue
+
+            ac = trainer.radar_trainer.ac
+            opt = trainer.radar_trainer.optimizer
+
+            T = obs.shape[0]
+            indices = torch.randperm(T)
+            N = ac.n_elem
+            K = ac.n_sub
+
+            # Loss weights: task loss (cross-entropy) typically dominates
+            # because it's log-loss over 4 classes × K sub-arrays.
+            task_loss_weight = 1.0
+            param_loss_weight = 0.1
+            vehicle_loss_weight = 0.01
+
+            for epoch in range(n_epochs):
+                epoch_task_loss = 0.0
+                epoch_param_loss = 0.0
+                epoch_veh_loss = 0.0
+                n_batches = 0
+
+                for start in range(0, T, batch_size):
+                    batch_idx = indices[start:start + batch_size]
+                    batch_obs = obs[batch_idx]
+                    batch_act = target_actions[batch_idx]
+                    batch_priv = priv[batch_idx]
+
+                    # Extract target sub-array actions from flat element actions
+                    target_task_frac, target_params, target_vehicle = \
+                        ac._extract_sub_from_elem(batch_act)
+
+                    # Get model distributions (forward pass)
+                    task_dist, param_dist, vehicle_dist, _, _ = \
+                        ac._get_distributions(batch_obs, batch_priv)
+
+                    # Task loss: cross-entropy (teacher-forcing)
+                    target_task = target_task_frac.argmax(dim=-1)  # [B, K]
+                    task_logp = task_dist.log_prob(target_task)     # [B, K]
+                    task_loss = -task_logp.mean()
+
+                    # Param loss: MSE between model mean and target params
+                    param_loss = F.mse_loss(param_dist.mean, target_params)
+
+                    # Vehicle loss: MSE
+                    vehicle_loss = F.mse_loss(vehicle_dist.mean, target_vehicle)
+
+                    total_loss = (
+                        task_loss_weight * task_loss
+                        + param_loss_weight * param_loss
+                        + vehicle_loss_weight * vehicle_loss
+                    )
+
+                    opt.zero_grad()
+                    total_loss.backward()
+                    torch.nn.utils.clip_grad_norm_(ac.parameters(), 0.5)
+                    opt.step()
+
+                    epoch_task_loss += task_loss.item()
+                    epoch_param_loss += param_loss.item()
+                    epoch_veh_loss += vehicle_loss.item()
+                    n_batches += 1
+
+                if epoch % 10 == 0 or epoch == n_epochs - 1:
+                    print(f"  [{policy_id}] epoch {epoch}/{n_epochs}: "
+                          f"task={epoch_task_loss / max(n_batches, 1):.4f} "
+                          f"param={epoch_param_loss / max(n_batches, 1):.4f} "
+                          f"veh={epoch_veh_loss / max(n_batches, 1):.4f}",
+                          flush=True)
+
+        print("[BCPretrain] Done.", flush=True)
 
     def _sample_opponents(self, policy_id: str, n_samples: int = 1) -> list:
         """Pick opponents via Elo-band PFSP if enabled, else standard PFSP."""

@@ -1,291 +1,94 @@
-"""Phased curriculum trainer for FluxLeague.
+"""Pure PSRO curriculum trainer for FluxLeague.
 
-4-phase training pipeline:
-  Phase A: Single-task pre-training (5K episodes)
-  Phase B: Multi-task integration (10K episodes)
-  Phase C: PSRO population training (20 PSRO iterations)
-  Phase D: League exploiter refinement (10K episodes)
+Replaces the old 4-phase pipeline (A: single-task pretrain, B: multi-task
+integration, C: PSRO, D: exploiter refinement) with a single PSRO loop.
 
-Each phase progressively increases complexity and adversarial pressure.
+The asymmetric critic + bidirectional dense reward (including stealth
+penalty) provide enough signal to bootstrap from scratch — no policy-
+constraint hacks needed.  Task diversity emerges naturally through
+TC-DAMS meta-strategy solving.
 """
 
 import os
 import time
 import torch
-import numpy as np
 import functools
 import builtins
 from typing import Dict, Optional
 
 from ..flux_league import FluxLeague, ROLE_MAIN, ROLE_MAIN_EXPLOITER, ROLE_LEAGUE_EXPLOITER
-from ..ppo.actor_critic import create_team_policy
-from ..ppo.ppo_trainer import TeamPPOTrainer
 
-# Force every print() in this module to flush immediately so progress lines
-# land in the log file even when stdout is piped through Tee on Windows.
 print = functools.partial(builtins.print, flush=True)
 
 
 class PhasedTrainer:
-    """Orchestrates the 4-phase curriculum for FluxLeague training."""
+    """Orchestrates pure-PSRO training with optional environment-side warmup."""
 
     def __init__(
         self,
         env_factory,  # callable returning MFARVecEnv
         league: FluxLeague,
-        phase_a_episodes: int = 5000,
-        phase_b_episodes: int = 10000,
-        phase_c_iterations: int = 20,
-        phase_c_episodes_per_iter: int = 1000,
-        phase_d_episodes: int = 10000,
+        n_psro_iterations: int = 30,
+        episodes_per_iter: int = 1000,
+        warmup_episodes: int = 0,
+        critic_pretrain_episodes: int = 0,
+        critic_pretrain_epochs: int = 50,
+        bc_pretrain_epochs: int = 0,
+        bc_pretrain_batch_size: int = 128,
         log_dir: str = "logs/curriculum",
         device: str = "cuda",
     ):
         self.env_factory = env_factory
         self.league = league
-        self.phase_a_episodes = phase_a_episodes
-        self.phase_b_episodes = phase_b_episodes
-        self.phase_c_iterations = phase_c_iterations
-        self.phase_c_episodes_per_iter = phase_c_episodes_per_iter
-        self.phase_d_episodes = phase_d_episodes
+        self.n_psro_iterations = n_psro_iterations
+        self.episodes_per_iter = episodes_per_iter
+        self.warmup_episodes = warmup_episodes
+        self.critic_pretrain_episodes = critic_pretrain_episodes
+        self.critic_pretrain_epochs = critic_pretrain_epochs
+        self.bc_pretrain_epochs = bc_pretrain_epochs
+        self.bc_pretrain_batch_size = bc_pretrain_batch_size
         self.log_dir = log_dir
         self.device = device
 
         os.makedirs(log_dir, exist_ok=True)
 
     def run_all(self):
-        """Execute all 4 phases sequentially."""
-        print("=" * 60)
-        print("Phase A: Single-Task Pre-Training")
-        print("=" * 60)
-        self.run_phase_a()
+        """Execute pure-PSRO training with optional critic/actor pre-training."""
+        import gc
 
-        print("=" * 60)
-        print("Phase B: Multi-Task Integration")
-        print("=" * 60)
-        self.run_phase_b()
-
-        print("=" * 60)
-        print("Phase C: PSRO Population Training")
-        print("=" * 60)
-        self.run_phase_c()
-
-        print("=" * 60)
-        print("Phase D: League Exploiter Refinement")
-        print("=" * 60)
-        self.run_phase_d()
-
-        self.league.save()
-        print("\nTraining complete. Final league saved.")
-
-    def run_phase_a(self):
-        """Phase A: Pre-train radar policies on fixed single tasks.
-
-        For each task (detect, recon, jam), query the radar policy for
-        beam/params, then override the task assignment to the fixed task.
-        Compute corrected log_probs for the modified action and store
-        transitions so PPO actually updates the network.
-        """
-        env = self.env_factory()
-        tasks = [0, 1, 2]  # recon, detect, jam
-        task_names = ["recon", "detect", "jam"]
-
-        for task_idx, task_name in zip(tasks, task_names):
-            print(f"\n  Pre-training task: {task_name}")
-            policy = create_team_policy(
-                0, device=self.device,
-                n_elem=self.league.n_elem,
-                n_pulses=self.league.n_pulses,
-                n_bins=self.league.n_bins,
-                num_output_length=self.league.num_output_length,
-                sub_array_size=self.league.sub_array_size,
-            )
-            trainer = TeamPPOTrainer(
-                commander=policy["commander"],
-                radar=policy["radar"],
-                **self.league.ppo_config,
-            )
-            trainer.init_buffers(env.state_dim, env.action_dim)
-
-            max_steps = getattr(self.league, "max_steps_per_episode", 1000)
-            for ep in range(self.phase_a_episodes // 3):
-                env.reset()
-                for step in range(max_steps):
-                    with torch.no_grad():
-                        state, commander_obs = trainer._get_observations(env)
-
-                        actions = torch.zeros(
-                            env.num_envs, env.n_radars, env.action_dim,
-                            device=self.device,
-                        )
-                        commander_actions = torch.zeros(
-                            env.num_envs, env.n_teams,
-                            env.battlefield.commander_action_dim,
-                            device=self.device,
-                        )
-
-                        # Commander actions for all teams
-                        for team in range(env.n_teams):
-                            cmd_obs = commander_obs[:, team, :]
-                            cmd_act, _, _ = trainer.commander_trainer.ac.get_action(cmd_obs)
-                            commander_actions[:, team, :] = cmd_act
-
-                        # Radar actions: query policy, override task
-                        rep_obs = rep_action = None
-                        for r in range(env.n_radars):
-                            radar_obs = state[:, r, :]
-                            radar_act, _, _ = trainer.radar_trainer.ac.get_action(radar_obs)
-
-                            # Override task assignment to fixed task
-                            for e in range(env.n_elem):
-                                base = e * 22
-                                radar_act[:, base:base + 4].zero_()
-                                radar_act[:, base + task_idx] = 1.0
-
-                            actions[:, r, :] = radar_act
-
-                            if r == 0:
-                                rep_obs = radar_obs
-                                rep_action = radar_act.clone()
-
-                    result = env.step(actions=actions, commander_actions=commander_actions)
-
-                    # Compute corrected log_probs for modified actions
-                    with torch.no_grad():
-                        rep_logp, _, rep_val = trainer.radar_trainer.ac.evaluate_actions(
-                            rep_obs, rep_action,
-                        )
-                        cmd_obs_t0 = commander_obs[:, 0, :]
-                        cmd_act_t0 = commander_actions[:, 0, :]
-                        cmd_logp, _, cmd_val = trainer.commander_trainer.ac.evaluate_actions(
-                            cmd_obs_t0, cmd_act_t0,
-                        )
-
-                    transition = {
-                        "cmd_obs": cmd_obs_t0,
-                        "cmd_action": cmd_act_t0,
-                        "cmd_logp": cmd_logp,
-                        "cmd_val": cmd_val.squeeze(-1),
-                        "radar_obs": rep_obs,
-                        "radar_action": rep_action,
-                        "radar_logp": rep_logp,
-                        "radar_val": rep_val.squeeze(-1),
-                    }
-                    trainer.store_transition(env, result, transition, team=0)
-
-                    # Flush buffers before they overflow. Cheap when not near full.
-                    if (trainer.commander_buffer and trainer.commander_buffer.near_full) or \
-                       (trainer.radar_buffer and trainer.radar_buffer.near_full):
-                        trainer.update()
-
-                    if result["dones"].any():
-                        break
-
-                if ep % 5 == 0:
-                    metrics = trainer.update()
-                    print(f"    Episode {ep}: {metrics}", flush=True)
-
-            # Save pre-trained checkpoint
-            ckpt_path = os.path.join(
-                self.league.checkpoint_dir, f"pretrain_{task_name}.pt",
-            )
-            trainer.save(ckpt_path)
-
-    def run_phase_b(self):
-        """Phase B: Multi-task integration with dense reward shaping.
-
-        Enable full action space (task selection + params). Train against
-        random opponents with heavy reward shaping. Own team uses real
-        policy inference, opponent uses random actions.
-        """
+        # 1. Initialize league (creates initial policies + trainers)
         env = self.env_factory()
         self.league.initialize(env)
 
-        for policy_id, trainer in self.league.trainers.items():
-            if not self.league.pool.policies[policy_id].is_active:
-                continue
+        # 2. Optional critic pre-training with scripted demonstration data
+        if self.critic_pretrain_episodes > 0:
+            print("=" * 60)
+            print(f"Critic Pre-training: {self.critic_pretrain_episodes} demo episodes")
+            print("=" * 60)
+            self._run_critic_pretrain(env)
 
-            record = self.league.pool.policies[policy_id]
-            team = record.team
-            opp_team = 1 - team
-            r_per_team = env.n_radars // env.n_teams
-            opp_r_start = opp_team * r_per_team
-            opp_r_end = opp_r_start + r_per_team
+        # 3. Optional BC actor pre-training (after critic pre-training)
+        if self.bc_pretrain_epochs > 0:
+            print("=" * 60)
+            print(f"BC Actor Pre-training: {self.bc_pretrain_epochs} epochs")
+            print("=" * 60)
+            self._run_bc_pretrain(env)
 
-            print(f"\n  Training {record.role} team {team} ({policy_id})")
+        # 4. Optional environment-side warmup (weak opponents, no policy constraint)
+        if self.warmup_episodes > 0:
+            print("=" * 60)
+            print(f"Environment Warmup: {self.warmup_episodes} episodes")
+            print("=" * 60)
+            self._run_warmup(env)
 
-            wins = 0
-            for ep in range(self.phase_b_episodes):
-                env.reset()
+        # 5. Pure PSRO loop
+        for it in range(self.n_psro_iterations):
+            print(f"\n{'=' * 60}")
+            print(f"PSRO Iteration {it}/{self.n_psro_iterations}")
+            print(f"{'=' * 60}")
 
-                for step in range(getattr(self.league, "max_steps_per_episode", 1000)):
-                    with torch.no_grad():
-                        # Own team: real policy
-                        own = trainer.get_own_actions(env, team)
-
-                        # Opponent: random
-                        actions = torch.zeros(
-                            env.num_envs, env.n_radars, env.action_dim,
-                            device=self.device,
-                        )
-                        for i, r in enumerate(range(own["r_start"], own["r_end"])):
-                            actions[:, r, :] = own["radar_actions"][i]
-                        actions[:, opp_r_start:opp_r_end, :] = torch.rand(
-                            env.num_envs, opp_r_end - opp_r_start, env.action_dim,
-                            device=self.device,
-                        )
-
-                        commander_actions = torch.zeros(
-                            env.num_envs, env.n_teams,
-                            env.battlefield.commander_action_dim,
-                            device=self.device,
-                        )
-                        commander_actions[:, team, :] = own["commander_action"]
-                        commander_actions[:, opp_team, :] = (
-                            torch.rand(
-                                env.num_envs, env.battlefield.commander_action_dim,
-                                device=self.device,
-                            ) * 2 - 1
-                        )
-
-                    result = env.step(actions=actions, commander_actions=commander_actions)
-                    trainer.store_transition(env, result, own["transition"], team)
-
-                    if (trainer.commander_buffer and trainer.commander_buffer.near_full) or \
-                       (trainer.radar_buffer and trainer.radar_buffer.near_full):
-                        trainer.update()
-
-                    if result["dones"].any():
-                        if result["winners"][0] == team:
-                            wins += 1
-                        break
-
-                if ep > 0 and ep % 10 == 0:
-                    trainer.update()
-
-                if ep % 500 == 0:
-                    wr = wins / max(ep + 1, 1)
-                    print(f"    Episode {ep}: win_rate={wr:.3f}")
-
-            # Save phase B checkpoint
-            ckpt_path = os.path.join(
-                self.league.checkpoint_dir,
-                f"{record.role}_team{team}_phaseB.pt",
-            )
-            trainer.save(ckpt_path)
-
-    def run_phase_c(self):
-        """Phase C: PSRO population training.
-
-        Run N PSRO iterations. Each iteration:
-          1. Evaluate payoff matrix
-          2. Compute meta-Nash
-          3. Train best responses
-        """
-        env = self.env_factory()
-
-        for it in range(self.phase_c_iterations):
-            print(f"\n  PSRO Iteration {it}/{self.phase_c_iterations}")
+            # Use existing PSRO iteration implementation in FluxLeague
+            self.league.episodes_per_training = self.episodes_per_iter
             metrics = self.league.psro_iteration(env)
 
             # Log metrics
@@ -295,45 +98,43 @@ class PhasedTrainer:
                 json.dump(metrics, f, indent=2, default=str)
 
             # Periodically save league
-            if it % 5 == 0:
+            if it % 5 == 0 or it == self.n_psro_iterations - 1:
                 self.league.save()
+                print(f"  Checkpoint saved at iteration {it}")
 
-    def run_phase_d(self):
-        """Phase D: League exploiter refinement.
+        # 4. Final save
+        self.league.save()
+        print("\nTraining complete. Final league saved.")
 
-        Exploiters train against the opponent's main agent using real
-        policy inference for both sides. Finds weaknesses in main agents.
+    def _run_warmup(self, env):
+        """Optional environment-side warmup with passive opponents.
+
+        Unlike the old Phase A, there is NO policy constraint or log_prob
+        correction.  The agent explores freely; opponents are passive
+        (heuristic: recon-only, no transmission) so the agent can collect
+        basic reward signal before facing real adversaries.
+
+        This is purely optional — if the asymmetric critic + bidirectional
+        dense reward provide enough signal, warmup_episodes can stay at 0.
         """
-        env = self.env_factory()
+        n_teams = self.league.n_teams
+        r_per_team = env.n_radars // n_teams
+        max_steps = getattr(self.league, "max_steps_per_episode", 1000)
 
-        for policy_id, trainer in self.league.trainers.items():
-            record = self.league.pool.policies[policy_id]
-            if not record.is_active:
-                continue
-            if record.role not in [ROLE_MAIN_EXPLOITER, ROLE_LEAGUE_EXPLOITER]:
-                continue
+        for ep in range(self.warmup_episodes):
+            env.reset()
 
-            team = record.team
-            opp_team = 1 - team
-            r_per_team = env.n_radars // env.n_teams
-            opp_r_start = opp_team * r_per_team
-            opp_r_end = opp_r_start + r_per_team
+            for policy_id, trainer in self.league.trainers.items():
+                record = self.league.pool.policies[policy_id]
+                if not record.is_active:
+                    continue
+                team = record.team
 
-            # Get opponent's main agent trainer
-            opp_main_id = self.league.pool.get_active_main(opp_team)
-            opp_trainer = self.league.trainers.get(opp_main_id) if opp_main_id else None
-
-            print(f"\n  Refining {record.role} team {team} ({policy_id})")
-
-            wins = 0
-            for ep in range(self.phase_d_episodes):
-                env.reset()
-
-                for step in range(getattr(self.league, "max_steps_per_episode", 1000)):
+                for step in range(max_steps):
                     with torch.no_grad():
-                        # Exploiter: real policy
                         own = trainer.get_own_actions(env, team)
 
+                        # Own team: real policy
                         actions = torch.zeros(
                             env.num_envs, env.n_radars, env.action_dim,
                             device=self.device,
@@ -341,30 +142,26 @@ class PhasedTrainer:
                         for i, r in enumerate(range(own["r_start"], own["r_end"])):
                             actions[:, r, :] = own["radar_actions"][i]
 
+                        # Opponent: passive heuristic (all recon, no transmit)
+                        for opp_team in range(n_teams):
+                            if opp_team == team:
+                                continue
+                            opp_r0 = opp_team * r_per_team
+                            opp_r1 = opp_r0 + r_per_team
+                            for r in range(opp_r0, opp_r1):
+                                # All-recon action: task_frac[0]=1, others 0
+                                a = torch.zeros(env.num_envs, env.action_dim,
+                                                device=self.device)
+                                for e in range(env.n_elem):
+                                    a[:, e * 22] = 1.0  # recon task
+                                actions[:, r, :] = a
+
                         commander_actions = torch.zeros(
-                            env.num_envs, env.n_teams,
+                            env.num_envs, n_teams,
                             env.battlefield.commander_action_dim,
                             device=self.device,
                         )
                         commander_actions[:, team, :] = own["commander_action"]
-
-                        # Opponent: real main agent or random fallback
-                        if opp_trainer:
-                            opp = opp_trainer.get_own_actions(env, opp_team)
-                            for i, r in enumerate(range(opp["r_start"], opp["r_end"])):
-                                actions[:, r, :] = opp["radar_actions"][i]
-                            commander_actions[:, opp_team, :] = opp["commander_action"]
-                        else:
-                            actions[:, opp_r_start:opp_r_end, :] = torch.rand(
-                                env.num_envs, opp_r_end - opp_r_start, env.action_dim,
-                                device=self.device,
-                            )
-                            commander_actions[:, opp_team, :] = (
-                                torch.rand(
-                                    env.num_envs, env.battlefield.commander_action_dim,
-                                    device=self.device,
-                                ) * 2 - 1
-                            )
 
                     result = env.step(actions=actions, commander_actions=commander_actions)
                     trainer.store_transition(env, result, own["transition"], team)
@@ -374,74 +171,94 @@ class PhasedTrainer:
                         trainer.update()
 
                     if result["dones"].any():
-                        if result["winners"][0] == team:
-                            wins += 1
                         break
 
-                if ep > 0 and ep % 10 == 0:
-                    trainer.update()
+                # End-of-episode update
+                trainer.update()
 
-                if ep % 500 == 0:
-                    wr = wins / max(ep + 1, 1)
-                    print(f"    Episode {ep}: win_rate={wr:.3f}")
+            if ep % 5 == 0:
+                print(f"  Warmup episode {ep}/{self.warmup_episodes}")
 
-        # Final evaluation
-        print("\n  Final evaluation...")
-        self._final_evaluation(env)
+    def _run_critic_pretrain(self, env):
+        """Generate demonstration data and pre-train all critic value heads.
 
-    def _final_evaluation(self, env):
-        """Run final win rate evaluation using deterministic policies."""
-        r_per_team = env.n_radars // env.n_teams
+        Uses scripted (heuristic) policies to collect rollout trajectories,
+        computes Monte Carlo returns, then trains both value_head and
+        privileged_value_head via MSE regression.
+        """
+        from ..data_collector import RolloutDataCollector
+        from ..scripted_policy import scripted_radar_policy, scripted_commander_policy
 
-        for team in range(self.league.n_teams):
-            agent_id = self.league.get_final_agent(team)
-            trainer = self.league.trainers.get(agent_id)
-            if not trainer:
-                print(f"\n  Team {team} final agent: {agent_id} (no trainer)")
-                continue
+        collector = RolloutDataCollector(device=self.device)
+        n_teams = self.league.n_teams
 
-            opp_team = 1 - team
-            opp_r_start = opp_team * r_per_team
-            opp_r_end = opp_r_start + r_per_team
+        for team in range(n_teams):
+            print(f"\n  Collecting demo data for team {team}...", flush=True)
+            data = collector.collect(
+                env=env,
+                scripted_policy=scripted_radar_policy,
+                scripted_commander=scripted_commander_policy,
+                team=team,
+                n_episodes=self.critic_pretrain_episodes,
+                max_steps=getattr(self.league, "max_steps_per_episode", 1000),
+            )
 
-            print(f"\n  Team {team} final agent: {agent_id}")
+            # Pre-train critics of this team's trainers
+            team_trainers = {
+                pid: t for pid, t in self.league.trainers.items()
+                if self.league.pool.policies[pid].team == team
+            }
+            # Temporarily restrict trainers to just this team
+            all_trainers = self.league.trainers
+            self.league.trainers = team_trainers
+            self.league.pretrain_critic(
+                data,
+                n_epochs=self.critic_pretrain_epochs,
+                batch_size=256,
+            )
+            self.league.trainers = all_trainers
 
-            wins = 0
-            n_games = 100
-            for game in range(n_games):
-                env.reset()
-                for step in range(getattr(self.league, "max_steps_per_episode", 1000)):
-                    with torch.no_grad():
-                        own = trainer.get_own_actions(env, team, deterministic=True)
+            # Free GPU memory before collecting data for the next team
+            del data
+            torch.cuda.empty_cache()
 
-                        actions = torch.zeros(
-                            env.num_envs, env.n_radars, env.action_dim,
-                            device=self.device,
-                        )
-                        for i, r in enumerate(range(own["r_start"], own["r_end"])):
-                            actions[:, r, :] = own["radar_actions"][i]
-                        actions[:, opp_r_start:opp_r_end, :] = torch.rand(
-                            env.num_envs, opp_r_end - opp_r_start, env.action_dim,
-                            device=self.device,
-                        )
+        print("  Critic pre-training complete.", flush=True)
 
-                        commander_actions = torch.zeros(
-                            env.num_envs, env.n_teams,
-                            env.battlefield.commander_action_dim,
-                            device=self.device,
-                        )
-                        commander_actions[:, team, :] = own["commander_action"]
-                        commander_actions[:, opp_team, :] = (
-                            torch.rand(
-                                env.num_envs, env.battlefield.commander_action_dim,
-                                device=self.device,
-                            ) * 2 - 1
-                        )
+    def _run_bc_pretrain(self, env):
+        """Pre-train actor networks via behavior cloning on scripted demonstrations.
 
-                    result = env.step(actions=actions, commander_actions=commander_actions)
-                    if result["dones"].any():
-                        if result["winners"][0] == team:
-                            wins += 1
-                        break
+        Uses the same scripted policies as critic pre-training. The actor
+        learns to imitate task selection (cross-entropy) and continuous
+        params (MSE). After BC, PPO fine-tunes with good initial behavior.
+        """
+        from ..data_collector import RolloutDataCollector
+        from ..scripted_policy import scripted_radar_policy, scripted_commander_policy
 
-            print(f"  Win rate: {wins}/{n_games} = {wins / n_games:.2%}")
+        collector = RolloutDataCollector(device=self.device)
+        n_teams = self.league.n_teams
+
+        for team in range(n_teams):
+            print(f"\n  Collecting demo data for team {team} (BC)...", flush=True)
+            data = collector.collect(
+                env=env,
+                scripted_policy=scripted_radar_policy,
+                scripted_commander=scripted_commander_policy,
+                team=team,
+                n_episodes=max(self.critic_pretrain_episodes, 50),
+                max_steps=getattr(self.league, "max_steps_per_episode", 1000),
+            )
+
+            team_trainers = {
+                pid: t for pid, t in self.league.trainers.items()
+                if self.league.pool.policies[pid].team == team
+            }
+            all_trainers = self.league.trainers
+            self.league.trainers = team_trainers
+            self.league.pretrain_actor_bc(
+                data,
+                n_epochs=self.bc_pretrain_epochs,
+                batch_size=self.bc_pretrain_batch_size,
+            )
+            self.league.trainers = all_trainers
+
+        print("  BC actor pre-training complete.", flush=True)
