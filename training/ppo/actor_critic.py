@@ -1,6 +1,6 @@
 """Actor-Critic networks for Commander and Radar agents.
 
-CommanderActorCritic: 68-dim obs → 35-dim action, tanh squash
+CommanderActorCritic: 76-dim obs → 35-dim action, tanh squash
 RadarActorCritic: spectrum + state → task logits + params + vehicle, separate value head
 
 Includes AdaptiveSpectrumEncoder that handles any (N, P, B) input size.
@@ -79,7 +79,7 @@ class CommanderActorCritic(nn.Module):
 
     def __init__(
         self,
-        obs_dim: int = 68,
+        obs_dim: int = 76,
         act_dim: int = 35,
         hidden_dim: int = 256,
     ):
@@ -96,7 +96,7 @@ class CommanderActorCritic(nn.Module):
         self.value_head = nn.Linear(hidden_dim, 1)
         self.log_std = nn.Parameter(torch.zeros(act_dim) - 1.0)  # init std ≈ 0.37
 
-    def forward(self, obs: torch.Tensor):
+    def forward(self, obs: torch.Tensor, privileged_info: torch.Tensor = None):
         """Deterministic forward: obs → (action, value)."""
         features = self.shared(obs)
         mean = self.action_head(features)
@@ -104,8 +104,9 @@ class CommanderActorCritic(nn.Module):
         value = self.value_head(features)
         return action, value
 
-    def get_action(self, obs: torch.Tensor, deterministic: bool = False):
-        """Sample action, return (action, log_prob, value).
+    def get_action(self, obs: torch.Tensor, deterministic: bool = False,
+                   privileged_info: torch.Tensor = None):
+        """Sample action, return (action, log_prob, value, privileged_value).
 
         Args:
             obs: [B, obs_dim]
@@ -114,6 +115,7 @@ class CommanderActorCritic(nn.Module):
             action: [B, act_dim] in [-1, 1]
             log_prob: [B]
             value: [B, 1]
+            privileged_value: [B, 1] (same as value for base class)
         """
         features = self.shared(obs)
         mean = self.action_head(features)
@@ -132,9 +134,10 @@ class CommanderActorCritic(nn.Module):
         log_prob -= torch.log(1.0 - action.pow(2) + 1e-6).sum(dim=-1)
 
         value = self.value_head(features)
-        return action, log_prob, value
+        return action, log_prob, value, value
 
-    def evaluate_actions(self, obs: torch.Tensor, actions: torch.Tensor):
+    def evaluate_actions(self, obs: torch.Tensor, actions: torch.Tensor,
+                         privileged_info: torch.Tensor = None):
         """Evaluate log-prob, entropy, value for given actions (PPO update).
 
         Args:
@@ -144,6 +147,7 @@ class CommanderActorCritic(nn.Module):
             log_prob: [B]
             entropy: [B]
             value: [B, 1]
+            privileged_value: [B, 1] (same as value for base class)
         """
         features = self.shared(obs)
         mean = self.action_head(features)
@@ -158,7 +162,7 @@ class CommanderActorCritic(nn.Module):
         entropy = dist.entropy().sum(dim=-1)
         value = self.value_head(features)
 
-        return log_prob, entropy, value
+        return log_prob, entropy, value, value
 
 
 class RadarActorCritic(nn.Module):
@@ -232,13 +236,14 @@ class RadarActorCritic(nn.Module):
         self.log_std_params = nn.Parameter(torch.zeros(n_elem * 8))
         self.log_std_vehicle = nn.Parameter(torch.zeros(3))
 
-    def forward(self, state: torch.Tensor):
+    def forward(self, state: torch.Tensor, privileged_info: torch.Tensor = None):
         """Deterministic forward: state → assembled flat action [B, 13753] + value."""
-        action, _, value = self.get_action(state, deterministic=True)
+        action, _, value, _ = self.get_action(state, deterministic=True)
         return action, value
 
-    def get_action(self, state: torch.Tensor, deterministic: bool = False):
-        """Sample action, return (action, log_prob, value).
+    def get_action(self, state: torch.Tensor, deterministic: bool = False,
+                   privileged_info: torch.Tensor = None):
+        """Sample action, return (action, log_prob, value, privileged_value).
 
         Args:
             state: [B, state_dim]
@@ -247,6 +252,7 @@ class RadarActorCritic(nn.Module):
             action: [B, 13753] flat action for env
             log_prob: [B]
             value: [B, 1]
+            privileged_value: [B, 1] (same as value for base class — no asymmetric critic)
         """
         B = state.shape[0]
         N = self.n_elem
@@ -303,7 +309,7 @@ class RadarActorCritic(nn.Module):
 
         action = self._assemble_action_from_parts(task_frac, params, vehicle)
 
-        return action, log_prob, value
+        return action, log_prob, value, value
 
     def _assemble_action_from_parts(
         self,
@@ -407,7 +413,8 @@ class RadarActorCritic(nn.Module):
 
         return task_dist, param_dist, vehicle_dist, value
 
-    def evaluate_actions(self, state: torch.Tensor, actions: torch.Tensor):
+    def evaluate_actions(self, state: torch.Tensor, actions: torch.Tensor,
+                         privileged_info: torch.Tensor = None):
         """Evaluate log-prob, entropy, value for PPO update.
 
         Args:
@@ -417,6 +424,7 @@ class RadarActorCritic(nn.Module):
             log_prob: [B]
             entropy: [B]
             value: [B, 1]
+            privileged_value: [B, 1] (same as value for base class)
         """
         task_dist, param_dist, vehicle_dist, value = self.get_distribution(state)
 
@@ -443,7 +451,7 @@ class RadarActorCritic(nn.Module):
         log_prob = task_logp.sum(dim=-1) + param_logp + veh_logp
         entropy = task_ent.sum(dim=-1) + param_dist.entropy().sum(dim=-1) + vehicle_dist.entropy().sum(dim=-1)
 
-        return log_prob, entropy, value
+        return log_prob, entropy, value, value
 
 
 class SubArrayRadarActorCritic(nn.Module):
@@ -531,6 +539,27 @@ class SubArrayRadarActorCritic(nn.Module):
         self.log_std_params = nn.Parameter(torch.zeros(8))
         self.log_std_vehicle = nn.Parameter(torch.zeros(3))
 
+        # --- Privileged critic: sees full element-level spectrum (no SADP pooling)
+        # plus privileged info only available during centralized training.
+        # n_teams is 2 for the standard adversarial setting.
+        _n_teams = 2
+        self.privileged_spec_encoder = AdaptiveSpectrumEncoder(
+            n_elem=n_elem, n_pulses=n_pulses, n_bins=n_bins,
+            hidden_dim=256,
+        )
+        # comm pooled (mean+max over elements → 2+2=4)
+        # recon pooled (mean+max over elements → 4+4=8)
+        # + other (vehicle+missile+cmd) + privileged extra
+        priv_extra_dim = _n_teams * 4 + _n_teams * 3 + 2  # task_fingerprint + intercept + target
+        priv_in = 256 + 4 + 8 + self.other_dim + priv_extra_dim
+        self.privileged_head = nn.Sequential(
+            nn.Linear(priv_in, 512),
+            nn.ReLU(),
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            nn.Linear(256, 1),
+        )
+
     def _parse_state(self, state: torch.Tensor):
         """Parse flat state into structured components.
 
@@ -595,11 +624,11 @@ class SubArrayRadarActorCritic(nn.Module):
 
         return sub_features, x  # sub_features, pooled_spectrum
 
-    def _get_distributions(self, state: torch.Tensor):
+    def _get_distributions(self, state: torch.Tensor, privileged_info: torch.Tensor = None):
         """Build action distributions from state.
 
         Returns:
-            task_dist, param_dist, vehicle_dist, value, sub_indices
+            task_dist, param_dist, vehicle_dist, value, privileged_value
         """
         B = state.shape[0]
         K = self.n_sub
@@ -630,7 +659,51 @@ class SubArrayRadarActorCritic(nn.Module):
 
         value = self.value_head(global_feat)  # [B, 1]
 
-        return task_dist, param_dist, vehicle_dist, value
+        # Privileged critic value: full element-level encoding + privileged info
+        privileged_value = self._compute_privileged_value(
+            spectrum, comm, recon, other, privileged_info,
+        )
+
+        return task_dist, param_dist, vehicle_dist, value, privileged_value
+
+    def _compute_privileged_value(self, spectrum, comm, recon, other, privileged_info=None):
+        """Compute value from privileged (full-resolution) critic.
+
+        The privileged critic sees the full element-level spectrum (not SADP-
+        pooled) plus optional privileged info (task_fingerprint, intercept,
+        target positions) that is only available during centralized training.
+
+        When privileged_info is None (deployment), falls back to a degraded
+        estimate using only full-resolution spectrum + comm + recon.
+        """
+        B = spectrum.shape[0]
+
+        # Full element-level spectrum encoding (no SADP pooling)
+        priv_spec = self.privileged_spec_encoder(spectrum)  # [B, 256]
+
+        # Pool comm and recon across elements
+        comm_pooled = torch.cat([
+            comm.mean(dim=1),
+            comm.max(dim=1).values,
+        ], dim=-1)  # [B, 4]
+        recon_pooled = torch.cat([
+            recon.mean(dim=1),
+            recon.max(dim=1).values,
+        ], dim=-1)  # [B, 8]
+
+        priv_input = torch.cat([priv_spec, comm_pooled, recon_pooled, other], dim=-1)
+
+        if privileged_info is not None:
+            priv_input = torch.cat([priv_input, privileged_info], dim=-1)
+        else:
+            # Zero-pad for missing privileged info
+            pad_dim = self.privileged_head[0].in_features - priv_input.shape[-1]
+            priv_input = torch.cat([
+                priv_input,
+                torch.zeros(B, pad_dim, device=spectrum.device),
+            ], dim=-1)
+
+        return self.privileged_head(priv_input)  # [B, 1]
 
     def _expand_to_elements(
         self,
@@ -697,23 +770,28 @@ class SubArrayRadarActorCritic(nn.Module):
 
         return task_frac, params, vehicle
 
-    def forward(self, state: torch.Tensor):
-        """Deterministic forward: state → (action [B, 13753], value)."""
-        action, _, value = self.get_action(state, deterministic=True)
-        return action, value
+    def forward(self, state: torch.Tensor, privileged_info: torch.Tensor = None):
+        """Deterministic forward: state → (action [B, 13753], value, privileged_value)."""
+        action, _, value, privileged_value = self.get_action(
+            state, deterministic=True, privileged_info=privileged_info,
+        )
+        return action, value, privileged_value
 
-    def get_action(self, state: torch.Tensor, deterministic: bool = False):
-        """Sample action, return (action, log_prob, value).
+    def get_action(self, state: torch.Tensor, deterministic: bool = False,
+                   privileged_info: torch.Tensor = None):
+        """Sample action, return (action, log_prob, value, privileged_value).
 
         Returns:
             action: [B, n_elem*22+3] flat action for env (drop-in compatible)
             log_prob: [B]
             value: [B, 1]
+            privileged_value: [B, 1]
         """
         B = state.shape[0]
         K = self.n_sub
 
-        task_dist, param_dist, vehicle_dist, value = self._get_distributions(state)
+        task_dist, param_dist, vehicle_dist, value, privileged_value = \
+            self._get_distributions(state, privileged_info)
 
         if deterministic:
             task_choice = task_dist.logits.argmax(dim=-1)  # [B, K]
@@ -737,9 +815,10 @@ class SubArrayRadarActorCritic(nn.Module):
         # Expand to element-level action
         action = self._expand_to_elements(task_frac, params, vehicle)
 
-        return action, log_prob, value
+        return action, log_prob, value, privileged_value
 
-    def evaluate_actions(self, state: torch.Tensor, actions: torch.Tensor):
+    def evaluate_actions(self, state: torch.Tensor, actions: torch.Tensor,
+                         privileged_info: torch.Tensor = None):
         """Evaluate log-prob, entropy, value for given actions (PPO update).
 
         Args:
@@ -749,8 +828,10 @@ class SubArrayRadarActorCritic(nn.Module):
             log_prob: [B]
             entropy: [B]
             value: [B, 1]
+            privileged_value: [B, 1]
         """
-        task_dist, param_dist, vehicle_dist, value = self._get_distributions(state)
+        task_dist, param_dist, vehicle_dist, value, privileged_value = \
+            self._get_distributions(state, privileged_info)
 
         # Extract sub-array actions from element-level action
         task_frac, params, vehicle = self._extract_sub_from_elem(actions)
@@ -768,15 +849,15 @@ class SubArrayRadarActorCritic(nn.Module):
                    + param_dist.entropy().sum(-1).sum(-1)
                    + vehicle_dist.entropy().sum(dim=-1))
 
-        return log_prob, entropy, value
+        return log_prob, entropy, value, privileged_value
 
-    def get_distribution(self, state: torch.Tensor):
+    def get_distribution(self, state: torch.Tensor, privileged_info: torch.Tensor = None):
         """Get action distributions for PPO.
 
         Returns:
-            task_dist, param_dist, vehicle_dist, value
+            task_dist, param_dist, vehicle_dist, value, privileged_value
         """
-        return self._get_distributions(state)
+        return self._get_distributions(state, privileged_info)
 
 
 def create_team_policy(
@@ -793,12 +874,12 @@ def create_team_policy(
 
     Args:
         sub_array_size: If > 0, use SubArrayRadarActorCritic with this sub-array
-                       block size (e.g., 5 for 5×5 blocks in a 25×25 array).
+                       block size (e.g., 5 for 5×5 sub-array blocks in a 25×25 array).
     Returns:
         dict with "commander" and "radar" actor-critic modules.
     """
     commander = CommanderActorCritic(
-        obs_dim=68,
+        obs_dim=76,
         act_dim=35,
         hidden_dim=256,
     ).to(device)
@@ -821,3 +902,106 @@ def create_team_policy(
         ).to(device)
 
     return {"commander": commander, "radar": radar}
+
+
+class TeamCritic(nn.Module):
+    """Team-level critic for hierarchical advantage estimation.
+
+    Takes a compact team-state summary (104 dims) and predicts a single
+    scalar value V_team(s).  Used alongside per-agent critics to give
+    long-horizon strategic feedback (launch → 600-step kill).
+
+    Input (104 dims):
+      commander_obs      76   — mean commander battlefield observation
+      task_fingerprint    8   — [n_teams * 4] per-team task fractions
+      avg_snr             4   — per-radar mean detect SNR
+      alive               2   — per-team alive flags (any radar alive)
+      missile_pos         6   — [pos_x, pos_y, pos_z] per team
+      missile_in_flight   2   — per-team in-flight flag
+      missile_target      6   — [target_x, target_y, target_z] per team
+                           = 76 + 8 + 4 + 2 + 6 + 2 + 6 = 104
+    """
+
+    def __init__(self, input_dim: int = 104, hidden_dim: int = 256):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, 1),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Return [B, 1] value estimate."""
+        return self.net(x)
+
+
+def build_team_state(
+    commander_obs: torch.Tensor,      # [E, n_teams, 76] or [B, 76]
+    task_fingerprint: torch.Tensor,   # [E, n_teams, 4] or None → zeros
+    avg_snr: torch.Tensor,            # [E, n_radars] or None → zeros
+    alive: torch.Tensor,              # [E, n_radars] bool
+    missile_pos: torch.Tensor,        # [E, n_teams, 3]
+    missile_in_flight: torch.Tensor,  # [E, n_teams] bool
+    missile_target: torch.Tensor,     # [E, n_teams, 3]
+) -> torch.Tensor:
+    """Build compact team-state vector [B, 104] for TeamCritic.
+
+    Handles both batch [B, ...] and env [E, ...] shapes — the first dim
+    is always the batch dimension.
+    """
+    dev = commander_obs.device
+    B = commander_obs.shape[0]
+
+    # Commander obs: take team 0's observation as summary (or mean if both)
+    if commander_obs.dim() == 3:  # [B, n_teams, 76]
+        cmd = commander_obs.mean(dim=1)  # [B, 76]
+    else:
+        cmd = commander_obs  # [B, 76]
+
+    # Task fingerprint: flatten [B, n_teams, 4] → [B, 8]
+    if task_fingerprint is not None and task_fingerprint.numel() > 0:
+        fp = task_fingerprint.reshape(B, -1)
+        if fp.shape[-1] < 8:
+            fp = torch.cat([fp, torch.zeros(B, 8 - fp.shape[-1], device=dev)], dim=-1)
+        fp = fp[:, :8]
+    else:
+        fp = torch.zeros(B, 8, device=dev)
+
+    # Avg SNR per radar [B, n_radars] → [B, 4] (pad/truncate to 4)
+    if avg_snr is not None and avg_snr.numel() > 0:
+        snr = avg_snr.reshape(B, -1)[:, :4]
+        if snr.shape[-1] < 4:
+            snr = torch.cat([snr, torch.zeros(B, 4 - snr.shape[-1], device=dev)], dim=-1)
+    else:
+        snr = torch.zeros(B, 4, device=dev)
+
+    # Alive: per-team (any radar alive)
+    if alive is not None and alive.numel() > 0:
+        al = alive.float().reshape(B, -1)
+        # 4 radars → 2 teams: group by n_radars//2
+        n_radars = al.shape[-1]
+        n_per_team = max(n_radars // 2, 1)
+        team_alive = torch.stack([
+            al[:, :n_per_team].max(dim=-1).values,
+            al[:, n_per_team:2*n_per_team].max(dim=-1).values,
+        ], dim=-1)  # [B, 2]
+        al_out = team_alive
+    else:
+        al_out = torch.ones(B, 2, device=dev)
+
+    # Missile state: [B, n_teams, 3] pos → 6, [B, n_teams] in_flight → 2, target → 6
+    m_pos = missile_pos.reshape(B, -1)[:, :6] if missile_pos is not None else torch.zeros(B, 6, device=dev)
+    if m_pos.shape[-1] < 6:
+        m_pos = torch.cat([m_pos, torch.zeros(B, 6 - m_pos.shape[-1], device=dev)], dim=-1)
+
+    m_flight = missile_in_flight.float().reshape(B, -1)[:, :2] if missile_in_flight is not None else torch.zeros(B, 2, device=dev)
+    if m_flight.shape[-1] < 2:
+        m_flight = torch.cat([m_flight, torch.zeros(B, 2 - m_flight.shape[-1], device=dev)], dim=-1)
+
+    m_tgt = missile_target.reshape(B, -1)[:, :6] if missile_target is not None else torch.zeros(B, 6, device=dev)
+    if m_tgt.shape[-1] < 6:
+        m_tgt = torch.cat([m_tgt, torch.zeros(B, 6 - m_tgt.shape[-1], device=dev)], dim=-1)
+
+    return torch.cat([cmd, fp, snr, al_out, m_pos, m_flight, m_tgt], dim=-1)

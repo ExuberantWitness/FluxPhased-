@@ -1729,6 +1729,75 @@ MATLAB Phased Array System Toolbox 是 IQ 级雷达仿真的工业标准（MathW
 <details>
 <summary><b>Updates & Bug Fixes / 更新进展与缺陷修复</b></summary>
 
+### 2026-06-02
+
+**CTDE 架构激活 + BPSK 末端制导 + Commander 战术发射 + 雷达动态移动 / CTDE Architecture Activation + BPSK Terminal Guidance + Commander Tactical Launch + Radar Dynamic Movement**
+
+本日完成了从"零击杀死锁"到"管线端到端击杀"的关键突破。核心工作：(1) 激活 TeamCritic α-blend 分层优势估计，(2) 修复 BPSK 载荷编码实现末端制导，(3) Commander 从 CRC 门控改为战术发射，(4) 雷达车辆实现动态移动，(5) Commander 观测从 68 维扩展到 76 维，(6) 全管线 1/10 规模端到端验证。
+
+---
+
+#### 缺陷修复（6 个）
+
+| # | Bug | 位置 | 影响 | 修复 |
+|---|-----|------|------|------|
+| 1 | **CRC 门控死锁** — BPSK 通信需要导弹在飞行中才能建立，但导弹需要 CRC 通过才能发射 | `vec_battlefield.py:239` `if not flying.any(): continue` | 发射率 0%，演示数据无击杀 | Commander 改为战术发射（`enemy_detected > 13dB → launch`），CRC 仅用于末端制导通信 |
+| 2 | **BPSK 载荷固定测试码** — `encode_bpsk(1.0, 1.0)` 解码后 target=(10000,10000) 将导弹重定向至地图角落 | `vec_element_processor.py:351` | 末端制导完全失效，导弹偏离 Commander 设定的正确方向 | 载荷改为敌方雷达质心实际位置（`enemy_center / half_map`），重新启用 `missile.update_target()` |
+| 3 | `.pyc` 字节码缓存过期 | `__pycache__/` | 修改后的源代码未生效，旧 CRC 门控代码继续执行 | `find . -name "__pycache__" -exec rm -rf {} +` |
+| 4 | `env.reset()` 未清理 `_cached_cross_team_intercept` | `vec_mfar_env.py:310` | 第二批及之后的 episode 读到上批过期数据（敌方已阵亡 SNR=0），`enemy_detected=False`，发射率仅 20-40% | reset 时清空 `= None`，发射率恢复到首轮水平 |
+| 5 | 雷达车辆速度/航向已建模但位置从未更新 | `vec_mfar_env.py:_apply_vehicle_actions` | 敌方静止，Commander 速度信号始终为 0 | 添加 `radar_pos += radar_vel * dt`，航向→速度矢量转换，地图边界钳制 |
+| 6 | `encode_bpsk` 不支持张量输入 | `vec_element_processor.py:355` | BPSK 载荷设置后崩溃 `RuntimeError: Boolean value of Tensor with more than one value is ambiguous` | `float(ex[0])` 标量提取 |
+
+---
+
+#### 架构新增（5 项）
+
+| # | 组件 | 位置 | 功能 |
+|---|------|------|------|
+| 1 | **TeamCritic α-blend** | `PPOTrainer.update():78-97` | 分层优势：A_final = (1-α)·A_agent + α·A_team。TeamCritic(104-dim 全局状态) 提供 N=800 步团队回报，α 线性/对数/自适应调度 0→1 |
+| 2 | **Commander 观测 68→76 维** | `vec_battlefield.py:get_commander_observation` | +敌方雷达位置×2 [68:72] + 上一步敌方质心 [72:74]（隐式速度信号） + 导弹飞行状态 [74:76] |
+| 3 | **BPSK 末端制导** | `vec_battlefield.py:298-312` | CRC 通过时 `missile.update_target(enemy_pos)` 实时修正航线 |
+| 4 | **增强演示数据** | `data_collector.py` + `scripted_policy.py` | HPEDF 对抗性对手（双方）、W_TASK±10%/配额±5% 噪声、目标位置±2000m 扰动、信道噪声缩放 [0.5,2.0]、覆盖率检查+自动重试 |
+| 5 | **BC→Critic→PPO 完整管线** | `phased_trainer.py` + `flux_league.py` | BC 预训练（Radar+Commander）→ Critic 预训练 → KL penalty → PPO 微调。BC 后 `set_bc_pretrained()` 冻结权重用于 `pretrain_log_probs` |
+
+---
+
+#### 新增配置文件
+
+| 文件 | 用途 | 区别 |
+|------|------|------|
+| `configs/league_25x25_configA.yaml` | BC→Critic→PPO + TeamCritic | bc_pretrain_epochs=20, team_critic_enabled=true |
+| `configs/league_25x25_configC.yaml` | BC→Critic→PPO 无 TeamCritic (消融) | bc_pretrain_epochs=20, team_critic_enabled=false |
+| `configs/league_quick_test.yaml` | 1/10 管线快速验证 | 5 集, 800 步/集, 10 critic epochs, 5 BC epochs |
+
+---
+
+#### 维度变更
+
+| 组件 | 旧值 | 新值 |
+|------|------|------|
+| CommanderActorCritic obs_dim | 68 | **76** |
+| Commander RolloutBuffer obs_dim | 68 | **76** |
+| TeamCritic input_dim | 88→96 | **104** |
+| RolloutBuffer.team_states | 88→96 | **104** |
+| BPSK 载荷 | (1.0, 1.0) 固定测试码 | **敌方雷达实时位置** |
+| urgency_penalty | -0.01/step | **-0.05/step** |
+
+---
+
+#### 1/10 管线验证结果
+
+| 阶段 | 结果 |
+|------|------|
+| 演示数据采集 | 两队各 25 集，发射率 30-40%，4 场景全覆盖 |
+| Radar Critic 预训练 | value_loss 收敛 |
+| Commander Critic 预训练 | 收敛 |
+| BC 预训练 | cmd_bc_loss 0.026→0.0013 |
+| PSRO Iteration 0 Payoff | **7/9 场非随机胜负，最高胜率 0.88** |
+| PSRO Training | 导弹飞行正常，需更多集数提升 PPO 胜率 |
+
+---
+
 ### 2026-05-29
 
 **GPU 并行化 + 4 个 Bug 修复 + 25×25 全阵列 PSRO 训练启动 / GPU Parallelization + 4 Bug Fixes + 25×25 Full Array PSRO Training Launch**

@@ -1,0 +1,94 @@
+# FluxPhased League Training Configuration — 25×25 Array × 12 Parallel Envs
+# CONFIG C: BC→Critic→PPO WITHOUT TeamCritic (ablation study)
+#
+# Same as Config A but TeamCritic is disabled (alpha stays at 0).
+# This isolates whether the hierarchical team-level critic is necessary
+# for Commander to learn launch timing.
+#
+# Target GPU: RTX PRO 6000 Blackwell (96 GB VRAM)
+# Sub-Array Decomposed Policy (SADP): 25 sub-arrays of 5×5 blocks
+# Action space: 25×22+3 = 553 (expanded internally to 625×22+3 = 13753)
+
+sub_array_size: 5  # 5×5 sub-array blocks → 25 sub-arrays for 25×25 array
+
+league:
+  population_cap: 50
+  n_eval_games: 10
+  meta_solver: "nash"
+  pfsp_temperature: 1.0
+  exploiter_reset_prob: 0.1
+  episodes_per_training: 100
+  max_steps_per_episode: 2000
+  checkpoint_dir: "checkpoints/league_25x25_configC"
+  team_critic_enabled: false   # Config C: ablation — no TeamCritic
+  # alpha_schedule: "linear"  # irrelevant when team_critic_enabled=false
+
+  mutation:
+    enabled: true
+    epsilon: 0.05
+    n_mutants_per_policy: 3
+    n_top_policies: 2
+    win_rate_threshold: 0.55
+
+ppo:
+  commander:
+    lr: 3.0e-4
+    clip_range: 0.2
+    entropy_coef: 0.01
+  radar:
+    lr: 1.0e-4
+    clip_range: 0.1
+    entropy_coef: 0.02
+  shared:
+    gamma: 0.999
+    gae_lambda: 0.99
+    n_step_returns: 400       # N-step returns for long-horizon credit
+    value_coef: 0.5
+    max_grad_norm: 0.5
+    n_epochs: 3
+    batch_size: 128
+    buffer_size: 2048
+    buffer_size_commander: 2048
+    buffer_size_radar: 2048
+
+training:
+  warmup_episodes: 0
+  psro_iterations: 30
+
+  # Critic pre-training with scripted demonstration data
+  critic_pretrain_episodes: 50    # number of demo episodes to collect (per team)
+  critic_pretrain_epochs: 50     # supervised training epochs on collected data
+
+  # BC actor pre-training (same as Config A)
+  bc_pretrain_epochs: 20
+  bc_pretrain_batch_size: 128
+
+reward_shaping:
+  detect_snr_weight: 0.1
+  detect_coverage_weight: 0.03
+  jam_effectiveness_weight: 0.1
+  comm_reliability_weight: 0.05
+  recon_intel_weight: 0.03
+  beam_accuracy_weight: 0.05
+  stealth_weight: 0.1
+  missile_guidance_weight: 0.02
+  snr_threshold_db: 10.0
+  urgency_penalty: -0.05          # stepped up from -0.01 for Commander launch signal
+  team_reward_weight: 0.1         # w1: Σ(all_radar_rewards) in R_team
+  team_kill_weight: 1.0           # w2: kill/death bonus in R_team
+
+privileged_critic:
+  enabled: true
+  encoder_hidden: [512, 256]
+
+env:
+  rows: 25
+  cols: 25
+  num_envs: 4
+  n_radars: 4
+  pulses_per_cpi: 4
+  fft_size: 64
+  device: "cuda"
+  tx_power_w: 1.0
+  cpi_preallocate: false
+  speed_ms: 62500.0

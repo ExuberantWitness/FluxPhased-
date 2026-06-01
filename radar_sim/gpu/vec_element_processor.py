@@ -346,9 +346,18 @@ class VecElementProcessor:
                     return generate_noise_broadband(n_samples, power, dev)
 
         elif task_id == TASK_COMM:
-            # Use fixed BPSK params (no network learning needed for comm PHY)
+            # BPSK payload: enemy radar centroid (normalised to [-1, 1]).
+            # Updated each step by vec_mfar_env before TX assembly.
+            # Uses the first env's enemy centroid as reference (all envs
+            # share the same waveform template; team separation happens
+            # at the receiver in process_missile_comm()).
             sym_rate = self.symbol_rate  # default 1e6 Hz
-            bits = encode_bpsk(1.0, 1.0, device=dev)  # fixed test pattern
+            ex = getattr(self, '_comm_payload_x', 0.0)
+            ey = getattr(self, '_comm_payload_y', 0.0)
+            # extract scalar from tensor if needed
+            ex_val = float(ex[0]) if hasattr(ex, '__len__') else float(ex)
+            ey_val = float(ey[0]) if hasattr(ey, '__len__') else float(ey)
+            bits = encode_bpsk(ex_val, ey_val, device=dev)
             return modulate_bpsk(bits, n_samples, self.fs, sym_rate, dev)
 
         return None

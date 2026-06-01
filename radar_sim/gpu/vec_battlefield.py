@@ -72,7 +72,7 @@ class VecBattlefield:
         self.device = device
         self.num_input_length = num_input_length
         self.num_output_length = num_output_length
-        self.commander_obs_dim = 4 + 2 * num_input_length
+        self.commander_obs_dim = 4 + 2 * num_input_length + 8  # 68 → 76: +enemy pos +velocity
         self.reward_config = reward_config or {}
         self.commander_action_dim = 3 + 2 * num_output_length
 
@@ -123,6 +123,8 @@ class VecBattlefield:
         self.dones[env_ids] = False
         self.winners[env_ids] = -1
         self.step_count[env_ids] = 0
+        if hasattr(self, '_prev_enemy_centroid'):
+            self._prev_enemy_centroid[env_ids] = 0.0
 
     # ------------------------------------------------------------------
     # Commander actions
@@ -235,6 +237,11 @@ class VecBattlefield:
         self._last_comm_crc_ok.zero_()
 
         for t in range(self.n_teams):
+            # BPSK comm requires a missile in flight to receive.
+            # Pre-launch comm check is not physically meaningful —
+            # the Commander decides launch based on tactical assessment,
+            # not CRC gating.  CRC is used for mid-flight target updates
+            # and comm_reliability reward shaping.
             flying = self.missile.in_flight[:, t]  # [E]
             if not flying.any():
                 continue
@@ -290,18 +297,21 @@ class VecBattlefield:
             # Store CRC status for evaluation
             self._last_comm_crc_ok[active_idx, t] = crc_ok
 
-            # Update missile target where CRC passed
-            valid_mask = crc_ok
-            if valid_mask.any():
-                valid_envs = active_idx[valid_mask]
-                n_valid = valid_envs.numel()
+            # ── Terminal guidance: update missile target via BPSK ──
+            # BPSK payload now encodes the actual enemy radar centroid,
+            # updated each step by vec_mfar_env before TX assembly.
+            # Only update when CRC passes (reliable comm link).
+            if crc_ok.any():
+                crc_good = crc_ok  # [n_active]
                 half_x = self.map_size[0] / 2.0
                 half_y = self.map_size[1] / 2.0
-                new_target = torch.zeros(n_valid, 3, device=dev)
-                new_target[:, 0] = data_x[valid_mask] * half_x
-                new_target[:, 1] = data_y[valid_mask] * half_y
+                new_target = torch.zeros(crc_good.sum(), 3, device=dev)
+                new_target[:, 0] = data_x[crc_good] * half_x
+                new_target[:, 1] = data_y[crc_good] * half_y
                 new_target[:, 2] = 0.0
-                self.missile.update_target(valid_envs, t, new_target)
+                self.missile.update_target(
+                    active_idx[crc_good], t, new_target,
+                )
 
     # ------------------------------------------------------------------
     # Missile physics + kill check
@@ -375,13 +385,21 @@ class VecBattlefield:
         radar_pos: torch.Tensor,
         radar_latents: torch.Tensor,
     ) -> torch.Tensor:
-        """Build commander observation [E, n_teams, 4 + 2*N_in].
+        """Build commander observation [E, n_teams, 76].
 
-        Layout per team:
+        Layout per team (expanded from 68 to 76):
           [0:2]            own radar 0 position (x, y) / half_map
           [2:4]            own radar 1 position (x, y) / half_map
-          [4:4+N_in]       radar 0 latent
-          [4+N_in:4+2*N_in] radar 1 latent
+          [4:36]           radar 0 latent (32-dim from radar NN encoder)
+          [36:68]          radar 1 latent (32-dim)
+          [68:70]          enemy radar 0 position (x, y) / half_map   ← NEW
+          [70:72]          enemy radar 1 position (x, y) / half_map   ← NEW
+          [72:74]          previous enemy centroid (x, y) / half_map  ← NEW (velocity signal)
+          [74:76]          missile flight [in_flight_own, in_flight_enemy] ← NEW
+
+        The additional 8 dims give the Commander explicit knowledge of
+        enemy positions and a crude velocity signal (Δcentroid/Δt),
+        enabling trajectory prediction for launch direction.
 
         Args:
             radar_pos: [E, R, 3]
@@ -393,11 +411,18 @@ class VecBattlefield:
         half_x = self.map_size[0] / 2.0
         half_y = self.map_size[1] / 2.0
 
+        # Init persistent previous-enemy-centroid buffer if needed
+        if not hasattr(self, '_prev_enemy_centroid'):
+            self._prev_enemy_centroid = torch.zeros(E, self.n_teams, 2, device=dev)
+
         obs = torch.zeros(E, self.n_teams, self.commander_obs_dim, device=dev)
 
         for t in range(self.n_teams):
             own_idx = self.team_radar_indices[t]
+            enemy_t = 1 - t
+            enemy_idx = self.team_radar_indices[enemy_t]
             n_own = own_idx.shape[0]
+            n_enemy = enemy_idx.shape[0]
 
             # Own radar positions [0:4]
             obs[:, t, 0] = radar_pos[:, own_idx[0], 0] / half_x
@@ -409,10 +434,33 @@ class VecBattlefield:
                 obs[:, t, 2] = obs[:, t, 0]
                 obs[:, t, 3] = obs[:, t, 1]
 
-            # Radar latents [4:4+2*N_in]
+            # Radar latents [4:4+2*N_in] = [4:36] and [36:68]
             obs[:, t, 4:4 + N_in] = radar_latents[:, own_idx[0]]
             if n_own > 1:
                 obs[:, t, 4 + N_in:4 + 2 * N_in] = radar_latents[:, own_idx[1]]
+
+            # ── NEW: Enemy radar positions [68:72] ──
+            obs[:, t, 68] = radar_pos[:, enemy_idx[0], 0] / half_x
+            obs[:, t, 69] = radar_pos[:, enemy_idx[0], 1] / half_y
+            if n_enemy > 1:
+                obs[:, t, 70] = radar_pos[:, enemy_idx[1], 0] / half_x
+                obs[:, t, 71] = radar_pos[:, enemy_idx[1], 1] / half_y
+            else:
+                obs[:, t, 70] = obs[:, t, 68]
+                obs[:, t, 71] = obs[:, t, 69]
+
+            # ── NEW: Previous enemy centroid [72:74] (crude velocity signal) ──
+            obs[:, t, 72] = self._prev_enemy_centroid[:, t, 0]
+            obs[:, t, 73] = self._prev_enemy_centroid[:, t, 1]
+
+            # Update persistent buffer for next step
+            enemy_center = radar_pos[:, enemy_idx, :].mean(dim=1)  # [E, 3]
+            self._prev_enemy_centroid[:, t, 0] = enemy_center[:, 0] / half_x
+            self._prev_enemy_centroid[:, t, 1] = enemy_center[:, 1] / half_y
+
+            # ── NEW: Missile flight status [74:76] ──
+            obs[:, t, 74] = self.missile.in_flight[:, t].float()
+            obs[:, t, 75] = self.missile.in_flight[:, enemy_t].float()
 
         return obs
 
@@ -460,8 +508,10 @@ class VecBattlefield:
                 radar_rewards[:, ri] += self.reward_config.get('emission_cost', -0.001)
 
             # Urgency: commander penalized for not launching
+            # Increased from -0.01 to -0.05/step to provide stronger
+            # learning signal for launch timing (plan Step 5).
             not_launched = ~self.missile.launched[:, t] & ~self.dones
-            commander_rewards[:, t] += not_launched.float() * self.reward_config.get('urgency_penalty', -0.01)
+            commander_rewards[:, t] += not_launched.float() * self.reward_config.get('urgency_penalty', -0.05)
 
         return {
             "radar_rewards": radar_rewards,

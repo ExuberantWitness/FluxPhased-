@@ -18,6 +18,7 @@ import torch
 
 from .vec_array import VecArray
 from .vec_channel import VecChannel
+from ..config import DEFAULT_ROWS, DEFAULT_COLS
 from .vec_interference import VecInterference
 from .vec_element_processor import VecElementProcessor
 from .vec_battlefield import VecBattlefield
@@ -43,7 +44,7 @@ class MFARVecEnv:
 
     def __init__(
         self, num_envs: int = 2, n_radars: int = 4,
-        rows: int = 25, cols: int = 25,
+        rows: int = DEFAULT_ROWS, cols: int = DEFAULT_COLS,
         fc: float = 10e9, bandwidth: float = 200e6,
         prf: float = 10e3, pulses_per_cpi: int = 32,
         n_targets: int = 1, tx_power_w: float = 1.0,
@@ -235,6 +236,30 @@ class MFARVecEnv:
     def action_dim(self) -> int:
         return self.n_elem * ACTION_PER_ELEM + ACTION_VEHICLE
 
+    def destroy(self):
+        """Explicitly free all pre-allocated GPU buffers.
+
+        Call this before dropping the last reference so that CUDA memory is
+        reclaimed immediately rather than waiting for the next GC cycle.
+        Without this, creating a second MFARVecEnv while the first hasn't
+        been GC'd will OOM on large (25×25, 12-env) configs.
+        """
+        bufs = [
+            "_buf_rx_signal", "_buf_tx", "_buf_noise", "_buf_intf",
+            "_buf_cpi", "_buf_raw_fft", "_buf_spectrum", "_buf_comm_data",
+            "_captured_signal",
+            "radar_pos", "radar_vel", "radar_heading", "radar_speed",
+            "array_rotation", "target_pos", "target_vel",
+            "_commander_instructions", "elem_x", "elem_y",
+        ]
+        for name in bufs:
+            obj = getattr(self, name, None)
+            if obj is not None:
+                setattr(self, name, None)
+        # Subsystem cleanups (VecArray, VecChannel etc. own Warp allocations)
+        for sub in ["array", "channel", "interference", "processor", "battlefield"]:
+            setattr(self, sub, None)
+
     def reset(self, env_ids=None):
         """Randomize positions for specified envs (or all).
 
@@ -283,6 +308,12 @@ class MFARVecEnv:
         self.target_vel[env_ids] = (torch.rand(E, self.n_targets, 3, device=dev) - 0.5) * tgt_vel_range
 
         self.battlefield.reset(env_ids)
+        # Clear cached privileged info so the next step starts fresh.
+        # Without this, a new episode would inherit stale cross-team
+        # intercept data from the previous episode, causing the
+        # Commander's enemy_detected check to fail incorrectly.
+        self._cached_task_fingerprint = None
+        self._cached_cross_team_intercept = None
 
     def step(self, actions: torch.Tensor = None,
              commander_actions: torch.Tensor = None,
@@ -337,6 +368,23 @@ class MFARVecEnv:
         t_action = time.perf_counter()
 
         # --- Phase 2: Assemble TX signals ---
+        # Set BPSK comm payload: enemy radar centroid per team (normalised to [-1, 1]).
+        # This enables terminal guidance — missiles receive real-time enemy
+        # position updates via BPSK communication during flight.
+        half_x = self.battlefield.map_size[0] / 2.0
+        half_y = self.battlefield.map_size[1] / 2.0
+        for t_idx in range(self.n_teams):
+            enemy_t = 1 - t_idx
+            enemy_r = self.battlefield.team_radar_indices[enemy_t]
+            enemy_center = self.radar_pos[:, enemy_r, :].mean(dim=1)  # [E, 3]
+            # Store per-team payload for the processor to use
+            if t_idx == 0:
+                self.processor._comm_payload_x = (enemy_center[:, 0] / half_x).clamp(-1, 1)
+                self.processor._comm_payload_y = (enemy_center[:, 1] / half_y).clamp(-1, 1)
+            # For team 1, the processor uses the same payload (both teams see
+            # each other's positions).  The encode/decode happens per-team in
+            # battlefield.process_missile_comm() which handles team separation.
+
         ex = self._get_elem_x()
         ey = self._get_elem_y()
 
@@ -351,6 +399,13 @@ class MFARVecEnv:
         # --- Interference ---
         avg_az = beam_az.float().mean(dim=-1)
         avg_el = beam_el.float().mean(dim=-1)
+
+        # Detect-specific mean beam directions for beam_accuracy_reward.
+        # Global mean (avg_az/avg_el) is dominated by task mix, not beam accuracy.
+        detect_mask_f = (task_ids == 1).float()              # [E, R, N]
+        n_detect = detect_mask_f.sum(dim=-1).clamp(min=1)    # [E, R]
+        detect_beam_az = (beam_az.float() * detect_mask_f).sum(dim=-1) / n_detect
+        detect_beam_el = (beam_el.float() * detect_mask_f).sum(dim=-1) / n_detect
         baseband = tx_signal.mean(dim=2)
         self._buf_intf.zero_()
         weights_for_intf = self.array.steer_all(avg_az, avg_el)
@@ -411,6 +466,28 @@ class MFARVecEnv:
                 bw_az_deg=bw_az, bw_el_deg=bw_el,
             )
             static_params.append((delay_s, doppler_hz, gain))
+
+        # Detect-specific channel params for beam accuracy reward.
+        # Uses detect_beam_az/detect_beam_el (mean of detect-element beams)
+        # instead of global avg_az/avg_el (diluted by all tasks).
+        detect_channel_params = None
+        if self.n_targets > 0:
+            _dd, _dp, _dg = self.channel.compute_params_batch(
+                self.radar_pos, self.radar_vel,
+                self.target_pos[:, 0], self.target_vel[:, 0],
+                tx_power_w=self.tx_power_w,
+                rcs_dbsm=self.target_rcs_dbsm,
+                array_directivity_db=self.array.directivity_db,
+                n_elem=self.n_elem,
+                beam_az=detect_beam_az, beam_el=detect_beam_el,
+                array_rotation=self.array_rotation,
+                bw_az_deg=bw_az, bw_el_deg=bw_el,
+            )
+            detect_channel_params = {
+                "delay_samples": _dd.detach(),
+                "doppler_hz": _dp.detach(),
+                "gain_linear": _dg.detach(),
+            }
 
         missile_params = []
         for team_idx in range(self.n_teams):
@@ -523,6 +600,11 @@ class MFARVecEnv:
             self._captured_signal = self._buf_cpi[:, :, :, -1, :].mean(dim=2).detach()
         else:
             self._captured_signal = self._buf_rx_signal.mean(dim=2).detach()
+
+        # --- Phase 3.6: Cross-team intercept (stealth evaluation) ---
+        cross_team_intercept = self._compute_cross_team_intercept(
+            tx_signal, task_ids,
+        )
 
         # --- Phase 4: RX processing ---
         spectrum = self._buf_spectrum.zero_()
@@ -654,6 +736,11 @@ class MFARVecEnv:
         tgt_world_az = tgt_world_az[:, 0, :]  # [E, R]
         tgt_world_el = tgt_world_el[:, 0, :]  # [E, R]
 
+        # Cache privileged info so the asymmetric critic can read it on the
+        # next step via _build_privileged_info() (one-step lag is fine).
+        self._cached_task_fingerprint = task_fingerprint
+        self._cached_cross_team_intercept = cross_team_intercept
+
         return {
             "state": state,
             "spectrum": spectrum,
@@ -667,6 +754,7 @@ class MFARVecEnv:
             "dones": dones,
             "winners": winners,
             "beam_az": avg_az, "beam_el": avg_el,
+            "detect_beam_az": detect_beam_az, "detect_beam_el": detect_beam_el,
             "array_rotation": self.array_rotation,
             "target_az": tgt_world_az, "target_el": tgt_world_el,
             "missile_pos": missile.missile_pos,
@@ -674,10 +762,12 @@ class MFARVecEnv:
             "timing": timing,
             "tx_signal": tx_signal,
             "channel_params": last_channel_params,
+            "detect_channel_params": detect_channel_params,
             "steering_weights": weights_for_intf,
             "detect_params": detect_params,
             "jam_params": jam_params,
             "comm_crc_ok": getattr(self.battlefield, "_last_comm_crc_ok", None),
+            "cross_team_intercept": cross_team_intercept,
         }
 
     def _decode_actions(self, actions: torch.Tensor):
@@ -711,12 +801,35 @@ class MFARVecEnv:
         return task_ids, beam_az, beam_el, wf_types, detect_params, jam_params, comm_params[..., :3]
 
     def _apply_vehicle_actions(self, actions: torch.Tensor):
-        """Update vehicle state from action's last 3 dims."""
+        """Update vehicle state from action's last 3 dims.
+
+        Vehicle action layout:
+          dim 0: speed      [0, 1] → 0–8.33 m/s (30 km/h max)
+          dim 1: heading Δ  [0, 1] → ±60°/step
+          dim 2: array rot  [0, 1] → ±60°/step
+        """
+        import math
         E, R = actions.shape[:2]
+        dev = torch.device(self.device)
         vehicle_action = actions[:, :, -ACTION_VEHICLE:]  # [E, R, 3]
-        self.radar_speed = vehicle_action[..., 0].clamp(0, 8.33) * 8.33
+        self.radar_speed = vehicle_action[..., 0].clamp(0, 16.67) * 16.67  # 0–60 km/h
         self.radar_heading = (self.radar_heading + vehicle_action[..., 1] * 60.0) % 360.0
         self.array_rotation = (self.array_rotation + vehicle_action[..., 2] * 60.0) % 360.0
+
+        # ── Update radar positions from speed + heading ──
+        # Convert heading (degrees) → velocity vector, integrate position.
+        dt = self.pri  # pulse repetition interval ≈ 0.4 ms
+        hdg_rad = torch.deg2rad(self.radar_heading)  # [E, R]
+        self.radar_vel[..., 0] = self.radar_speed * torch.cos(hdg_rad)
+        self.radar_vel[..., 1] = self.radar_speed * torch.sin(hdg_rad)
+        self.radar_vel[..., 2] = 0.0  # ground vehicles, no vertical
+        self.radar_pos = self.radar_pos + self.radar_vel * dt
+
+        # Clamp to map bounds (radars stay within map)
+        half_x = self.battlefield.map_size[0] / 2.0
+        half_y = self.battlefield.map_size[1] / 2.0
+        self.radar_pos[..., 0] = self.radar_pos[..., 0].clamp(-half_x, half_x)
+        self.radar_pos[..., 1] = self.radar_pos[..., 1].clamp(-half_y, half_y)
 
     def _build_waveform_refs(self, task_ids, wf_types, detect_params, comm_params):
         """Build waveform reference tensors for matched filtering."""
@@ -764,12 +877,21 @@ class MFARVecEnv:
         return ref[:self.n_samples]
 
     def _build_comm_ref(self, comm_params):
-        """Build BPSK reference for communication elements."""
+        """Build BPSK reference for communication elements.
+
+        Must match the payload set on the processor before TX assembly.
+        Uses enemy radar centroid (same as the TX waveform builder).
+        """
         E, R, N = comm_params.shape[:3]
         dev = torch.device(self.device)
 
         from .waveform_gpu import encode_bpsk, modulate_bpsk
-        bits = encode_bpsk(1.0, 1.0)  # match TX fixed pattern
+        ex = getattr(self.processor, '_comm_payload_x', 1.0)
+        ey = getattr(self.processor, '_comm_payload_y', 1.0)
+        # Use first env's payload as the reference template
+        ex_val = ex[0].item() if hasattr(ex, '__len__') else ex
+        ey_val = ey[0].item() if hasattr(ey, '__len__') else ey
+        bits = encode_bpsk(ex_val, ey_val, device=dev)
         ref = modulate_bpsk(bits, self.n_samples, self.fs, self.processor.symbol_rate, dev)
         return ref
 
@@ -840,6 +962,80 @@ class MFARVecEnv:
                 result[:, r, base + 2] = m.in_flight[:, t].float()
 
         return result
+
+    def _compute_cross_team_intercept(self, tx_signal, task_ids):
+        """Estimate how much each team's transmissions are intercepted by the enemy.
+
+        For each team and each active task type (detect, jam, comm), computes
+        the estimated SNR at the nearest enemy radar. Higher SNR = easier
+        intercept = worse stealth (drives stealth penalty in reward shaping).
+
+        Recon (task 0) is purely passive — no penalty.
+
+        Returns:
+            dict with:
+                team<N>_intercept_detail: [E, 3] per-task (detect, jam, comm)
+                team<N>_intercepted_by_team<M>: [E] aggregate intercept
+        """
+        E, R, N, S = tx_signal.shape
+        dev = tx_signal.device
+
+        zero3 = torch.zeros(E, 3, device=dev)
+        zero1 = torch.zeros(E, device=dev)
+        if self.n_teams != 2:
+            return {
+                "team0_intercept_detail": zero3,
+                "team1_intercept_detail": zero3,
+                "team0_intercepted_by_team1": zero1,
+                "team1_intercepted_by_team0": zero1,
+            }
+
+        r_per_team = R // self.n_teams
+
+        # Noise floor: k * T * B * F  (Watts)
+        k = 1.38e-23
+        T = 290.0
+        noise_floor_w = k * T * self.bandwidth * (10.0 ** (self.noise_figure_db / 10.0))
+
+        # TX power per element: mean(|x|^2) over time samples
+        tx_power = (tx_signal.real ** 2 + tx_signal.imag ** 2).mean(dim=-1)  # [E, R, N]
+
+        wavelength = self.array.wavelength
+        results = {}
+
+        for team in range(self.n_teams):
+            enemy = 1 - team
+            t0, t1 = team * r_per_team, (team + 1) * r_per_team
+            e0, e1 = enemy * r_per_team, (enemy + 1) * r_per_team
+
+            our_pos = self.radar_pos[:, t0:t1, :]      # [E, rp, 3]
+            enemy_pos = self.radar_pos[:, e0:e1, :]     # [E, rp, 3]
+            # Min distance from each of our radars to any enemy radar
+            dist = (our_pos.unsqueeze(2) - enemy_pos.unsqueeze(1)).norm(dim=-1)
+            min_dist = dist.min(dim=-1).values.clamp(min=1.0)  # [E, rp]
+
+            # Free-space path loss: (λ / (4πd))^2
+            path_loss = (wavelength / (4.0 * np.pi * min_dist)) ** 2  # [E, rp]
+
+            detail = torch.zeros(E, 3, device=dev)  # detect, jam, comm
+            for idx, task_id in enumerate([1, 2, 3]):
+                mask = (task_ids[:, t0:t1, :] == task_id).float()  # [E, rp, N]
+                n_active = mask.sum(dim=-1).clamp(min=1)           # [E, rp]
+                task_tx_power = (tx_power[:, t0:t1, :] * mask).sum(dim=-1) / n_active
+                rx_power = task_tx_power * path_loss               # [E, rp]
+                snr = rx_power / max(noise_floor_w, 1e-30)
+                snr_db = 10.0 * torch.log10(snr.clamp(min=1e-30))
+                # Map to [0, 1]: sigmoid centred at 10 dB, slope 1/20
+                detail[:, idx] = torch.sigmoid((snr_db - 10.0) / 20.0).mean(dim=-1)
+
+            results[f"team{team}_intercept_detail"] = detail
+
+        for team in range(self.n_teams):
+            enemy = 1 - team
+            results[f"team{team}_intercepted_by_team{enemy}"] = \
+                results[f"team{team}_intercept_detail"].sum(dim=-1)
+
+        return results
 
     def _get_elem_x(self):
         return self.elem_x

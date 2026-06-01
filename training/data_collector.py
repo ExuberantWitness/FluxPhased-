@@ -10,7 +10,11 @@ All computation stays on GPU — CPU transfers only happen at the final return.
 
 import torch
 import numpy as np
+import functools
+import builtins
 from typing import Dict
+
+print = functools.partial(builtins.print, flush=True)
 
 
 class RolloutDataCollector:
@@ -19,8 +23,9 @@ class RolloutDataCollector:
     Fully GPU-native: tensors stay on device during collection, minimal CPU sync.
     """
 
-    def __init__(self, device: str = "cuda"):
+    def __init__(self, device: str = "cuda", augment_noise: float = 0.0):
         self.device = device
+        self.augment_noise = augment_noise  # 0.0=off, 1.0=full augmentation
 
     def collect(
         self,
@@ -45,7 +50,7 @@ class RolloutDataCollector:
             values: [T]                  — placeholder (zero)
             privileged_infos: [T, 16]    — privileged info for critic
             returns: [T]                 — Monte Carlo discounted returns
-            commander_obs: [T, 68]       — commander observations
+            commander_obs: [T, 76]       — commander observations
             commander_actions: [T, 35]   — commander actions
             commander_rewards: [T]       — commander rewards
             commander_returns: [T]       — commander MC returns
@@ -62,14 +67,36 @@ class RolloutDataCollector:
 
         episodes_done = 0
 
+        # ── Track scene coverage + task variance for quality checks ──
+        scene_counts = {"recon": 0, "detect": 0, "jam": 0, "comm": 0}
+        launch_count = 0
+        # Accumulate per-episode task fingerprint (averaged over envs) for
+        # task-allocation variance check: std/mean across episodes > 10%.
+        task_fp_episodes = []  # list of [4] tensors (one per episode)
+
         while episodes_done < n_episodes:
             env.reset()
+
+            # ── Augmentation: perturb target positions (±2000m Gaussian) ──
+            if self.augment_noise > 0:
+                tgt_orig = env.target_pos.clone()
+                perturb = torch.randn_like(tgt_orig) * 2000.0 * self.augment_noise
+                env.target_pos = tgt_orig + perturb
+
+            # ── Augmentation: scale channel noise [0.5×, 2.0×] ──
+            noise_scale = 1.0
+            if self.augment_noise > 0 and hasattr(env, '_channel'):
+                noise_scale = 0.5 + torch.rand(1).item() * 1.5  # [0.5, 2.0]
+                env._channel.noise_std *= noise_scale
+
             ep_obs, ep_act, ep_rew, ep_done = [], [], [], []
             ep_priv = []
             ep_cmd_obs, ep_cmd_act, ep_cmd_rew = [], [], []
 
             active = torch.ones(E, dtype=torch.bool, device=dev)
             crc_ok_cache = None
+            ep_launched = False
+            ep_scenes = set()
 
             for step in range(max_steps):
                 if not active.any():
@@ -97,7 +124,21 @@ class RolloutDataCollector:
                     cmd_actions[:, team, :] = cmd_own
                     cmd_actions[:, other_team, :] = cmd_opp
 
+                    # ── NO force-launch during data collection ──
+                    # HPEDF commander uses CRC-based launch; demo data must
+                    # reflect realistic tactical decisions, not forced kills.
+
                 result = env.step(actions=actions, commander_actions=cmd_actions)
+
+                # ── Scene tracking for coverage checks ──
+                if cmd_own[:, 0].max() > 0.5:
+                    ep_launched = True
+                # Classify scene from task fingerprint
+                fp = result.get("task_fingerprint")  # [E, n_teams, 4]
+                if fp is not None:
+                    dominant = fp[:, team, :].mean(dim=0).argmax().item()
+                    scene_names = ["recon", "detect", "jam", "comm"]
+                    ep_scenes.add(scene_names[dominant])
 
                 crc_ok_cache = result.get("comm_crc_ok")
 
@@ -125,6 +166,15 @@ class RolloutDataCollector:
                 active = active & ~result["dones"]
 
             episodes_done += E
+
+            # ── Accumulate coverage stats ──
+            for s in ep_scenes:
+                scene_counts[s] += 1
+            if ep_launched:
+                launch_count += 1
+            # Per-episode mean task fingerprint (averaged over envs)
+            fp_mean = result["task_fingerprint"][:, team, :].mean(dim=0)  # [4]
+            task_fp_episodes.append(fp_mean.cpu())
 
             if episodes_done % E == 0:
                 print(f"  [collector] {episodes_done}/{n_episodes} episodes...", flush=True)
@@ -174,6 +224,54 @@ class RolloutDataCollector:
 
         T = result["obs"].shape[0]
         print(f"  [collector] Collected {T} transitions from {n_episodes} episodes", flush=True)
+
+        # ── Compute task allocation variance ──
+        if len(task_fp_episodes) > 1:
+            fp_stack = torch.stack(task_fp_episodes)  # [n_episodes, 4]
+            fp_mean = fp_stack.mean(dim=0)
+            fp_std = fp_stack.std(dim=0, correction=1)  # sample std (ddof=1)
+            # Coefficient of variation per task, max across tasks
+            task_cv = (fp_std / fp_mean.clamp(min=1e-6)).max().item()
+        else:
+            task_cv = 0.0
+
+        # ── Coverage check ──
+        min_per_scene = min(scene_counts.values()) if scene_counts else 0
+        launch_pct = 100 * launch_count / max(n_episodes, 1)
+        coverage_ok = True
+
+        print(f"  [collector] Scene coverage: {scene_counts}", flush=True)
+        print(f"  [collector] Launch rate: {launch_count}/{n_episodes} "
+              f"({launch_pct:.0f}%)", flush=True)
+        print(f"  [collector] Task CV: {task_cv:.3f} (need >0.10 for diversity)",
+              flush=True)
+
+        if min_per_scene < 5:
+            print(f"  [collector] ⚠ FAIL: only {min_per_scene} episodes for "
+                  f"rarest scene (need ≥5)", flush=True)
+            coverage_ok = False
+        if launch_pct < 30.0:
+            print(f"  [collector] ⚠ FAIL: launch rate {launch_pct:.0f}% < 30%",
+                  flush=True)
+            coverage_ok = False
+        if task_cv < 0.10:
+            print(f"  [collector] ⚠ FAIL: task CV {task_cv:.3f} < 0.10 "
+                  f"(task allocation too uniform)", flush=True)
+            coverage_ok = False
+
+        if coverage_ok:
+            print(f"  [collector] ✓ Coverage check PASSED", flush=True)
+
+        # Attach coverage stats for auto-retry logic
+        result["coverage"] = {
+            "ok": coverage_ok,
+            "scene_counts": scene_counts,
+            "launch_count": launch_count,
+            "launch_pct": launch_pct,
+            "task_cv": task_cv,
+            "n_episodes": n_episodes,
+        }
+
         return result
 
     def _compute_returns(self, rewards: torch.Tensor, dones: torch.Tensor,

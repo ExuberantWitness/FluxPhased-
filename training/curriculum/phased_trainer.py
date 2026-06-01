@@ -49,6 +49,7 @@ class PhasedTrainer:
         self.bc_pretrain_batch_size = bc_pretrain_batch_size
         self.log_dir = log_dir
         self.device = device
+        self.scripted_policy_name = "hpedf"  # "hpedf" or "legacy"
 
         os.makedirs(log_dir, exist_ok=True)
 
@@ -67,12 +68,8 @@ class PhasedTrainer:
             print("=" * 60)
             self._run_critic_pretrain(env)
 
-        # 3. Optional BC actor pre-training (after critic pre-training)
-        if self.bc_pretrain_epochs > 0:
-            print("=" * 60)
-            print(f"BC Actor Pre-training: {self.bc_pretrain_epochs} epochs")
-            print("=" * 60)
-            self._run_bc_pretrain(env)
+        # 3. BC actor pre-training is now done within _run_critic_pretrain
+        #    (reuses collected data to avoid OOM from duplicate collection)
 
         # 4. Optional environment-side warmup (weak opponents, no policy constraint)
         if self.warmup_episodes > 0:
@@ -187,21 +184,71 @@ class PhasedTrainer:
         privileged_value_head via MSE regression.
         """
         from ..data_collector import RolloutDataCollector
-        from ..scripted_policy import scripted_radar_policy, scripted_commander_policy
+        from ..scripted_policy import (
+            scripted_radar_policy, scripted_commander_policy,
+            hpedf_radar_policy, hpedf_commander_policy, _hpedf_scheduler,
+        )
 
-        collector = RolloutDataCollector(device=self.device)
+        policy_name = getattr(self, "scripted_policy_name", "hpedf")
+        if policy_name == "hpedf":
+            use_radar_policy = hpedf_radar_policy
+            use_commander_policy = hpedf_commander_policy
+        else:
+            use_radar_policy = scripted_radar_policy
+            use_commander_policy = scripted_commander_policy
+
+        # Enable HPEDF augmentation noise for diverse demo data
+        prev_augment = _hpedf_scheduler.augment_noise
+        _hpedf_scheduler.augment_noise = 1.0
+
+        collector = RolloutDataCollector(
+            device=self.device,
+            augment_noise=1.0,  # full augmentation for critic/BC pretraining
+        )
         n_teams = self.league.n_teams
 
         for team in range(n_teams):
             print(f"\n  Collecting demo data for team {team}...", flush=True)
-            data = collector.collect(
-                env=env,
-                scripted_policy=scripted_radar_policy,
-                scripted_commander=scripted_commander_policy,
-                team=team,
-                n_episodes=self.critic_pretrain_episodes,
-                max_steps=getattr(self.league, "max_steps_per_episode", 1000),
-            )
+
+            # ── Auto-retry loop: collect until coverage passes ──
+            max_retries = 3
+            total_episodes = 0
+            data = None
+
+            for retry in range(max_retries):
+                n_ep = self.critic_pretrain_episodes if retry == 0 else max(10, self.critic_pretrain_episodes // 4)
+                print(f"  [retry {retry}/{max_retries}] Collecting {n_ep} episodes...",
+                      flush=True)
+                new_data = collector.collect(
+                    env=env,
+                    scripted_policy=use_radar_policy,
+                    scripted_commander=use_commander_policy,
+                    team=team,
+                    n_episodes=n_ep,
+                    max_steps=getattr(self.league, "max_steps_per_episode", 1000),
+                )
+                total_episodes += n_ep
+
+                # Merge data
+                if data is None:
+                    data = new_data
+                else:
+                    for key in data:
+                        if key == "coverage":
+                            continue
+                        data[key] = torch.cat([data[key], new_data[key]], dim=0)
+
+                cov = new_data["coverage"]
+                if cov["ok"]:
+                    print(f"  ✓ Coverage passed after {total_episodes} episodes "
+                          f"({retry + 1} collection(s))", flush=True)
+                    break
+                elif retry < max_retries - 1:
+                    print(f"  ↻ Coverage failed, retrying... (retry {retry + 1}/{max_retries})",
+                          flush=True)
+                else:
+                    print(f"  ⚠ Coverage still insufficient after {total_episodes} "
+                          f"episodes — proceeding anyway", flush=True)
 
             # Pre-train critics of this team's trainers
             team_trainers = {
@@ -216,11 +263,39 @@ class PhasedTrainer:
                 n_epochs=self.critic_pretrain_epochs,
                 batch_size=256,
             )
+            self.league.pretrain_commander_critic(
+                data,
+                n_epochs=getattr(self, "critic_pretrain_epochs", 50),
+                batch_size=256,
+            )
+
+            # BC pretraining — reuse same data to avoid duplicate collection
+            if self.bc_pretrain_epochs > 0:
+                print(f"  BC pretraining (reusing collected data, "
+                      f"{self.bc_pretrain_epochs} epochs)...", flush=True)
+                self.league.pretrain_actor_bc(
+                    data,
+                    n_epochs=self.bc_pretrain_epochs,
+                    batch_size=self.bc_pretrain_batch_size,
+                )
+                self.league.pretrain_commander_bc(
+                    data,
+                    n_epochs=self.bc_pretrain_epochs,
+                    batch_size=self.bc_pretrain_batch_size,
+                )
+                # ── Snapshot BC-pretrained actors for KL penalty ──
+                for trainer in team_trainers.values():
+                    trainer.set_bc_pretrained()
+                print(f"  BC models snapshotted for KL penalty", flush=True)
+
             self.league.trainers = all_trainers
 
             # Free GPU memory before collecting data for the next team
             del data
             torch.cuda.empty_cache()
+
+        # ── Restore HPEDF scheduler augmentation setting ──
+        _hpedf_scheduler.augment_noise = prev_augment
 
         print("  Critic pre-training complete.", flush=True)
 
@@ -232,17 +307,35 @@ class PhasedTrainer:
         params (MSE). After BC, PPO fine-tunes with good initial behavior.
         """
         from ..data_collector import RolloutDataCollector
-        from ..scripted_policy import scripted_radar_policy, scripted_commander_policy
+        from ..scripted_policy import (
+            scripted_radar_policy, scripted_commander_policy,
+            hpedf_radar_policy, hpedf_commander_policy, _hpedf_scheduler,
+        )
 
-        collector = RolloutDataCollector(device=self.device)
+        policy_name = getattr(self, "scripted_policy_name", "hpedf")
+        if policy_name == "hpedf":
+            use_radar_policy = hpedf_radar_policy
+            use_commander_policy = hpedf_commander_policy
+        else:
+            use_radar_policy = scripted_radar_policy
+            use_commander_policy = scripted_commander_policy
+
+        # Enable HPEDF augmentation noise for diverse demo data
+        prev_augment = _hpedf_scheduler.augment_noise
+        _hpedf_scheduler.augment_noise = 1.0
+
+        collector = RolloutDataCollector(
+            device=self.device,
+            augment_noise=1.0,  # full augmentation for critic/BC pretraining
+        )
         n_teams = self.league.n_teams
 
         for team in range(n_teams):
             print(f"\n  Collecting demo data for team {team} (BC)...", flush=True)
             data = collector.collect(
                 env=env,
-                scripted_policy=scripted_radar_policy,
-                scripted_commander=scripted_commander_policy,
+                scripted_policy=use_radar_policy,
+                scripted_commander=use_commander_policy,
                 team=team,
                 n_episodes=max(self.critic_pretrain_episodes, 50),
                 max_steps=getattr(self.league, "max_steps_per_episode", 1000),
@@ -259,6 +352,20 @@ class PhasedTrainer:
                 n_epochs=self.bc_pretrain_epochs,
                 batch_size=self.bc_pretrain_batch_size,
             )
+            self.league.pretrain_commander_bc(
+                data,
+                n_epochs=self.bc_pretrain_epochs,
+                batch_size=self.bc_pretrain_batch_size,
+            )
+            # ── Snapshot BC-pretrained actors for KL penalty ──
+            for trainer in team_trainers.values():
+                trainer.set_bc_pretrained()
             self.league.trainers = all_trainers
+
+            del data
+            torch.cuda.empty_cache()
+
+        # ── Restore HPEDF scheduler augmentation setting ──
+        _hpedf_scheduler.augment_noise = prev_augment
 
         print("  BC actor pre-training complete.", flush=True)

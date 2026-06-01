@@ -26,7 +26,7 @@ except ImportError:
 
 print = functools.partial(builtins.print, flush=True)
 
-from .ppo.actor_critic import create_team_policy
+from .ppo.actor_critic import create_team_policy, TeamCritic, build_team_state
 from .ppo.ppo_trainer import TeamPPOTrainer
 from .self_play.opponent_pool import OpponentPool
 from .self_play.payoff_matrix import PayoffMatrix
@@ -86,6 +86,7 @@ class FluxLeague:
         radar_lr: float = 1e-4,
         gamma: float = 0.99,
         gae_lambda: float = 0.95,
+        n_step_returns: int = 0,     # 0=use GAE, >0=N-step returns (e.g. 400)
         commander_clip: float = 0.2,
         radar_clip: float = 0.1,
         commander_entropy: float = 0.01,
@@ -96,6 +97,10 @@ class FluxLeague:
         batch_size: int = 64,
         buffer_size: int = 2048,
         stealth_weight: float = 0.1,
+        # Full reward shaping config (all weights, not just stealth)
+        reward_shaping_config: dict = None,
+        # Policy mutation
+        mutation_config: dict = None,
     ):
         self.n_elem = n_elem
         self.n_pulses = n_pulses
@@ -132,7 +137,10 @@ class FluxLeague:
             buffer_size_radar=buffer_size_radar,
             device=device,
             stealth_weight=stealth_weight,
+            reward_shaping_config=reward_shaping_config or {},
         )
+
+        self.n_step_returns = n_step_returns
 
         # Components
         self.pool = OpponentPool(
@@ -157,6 +165,29 @@ class FluxLeague:
         self.diag_history: list = []
 
         self.iteration = 0
+
+        # Policy mutation
+        self.mutation_config = mutation_config or {}
+        self.mutant_trainers: Dict[str, TeamPPOTrainer] = {}
+
+        # Hierarchical critic (CTDE architecture)
+        self.team_critic_enabled = True  # set False for ablation (Config C)
+        self.team_critic = TeamCritic(input_dim=104, hidden_dim=256).to(
+            torch.device(device),
+        )
+        self.team_critic_optimizer = torch.optim.Adam(
+            self.team_critic.parameters(), lr=radar_lr,
+        )
+
+        # Team reward weights (configurable via reward_shaping_config)
+        self.team_reward_weight = 0.1   # w1: Σ(all_radar_rewards)
+        self.team_kill_weight = 1.0     # w2: commander kill/death bonuses
+
+        # Alpha/beta scheduling for league training
+        self.alpha = 0.0          # team advantage weight (0→1)
+        self.beta_kl = 0.1        # KL penalty weight (1→0)
+        self.alpha_schedule = "linear"  # "linear" | "log" | "adaptive"
+
         os.makedirs(checkpoint_dir, exist_ok=True)
 
     def initialize(self, env):
@@ -215,14 +246,15 @@ class FluxLeague:
 
         # Step 1: Evaluate payoff matrix
         print(f"[League] Iteration {self.iteration}: Evaluating payoff matrix...")
-        self.payoff.evaluate_all(env, self.trainers)
+        self.payoff.evaluate_all(env, {**self.trainers, **self.mutant_trainers})
 
         # Step 2: Compute meta-strategies
         if self.elo_sampler is not None:
             self.elo_sampler.update_from_payoff_matrix(self.payoff.matrix)
         iter_diag = {"iteration": self.iteration, "teams": {}}
         for team in range(self.n_teams):
-            payoff_mat, own_ids, opp_ids = self.payoff.get_submatrix(team)
+            payoff_mat, own_ids, opp_ids = self.payoff.get_submatrix(
+                team, exclude_roles=["mutant"])
             F = self.payoff.get_fingerprints(own_ids)  # [K_own, 4]
             if self.meta_solver_name == "nash":
                 sigma = solve_nash(payoff_mat)
@@ -268,13 +300,13 @@ class FluxLeague:
             all_payoffs = [v for v in self.payoff.matrix.values()]
             if all_payoffs:
                 n_active = sum(1 for r in self.pool.policies.values() if r.is_active)
-                wandb.log({
+                log_dict = {
                     "eval/mean_payoff": float(np.mean(all_payoffs)),
                     "eval/max_payoff": float(np.max(all_payoffs)),
                     "eval/min_payoff": float(np.min(all_payoffs)),
                     "eval/population_size": n_active,
                     "eval/iteration": self.iteration,
-                })
+                }
                 # Per-team max/min win rate
                 for team in range(self.n_teams):
                     team_payoffs = [
@@ -282,10 +314,9 @@ class FluxLeague:
                         if self.pool.policies[own_id].team == team
                     ]
                     if team_payoffs:
-                        wandb.log({
-                            f"eval/team{team}/max_win_rate": float(np.max(team_payoffs)),
-                            f"eval/team{team}/min_win_rate": float(np.min(team_payoffs)),
-                        })
+                        log_dict[f"eval/team{team}/max_win_rate"] = float(np.max(team_payoffs))
+                        log_dict[f"eval/team{team}/min_win_rate"] = float(np.min(team_payoffs))
+                wandb.log(log_dict)
 
         self.diag_history.append(iter_diag)
 
@@ -347,6 +378,58 @@ class FluxLeague:
         metrics["elapsed_s"] = elapsed
         print(f"[League] Iteration {self.iteration} complete in {elapsed:.1f}s")
 
+        # Alpha/beta scheduling
+        # alpha: 0 → 1 over training (gradually trust team critic)
+        # beta_kl: 0.1 → 0 (gradually release KL constraint)
+        # When team_critic_enabled=False (Config C ablation), alpha stays at 0.
+        total_iters = max(30, 1)  # matches psro_iterations in config
+        t = self.iteration / total_iters  # 0→1 normalised time
+        if self.team_critic_enabled:
+            if self.alpha_schedule == "linear":
+                # Linear: α ramps from 0→1 in first 50% of training
+                self.alpha = min(1.0, t / 0.5)
+            elif self.alpha_schedule == "log":
+                # Logarithmic: slow start, steep late — α=log(1+9t)
+                # t=0→α=0, t=0.25→α=0.53, t=0.5→α=0.85, t=1→α=1
+                import math
+                self.alpha = min(1.0, math.log(1.0 + 9.0 * t) / math.log(10.0))
+            elif self.alpha_schedule == "adaptive":
+                # Adaptive: scales with max per-team mean win rate (wr*2 capped at 1)
+                # As agents learn to win, team critic gains influence.
+                # Falls back to linear if win rates unavailable.
+                max_team_wr = 0.0
+                for t_idx in range(self.n_teams):
+                    payoffs = [v for (oid, _), v in self.payoff.matrix.items()
+                               if self.pool.policies.get(oid)
+                               and self.pool.policies[oid].team == t_idx]
+                    if payoffs:
+                        max_team_wr = max(max_team_wr, float(np.mean(payoffs)))
+                self.alpha = min(1.0, max_team_wr * 2.0) if max_team_wr > 0 else min(1.0, t / 0.5)
+            else:
+                self.alpha = min(1.0, t / 0.5)  # fallback linear
+        else:
+            self.alpha = 0.0
+        self.beta_kl = max(0.0, 0.1 * (1.0 - t))
+        metrics["alpha"] = self.alpha
+        metrics["beta_kl"] = self.beta_kl
+        metrics["alpha_schedule"] = self.alpha_schedule
+        print(f"[League] alpha={self.alpha:.3f} (schedule={self.alpha_schedule}) "
+              f"beta_kl={self.beta_kl:.3f}", flush=True)
+
+        # WandB: alpha/beta schedule
+        if WANDB_AVAILABLE and wandb.run is not None:
+            wandb.log({
+                "schedule/alpha": self.alpha,
+                "schedule/beta_kl": self.beta_kl,
+                "schedule/type": self.alpha_schedule,
+                "schedule/iteration": self.iteration,
+            })
+
+        # Generate mutant policies from top performers
+        mutant_ids = self._generate_mutants()
+        if mutant_ids:
+            metrics["mutants_generated"] = len(mutant_ids)
+
         self.iteration += 1
         self.pool.save_metadata()
 
@@ -360,7 +443,7 @@ class FluxLeague:
         own_policy_id: str,
     ) -> dict:
         """Train one team policy against an opponent for N episodes."""
-        opp_trainer = self.trainers.get(opponent_id)
+        opp_trainer = self.trainers.get(opponent_id) or self.mutant_trainers.get(opponent_id)
         record = self.pool.policies[own_policy_id]
         team = record.team
         opp_team = 1 - team
@@ -412,7 +495,26 @@ class FluxLeague:
                             ) * 2 - 1
                         )
 
-                result = env.step(actions=actions, commander_actions=commander_actions)
+                    # ── NO force-launch during league training ──
+                    # Critic pretraining already used scripted policies to
+                    # generate kill trajectories; now the commander must learn
+                    # launch timing through PPO.  Stochastic sampling gives
+                    # P(launch_flag > 0.5) ≈ 31% per env per step with an
+                    # untrained network, and the urgency_penalty (-0.01/step
+                    # while not launched) + kill_bonus (+10) provide the
+                    # learning signal.
+                    #
+                    # Zero radar instruction dims (3:) to prevent stochastic
+                    # noise from corrupting radar behaviour.
+                    commander_actions[:, :, 3:] = 0.0
+
+                try:
+                    result = env.step(actions=actions, commander_actions=commander_actions)
+                except Exception:
+                    print(f"ERROR in env.step at ep={ep} step={step}:", flush=True)
+                    import traceback
+                    traceback.print_exc()
+                    raise
 
                 # Store transitions for training team only
                 reward_info = trainer.store_transition(env, result, own["transition"], team)
@@ -422,9 +524,44 @@ class FluxLeague:
 
                 if (trainer.commander_buffer and trainer.commander_buffer.near_full) or \
                    (trainer.radar_buffer and trainer.radar_buffer.near_full):
-                    update_metrics = trainer.update()
+                    update_metrics = trainer.update(
+                        team_critic=self.team_critic if self.team_critic_enabled else None,
+                        alpha=self.alpha,
+                        beta_kl=self.beta_kl,
+                        n_step=self.n_step_returns,
+                        team_critic_optimizer=self.team_critic_optimizer if self.team_critic_enabled else None,
+                    )
                     if WANDB_AVAILABLE and wandb.run is not None:
                         self._log_ppo_metrics(update_metrics, record, episodes)
+
+                # Intra-episode wandb + missile diagnostics every 200 steps
+                if step % 200 == 0 and step > 0:
+                    n_alive = (~result["dones"]).sum().item()
+                    buf_pct = 0.0
+                    if trainer.radar_buffer:
+                        buf_pct = trainer.radar_buffer.fill_fraction()
+                    # ── missile diagnostics (temporary) ──
+                    m = env.battlefield.missile
+                    in_flight_ct = m.in_flight.sum().item()
+                    if in_flight_ct > 0:
+                        dists = m.missile_pos[m.in_flight].norm(dim=-1)
+                        mn, mx = dists.min().item(), dists.max().item()
+                        print(f"    [missile] step={step} in_flight={in_flight_ct} "
+                              f"pos_range=[{mn:.0f}, {mx:.0f}]m", flush=True)
+                    else:
+                        print(f"    [missile] step={step} in_flight=0 — NO MISSILES!",
+                              flush=True)
+                    # ──────────────────────────────────
+                    if WANDB_AVAILABLE and wandb.run is not None:
+                        prefix = f"train_live/{record.role}_team{record.team}"
+                        wandb.log({
+                            f"{prefix}/episode": episodes,
+                            f"{prefix}/step": step,
+                            f"{prefix}/reward_sofar": float(episode_reward),
+                            f"{prefix}/alive_envs": n_alive,
+                            f"{prefix}/buffer_pct": buf_pct,
+                            "train/iteration": self.iteration,
+                        })
 
                 done_mask = result["dones"]
                 if done_mask.any():
@@ -440,10 +577,18 @@ class FluxLeague:
             wr = wins / max(episodes, 1)
             avg_r = total_rewards / max(episodes, 1)
 
-            # Terminal progress every 5 episodes
+            # Per-episode completion: step count tells us if missiles are flying
+            ended_naturally = step + 1 < self.max_steps_per_episode
+            status = "kill" if ended_naturally else "timeout"
+            print(f"    ep {episodes}/{self.episodes_per_training}  "
+                  f"steps={step + 1} {status}  wr={wr:.2f}  "
+                  f"avg_r={avg_r:.4f}", flush=True)
+
+            # Terminal progress every 5 episodes (more detailed summary)
             if episodes % 5 == 0:
-                print(f"    ep {episodes}/{self.episodes_per_training}  "
-                      f"wr={wr:.2f}", flush=True)
+                print(f"    ── ep {episodes}/{self.episodes_per_training}  "
+                      f"wr={wr:.2f}  avg_r={avg_r:.4f}",
+                      flush=True)
 
             # WandB update every episode
             if WANDB_AVAILABLE and wandb.run is not None:
@@ -455,7 +600,13 @@ class FluxLeague:
                 })
 
             if episodes % 10 == 0:
-                update_metrics = trainer.update()
+                update_metrics = trainer.update(
+                    team_critic=self.team_critic,
+                    alpha=self.alpha,
+                    beta_kl=self.beta_kl,
+                    n_step=self.n_step_returns,
+                    team_critic_optimizer=self.team_critic_optimizer,
+                )
                 if WANDB_AVAILABLE and wandb.run is not None and update_metrics:
                     self._log_ppo_metrics(update_metrics, record, episodes)
 
@@ -487,6 +638,112 @@ class FluxLeague:
             if os.path.exists(parent.checkpoint_path):
                 print(f"  Resetting {policy_id} to parent checkpoint")
                 trainer.load(parent.checkpoint_path)
+
+    def _generate_mutants(self) -> list:
+        """Generate mutant policies by perturbing weights of top-performing policies.
+
+        For each team, identifies the top-K policies by mean cross-team win rate
+        (from the payoff matrix), then creates N perturbed copies of each.
+        Mutants use role "mutant", are frozen, and serve only as opponents.
+
+        Returns:
+            List of newly created mutant policy_ids.
+        """
+        cfg = self.mutation_config
+        if not cfg.get("enabled", False):
+            return []
+
+        epsilon = float(cfg.get("epsilon", 0.05))
+        n_mutants = int(cfg.get("n_mutants_per_policy", 3))
+        n_top = int(cfg.get("n_top_policies", 2))
+        wr_threshold = float(cfg.get("win_rate_threshold", 0.55))
+
+        mutant_ids = []
+
+        for team in range(self.n_teams):
+            payoff_mat, own_ids, _opp_ids = self.payoff.get_submatrix(team)
+
+            if len(own_ids) == 0:
+                continue
+
+            mean_wrs = payoff_mat.mean(axis=1)
+
+            eligible = []
+            for i, pid in enumerate(own_ids):
+                record = self.pool.policies[pid]
+                if record.role == "mutant":
+                    continue
+                if mean_wrs[i] >= wr_threshold:
+                    eligible.append((pid, float(mean_wrs[i])))
+
+            eligible.sort(key=lambda x: x[1], reverse=True)
+            top_policies = eligible[:n_top]
+
+            for base_policy_id, wr in top_policies:
+                base_record = self.pool.policies[base_policy_id]
+
+                # Load base checkpoint
+                base_ckpt = torch.load(
+                    base_record.checkpoint_path,
+                    map_location=self.device,
+                    weights_only=False,
+                )
+
+                for mutant_idx in range(n_mutants):
+                    # Fresh network, then load + perturb
+                    policy_dict = create_team_policy(
+                        team=team,
+                        n_elem=self.n_elem,
+                        n_pulses=self.n_pulses,
+                        n_bins=self.n_bins,
+                        num_output_length=self.num_output_length,
+                        device=self.device,
+                        sub_array_size=self.sub_array_size,
+                    )
+                    policy_dict["commander"].load_state_dict(base_ckpt["commander"])
+                    policy_dict["radar"].load_state_dict(base_ckpt["radar"])
+
+                    with torch.no_grad():
+                        for ac in [policy_dict["commander"], policy_dict["radar"]]:
+                            for param in ac.parameters():
+                                param.add_(torch.randn_like(param) * epsilon)
+
+                    # Inference-only trainer (no buffer init)
+                    mutant_trainer = TeamPPOTrainer(
+                        commander=policy_dict["commander"],
+                        radar=policy_dict["radar"],
+                        **self.ppo_config,
+                    )
+
+                    ckpt_name = (
+                        f"mutant_team{team}_"
+                        f"from_{base_policy_id}_"
+                        f"v{mutant_idx}_gen{self.iteration + 1}.pt"
+                    )
+                    ckpt_path = os.path.join(self.checkpoint_dir, ckpt_name)
+                    mutant_trainer.save(ckpt_path)
+
+                    mutant_id = self.pool.add_policy(
+                        team=team,
+                        role="mutant",
+                        checkpoint_path=ckpt_path,
+                        generation=self.iteration + 1,
+                        parent_id=base_policy_id,
+                    )
+                    self.mutant_trainers[mutant_id] = mutant_trainer
+                    mutant_ids.append(mutant_id)
+
+                    print(
+                        f"  [mutant] Created {mutant_id} from {base_policy_id} "
+                        f"(team={team}, wr={wr:.3f}, eps={epsilon}, "
+                        f"{mutant_idx + 1}/{n_mutants})",
+                        flush=True,
+                    )
+
+        if mutant_ids:
+            print(f"[League] Generated {len(mutant_ids)} mutant policies "
+                  f"in iteration {self.iteration}", flush=True)
+        return mutant_ids
 
     def pretrain_critic(self, data: dict, n_epochs: int = 50, batch_size: int = 256):
         """Pre-train all critic value heads via supervised regression on MC returns.
@@ -556,13 +813,161 @@ class FluxLeague:
                     epoch_priv_loss += priv_value_loss.item()
                     n_batches += 1
 
+                avg_vl = epoch_loss / max(n_batches, 1)
+                avg_pvl = epoch_priv_loss / max(n_batches, 1)
                 if epoch % 10 == 0 or epoch == n_epochs - 1:
                     print(f"  [{policy_id}] epoch {epoch}/{n_epochs}: "
-                          f"value_loss={epoch_loss / max(n_batches, 1):.4f} "
-                          f"priv_loss={epoch_priv_loss / max(n_batches, 1):.4f}",
+                          f"value_loss={avg_vl:.4f} priv_loss={avg_pvl:.4f}",
                           flush=True)
+                if WANDB_AVAILABLE and wandb.run is not None:
+                    wandb.log({
+                        f"pretrain/{policy_id}/value_loss": avg_vl,
+                        f"pretrain/{policy_id}/priv_loss": avg_pvl,
+                        f"pretrain/{policy_id}/epoch": epoch,
+                    })
 
         print("[CriticPretrain] Done.", flush=True)
+
+    def pretrain_commander_critic(self, data: dict, n_epochs: int = 50,
+                                   batch_size: int = 256):
+        """Pre-train commander value head via supervised regression on MC returns.
+
+        Uses collected commander rollout data from scripted HPEDF policies.
+        The commander value_head learns to predict discounted returns from
+        commander observations — giving it calibrated value estimates before
+        PPO training begins.
+
+        This is separate from pretrain_critic() which only handles radar critics.
+        """
+        import torch.nn.functional as F
+
+        cmd_obs = data["commander_obs"].to(self.device)           # [T, 76]
+        cmd_returns = data["commander_returns"].to(self.device)    # [T]
+
+        print(f"\n[CriticPretrain] Pre-training commander critics on "
+              f"{cmd_obs.shape[0]} transitions ({n_epochs} epochs)...", flush=True)
+
+        for policy_id, trainer in self.trainers.items():
+            record = self.pool.policies[policy_id]
+            if not record.is_active:
+                continue
+
+            ac = trainer.commander_trainer.ac
+            opt = trainer.commander_trainer.optimizer
+
+            T = cmd_obs.shape[0]
+            for epoch in range(n_epochs):
+                indices = torch.randperm(T, device=self.device)
+                total_loss = 0.0
+                n_batches = 0
+
+                for start in range(0, T, batch_size):
+                    end = min(start + batch_size, T)
+                    idx = indices[start:end]
+
+                    batch_obs = cmd_obs[idx]
+                    batch_returns = cmd_returns[idx]
+
+                    _, value = ac(batch_obs)
+                    loss = F.mse_loss(value.squeeze(), batch_returns)
+
+                    opt.zero_grad()
+                    loss.backward()
+                    torch.nn.utils.clip_grad_norm_(ac.parameters(), 0.5)
+                    opt.step()
+
+                    total_loss += loss.item()
+                    n_batches += 1
+
+                if epoch % 10 == 0 or epoch == n_epochs - 1:
+                    avg_loss = total_loss / max(n_batches, 1)
+                    print(f"  [{policy_id}] epoch {epoch}/{n_epochs - 1}: "
+                          f"cmd_value_loss={avg_loss:.4f}", flush=True)
+
+        print("[CriticPretrain] Commander critics done.", flush=True)
+
+    def pretrain_commander_bc(self, data: dict, n_epochs: int = 30,
+                               batch_size: int = 128):
+        """Pre-train commander actor via BC on HPEDF demonstration actions.
+
+        Trains action_head (pre-tanh mean) using weighted MSE. Focus on
+        dims [0:3] (launch_flag + target_x + target_y) with higher weight.
+        Dims [3:35] (radar instructions) are trained to output 0.5 (neutral).
+
+        The commander uses tanh-squashed Gaussian policy, so we train the
+        pre-tanh mean to match atanh(clipped_target_action).
+        """
+        import torch.nn.functional as F
+
+        cmd_obs = data["commander_obs"].to(self.device)           # [T, 76]
+        cmd_actions = data["commander_actions"].to(self.device)    # [T, 35]
+
+        # Only train on transitions with meaningful commander actions
+        active_mask = cmd_actions.abs().sum(dim=-1) > 0.01
+        n_active = active_mask.sum().item()
+        if n_active == 0:
+            print("[BCPretrain] WARNING: no active commander transitions, skipping",
+                  flush=True)
+            return
+
+        active_obs = cmd_obs[active_mask]
+        active_actions = cmd_actions[active_mask]
+
+        print(f"\n[BCPretrain] Commander BC on {n_active}/{cmd_obs.shape[0]} "
+              f"transitions ({n_epochs} epochs)...", flush=True)
+
+        for policy_id, trainer in self.trainers.items():
+            record = self.pool.policies[policy_id]
+            if not record.is_active:
+                continue
+
+            ac = trainer.commander_trainer.ac
+            opt = trainer.commander_trainer.optimizer
+
+            # Weighted MSE: launch dim gets 5x, target gets 2x
+            dim_weights = torch.ones(35, device=self.device)
+            dim_weights[0] = 5.0   # launch_flag
+            dim_weights[1] = 2.0   # target_x
+            dim_weights[2] = 2.0   # target_y
+
+            T = active_obs.shape[0]
+            for epoch in range(n_epochs):
+                indices = torch.randperm(T, device=self.device)
+                total_loss = 0.0
+                n_batches = 0
+
+                for start in range(0, T, batch_size):
+                    end = min(start + batch_size, T)
+                    idx = indices[start:end]
+
+                    batch_obs = active_obs[idx]
+                    batch_actions = active_actions[idx]
+
+                    features = ac.shared(batch_obs)
+                    mean = ac.action_head(features)
+
+                    # atanh target to match Gaussian policy architecture
+                    clipped = batch_actions.clamp(-0.99, 0.99)
+                    raw_target = 0.5 * torch.log(
+                        (1.0 + clipped) / (1.0 - clipped + 1e-6)
+                    )
+
+                    loss = (dim_weights * (mean - raw_target) ** 2).mean()
+
+                    opt.zero_grad()
+                    loss.backward()
+                    torch.nn.utils.clip_grad_norm_(ac.parameters(), 0.5)
+                    opt.step()
+
+                    total_loss += loss.item()
+                    n_batches += 1
+
+                if epoch % 10 == 0 or epoch == n_epochs - 1:
+                    avg_loss = total_loss / max(n_batches, 1)
+                    print(f"  [{policy_id}] epoch {epoch}/{n_epochs - 1}: "
+                          f"cmd_bc_loss={avg_loss:.4f}", flush=True)
+
+        print("[BCPretrain] Commander BC done.", flush=True)
 
     def pretrain_actor_bc(self, data: dict, n_epochs: int = 30, batch_size: int = 128):
         """Pre-train actor via behavior cloning on scripted demonstration actions.
@@ -652,12 +1057,22 @@ class FluxLeague:
                     epoch_veh_loss += vehicle_loss.item()
                     n_batches += 1
 
+                avg_task = epoch_task_loss / max(n_batches, 1)
+                avg_param = epoch_param_loss / max(n_batches, 1)
+                avg_veh = epoch_veh_loss / max(n_batches, 1)
                 if epoch % 10 == 0 or epoch == n_epochs - 1:
                     print(f"  [{policy_id}] epoch {epoch}/{n_epochs}: "
-                          f"task={epoch_task_loss / max(n_batches, 1):.4f} "
-                          f"param={epoch_param_loss / max(n_batches, 1):.4f} "
-                          f"veh={epoch_veh_loss / max(n_batches, 1):.4f}",
+                          f"task={avg_task:.4f} "
+                          f"param={avg_param:.4f} "
+                          f"veh={avg_veh:.4f}",
                           flush=True)
+                if WANDB_AVAILABLE and wandb.run is not None:
+                    wandb.log({
+                        f"bc_pretrain/{policy_id}/task_loss": avg_task,
+                        f"bc_pretrain/{policy_id}/param_loss": avg_param,
+                        f"bc_pretrain/{policy_id}/veh_loss": avg_veh,
+                        f"bc_pretrain/{policy_id}/epoch": epoch,
+                    })
 
         print("[BCPretrain] Done.", flush=True)
 
@@ -714,5 +1129,35 @@ class FluxLeague:
                 int(k): np.array(v) for k, v in state["meta_strategies"].items()
             }
         self.pool.load_metadata()
+
+        # Reconstruct mutant trainers from pool
+        self.mutant_trainers = {}
+        for pid, record in self.pool.policies.items():
+            if record.role != "mutant":
+                continue
+            if not os.path.exists(record.checkpoint_path):
+                print(f"[League] WARN: mutant checkpoint missing: "
+                      f"{record.checkpoint_path}")
+                continue
+            policy_dict = create_team_policy(
+                team=record.team,
+                n_elem=self.n_elem,
+                n_pulses=self.n_pulses,
+                n_bins=self.n_bins,
+                num_output_length=self.num_output_length,
+                device=self.device,
+                sub_array_size=self.sub_array_size,
+            )
+            mutant_trainer = TeamPPOTrainer(
+                commander=policy_dict["commander"],
+                radar=policy_dict["radar"],
+                **self.ppo_config,
+            )
+            mutant_trainer.load(record.checkpoint_path)
+            self.mutant_trainers[pid] = mutant_trainer
+        if self.mutant_trainers:
+            print(f"[League] Reconstructed {len(self.mutant_trainers)} "
+                  f"mutant trainers from disk")
+
         if self.elo_sampler is not None:
             self.elo_sampler.load(os.path.join(self.checkpoint_dir, "elo.json"))
