@@ -179,15 +179,17 @@ class RolloutDataCollector:
             if episodes_done % E == 0:
                 print(f"  [collector] {episodes_done}/{n_episodes} episodes...", flush=True)
 
-            # Concatenate episode data on GPU
-            ep_obs_t = torch.cat(ep_obs, dim=0)   # [T_ep, obs_dim]
-            ep_act_t = torch.cat(ep_act, dim=0)
-            ep_rew_t = torch.cat(ep_rew, dim=0)
-            ep_done_t = torch.cat(ep_done, dim=0)
-            ep_priv_t = torch.cat(ep_priv, dim=0)
-            ep_cmd_obs_t = torch.cat(ep_cmd_obs, dim=0)
-            ep_cmd_act_t = torch.cat(ep_cmd_act, dim=0)
-            ep_cmd_rew_t = torch.cat(ep_cmd_rew, dim=0)
+            # Concatenate episode data → move to CPU immediately
+            # to avoid VRAM exhaustion.  50 episodes × 2000 steps
+            # × 163KB/transition ≈ 65 GB on GPU is unsustainable.
+            ep_obs_t = torch.cat(ep_obs, dim=0).cpu()
+            ep_act_t = torch.cat(ep_act, dim=0).cpu()
+            ep_rew_t = torch.cat(ep_rew, dim=0).cpu()
+            ep_done_t = torch.cat(ep_done, dim=0).cpu()
+            ep_priv_t = torch.cat(ep_priv, dim=0).cpu()
+            ep_cmd_obs_t = torch.cat(ep_cmd_obs, dim=0).cpu()
+            ep_cmd_act_t = torch.cat(ep_cmd_act, dim=0).cpu()
+            ep_cmd_rew_t = torch.cat(ep_cmd_rew, dim=0).cpu()
 
             # GPU-vectorized Monte Carlo returns
             returns = self._compute_returns(ep_rew_t, ep_done_t, gamma)
