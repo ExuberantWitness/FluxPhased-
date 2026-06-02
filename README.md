@@ -1729,6 +1729,46 @@ MATLAB Phased Array System Toolbox 是 IQ 级雷达仿真的工业标准（MathW
 <details>
 <summary><b>Updates & Bug Fixes / 更新进展与缺陷修复</b></summary>
 
+### 2026-06-03
+
+**全管线端到端验证通过 + OOM 修复 + 首次 PSRO 非随机胜率 / Full Pipeline End-to-End Validation + OOM Fixes + First PSRO Non-Random Win Rates**
+
+本日完成了从"演示数据采集"到"PSRO 联赛训练"的全管线端到端验证。核心工作：(1) 发现并修复 GPU/CPU 双端 OOM，(2) 改为分块增量式采集+训练，(3) 首次在完整 PSRO 中观测到差异化胜率（非全 0.50）。
+
+---
+
+#### OOM 修复（2 个）
+
+| # | Bug | 影响 | 修复 |
+|---|-----|------|------|
+| 1 | **GPU OOM** — 数据采集器将所有转移张量留在 GPU，50 集 × 2000 步 × 700KB ≈ 280 GB | 1/10 测试 16K 转移≈10 GB 未触发，完整训练 >95 GB OOM | `data_collector.py`：每批采集完立即 `.cpu()` |
+| 2 | **CPU OOM** — `.cpu()` 修复后将 280 GB 数据转移到 CPU，超 91 GB RAM | 10 集/块仍 80K 转移≈57 GB，第二次 OOM | `phased_trainer.py`：改为 5 集/块分块采集+增量训练，边采边训边释放 |
+
+#### 1/10 vs 完整训练差异分析
+
+| | 1/10 测试 | 完整训练 | 差异 |
+|------|-----------|----------|------|
+| 集数 | 5 | 50 | 10× |
+| 步数/集 | 800 | 2000 | 2.5× |
+| 转移数 | ~16,000 | ~400,000 | 25× |
+| GPU 占用 | ~10 GB | ~280 GB → OOM | 28× |
+| CPU 占用（修复后） | ~4 GB | ~14 GB/块 | 可控 |
+
+结论：**1/10 测试无法发现规模化 OOM 问题**。最小可复现规模约 25 集才会触发。
+
+---
+
+#### 首次完整 PSRO 结果
+
+| 指标 | 值 |
+|------|------|
+| 预训练数据 | 两队各 50 集，发射率 40%，4 场景全覆盖 |
+| BC 预训练 | cmd_bc_loss 0.026→0.0013 |
+| PSRO Iter 0 Payoff | **0.25, 0.40, 0.50, 0.50, 0.50, 0.65**（非全 0.50！） |
+| 管线耗时 | ~16 小时（含两队数据采集+预训练） |
+
+---
+
 ### 2026-06-02
 
 **CTDE 架构激活 + BPSK 末端制导 + Commander 战术发射 + 雷达动态移动 / CTDE Architecture Activation + BPSK Terminal Guidance + Commander Tactical Launch + Radar Dynamic Movement**
