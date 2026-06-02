@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 
 from .array_gpu import PhasedArrayGPU
 from .channel_gpu import ChannelGPU
+from ..config import DEFAULT_ROWS, DEFAULT_COLS
 from .waveform_gpu import WaveformGeneratorGPU
 from .receiver_gpu import RadarReceiverGPU
 from .interference_gpu import InterferenceEngineGPU
@@ -72,8 +73,8 @@ class RadarPipelineGPU:
         prf: float = 10e3,
         pulses_per_cpi: int = 500,
         n_radars: int = 4,
-        rows: int = 25,
-        cols: int = 25,
+        rows: int = DEFAULT_ROWS,
+        cols: int = DEFAULT_COLS,
         device: str = "cuda",
     ):
         self.fc = fc

@@ -1,0 +1,134 @@
+{
+  "p0000": {
+    "team": 0,
+    "role": "main",
+    "checkpoint_path": "checkpoints/league_quick_test/main_team0_gen0.pt",
+    "generation": 0,
+    "parent_id": null,
+    "is_active": true,
+    "win_rates": {
+      "p0003": 0.45,
+      "p0004": 0.45,
+      "p0005": 0.55
+    }
+  },
+  "p0001": {
+    "team": 0,
+    "role": "main_exploiter",
+    "checkpoint_path": "checkpoints/league_quick_test/main_exploiter_team0_gen0.pt",
+    "generation": 0,
+    "parent_id": null,
+    "is_active": true,
+    "win_rates": {
+      "p0003": 0.55,
+      "p0004": 0.55,
+      "p0005": 0.55
+    }
+  },
+  "p0002": {
+    "team": 0,
+    "role": "league_exploiter",
+    "checkpoint_path": "checkpoints/league_quick_test/league_exploiter_team0_gen0.pt",
+    "generation": 0,
+    "parent_id": null,
+    "is_active": true,
+    "win_rates": {
+      "p0003": 0.55,
+      "p0004": 0.55,
+      "p0005": 0.55
+    }
+  },
+  "p0003": {
+    "team": 1,
+    "role": "main",
+    "checkpoint_path": "checkpoints/league_quick_test/main_team1_gen0.pt",
+    "generation": 0,
+    "parent_id": null,
+    "is_active": true,
+    "win_rates": {
+      "p0000": 0.55,
+      "p0001": 0.45,
+      "p0002": 0.45
+    }
+  },
+  "p0004": {
+    "team": 1,
+    "role": "main_exploiter",
+    "checkpoint_path": "checkpoints/league_quick_test/main_exploiter_team1_gen0.pt",
+    "generation": 0,
+    "parent_id": null,
+    "is_active": true,
+    "win_rates": {
+      "p0000": 0.55,
+      "p0001": 0.45,
+      "p0002": 0.45
+    }
+  },
+  "p0005": {
+    "team": 1,
+    "role": "league_exploiter",
+    "checkpoint_path": "checkpoints/league_quick_test/league_exploiter_team1_gen0.pt",
+    "generation": 0,
+    "parent_id": null,
+    "is_active": true,
+    "win_rates": {
+      "p0000": 0.45,
+      "p0001": 0.45,
+      "p0002": 0.45
+    }
+  },
+  "p0006": {
+    "team": 0,
+    "role": "main",
+    "checkpoint_path": "checkpoints/league_quick_test/main_team0_gen1.pt",
+    "generation": 1,
+    "parent_id": "p0000",
+    "is_active": true,
+    "win_rates": {}
+  },
+  "p0007": {
+    "team": 0,
+    "role": "main_exploiter",
+    "checkpoint_path": "checkpoints/league_quick_test/main_exploiter_team0_gen1.pt",
+    "generation": 1,
+    "parent_id": "p0001",
+    "is_active": true,
+    "win_rates": {}
+  },
+  "p0008": {
+    "team": 0,
+    "role": "league_exploiter",
+    "checkpoint_path": "checkpoints/league_quick_test/league_exploiter_team0_gen1.pt",
+    "generation": 1,
+    "parent_id": "p0002",
+    "is_active": true,
+    "win_rates": {}
+  },
+  "p0009": {
+    "team": 1,
+    "role": "main",
+    "checkpoint_path": "checkpoints/league_quick_test/main_team1_gen1.pt",
+    "generation": 1,
+    "parent_id": "p0003",
+    "is_active": true,
+    "win_rates": {}
+  },
+  "p0010": {
+    "team": 1,
+    "role": "main_exploiter",
+    "checkpoint_path": "checkpoints/league_quick_test/main_exploiter_team1_gen1.pt",
+    "generation": 1,
+    "parent_id": "p0004",
+    "is_active": true,
+    "win_rates": {}
+  },
+  "p0011": {
+    "team": 1,
+    "role": "league_exploiter",
+    "checkpoint_path": "checkpoints/league_quick_test/league_exploiter_team1_gen1.pt",
+    "generation": 1,
+    "parent_id": "p0005",
+    "is_active": true,
+    "win_rates": {}
+  }
+}

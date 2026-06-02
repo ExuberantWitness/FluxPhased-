@@ -12,6 +12,8 @@ import warp as wp
 import torch
 from typing import Tuple, Optional
 
+from ..config import DEFAULT_ROWS, DEFAULT_COLS
+
 SPEED_OF_LIGHT = 299792458.0
 DEG2RAD = np.pi / 180.0
 
@@ -125,7 +127,7 @@ class PhasedArrayGPU:
     Manages multiple arrays simultaneously for the 4-radar simulation.
     """
 
-    def __init__(self, rows: int = 25, cols: int = 25, dx_wl: float = 0.5,
+    def __init__(self, rows: int = DEFAULT_ROWS, cols: int = DEFAULT_COLS, dx_wl: float = 0.5,
                  dy_wl: float = 0.5, fc: float = 10e9, device: str = "cuda"):
         self.rows = rows
         self.cols = cols

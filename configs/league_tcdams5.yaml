@@ -1,21 +1,17 @@
-# FluxPhased League Training - TC-DAMS ablation (5x5 pilot)
-# Same algorithmic settings as league_tcdams.yaml, but at 5x5 so the full
-# Phase A->D pipeline fits an RTX 2060 6GB / 16GB RAM box.
-# Promote to 25x25 (configs/league_tcdams.yaml) when running on the RTX
-# PRO 6000 96GB machine.
+# FluxPhased League Training - TC-DAMS ablation (25×25)
+# Compact config for small-scale ablation runs.
+# For full-scale runs, use configs/league_tcdams.yaml.
 
 league:
   population_cap: 10
-  n_eval_games: 5             # PSRO evaluation games per pair (bounded for num_envs=1)
-  meta_solver: "nash"          # default; override per ablation cell (R0/R1/R3)
+  n_eval_games: 5
+  meta_solver: "nash"
   pfsp_temperature: 1.0
   exploiter_reset_prob: 0.1
-  episodes_per_training: 50    # per-policy PPO updates per PSRO iter
-  max_steps_per_episode: 50    # also caps PayoffMatrix.max_steps_per_game
+  episodes_per_training: 50
+  max_steps_per_episode: 50
   checkpoint_dir: "checkpoints/league_tcdams5/R0"
-  # TC-DAMS
   tcdams_lambda: 0.3
-  # Elo-band PFSP
   use_elo_band: false
   elo_band_init: 400.0
   elo_band_final: 100.0
@@ -39,13 +35,9 @@ ppo:
     batch_size: 32
     buffer_size: 256
 
-curriculum:
-  # Shrunk for 5x5 pilot; full A->D should finish in well under an hour.
-  phase_a_episodes: 200
-  phase_b_episodes: 400
-  phase_c_iterations: 5
-  phase_c_episodes_per_iter: 100
-  phase_d_episodes: 400
+training:
+  warmup_episodes: 0
+  psro_iterations: 5
 
 reward_shaping:
   detect_snr_weight: 0.1
@@ -54,14 +46,19 @@ reward_shaping:
   comm_reliability_weight: 0.05
   recon_intel_weight: 0.03
   beam_accuracy_weight: 0.02
+  stealth_weight: 0.1
   snr_threshold_db: 10.0
 
+privileged_critic:
+  enabled: true
+  encoder_hidden: [512, 256]
+
 env:
-  rows: 5
-  cols: 5
+  rows: 25
+  cols: 25
   num_envs: 1
   n_radars: 4
   pulses_per_cpi: 4
   fft_size: 64
   device: "cuda"
-  tx_power_w: 50000
+  tx_power_w: 1.0

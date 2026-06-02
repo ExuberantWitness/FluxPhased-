@@ -1,0 +1,126 @@
+wandb: [wandb.login()] Using explicit session credentials for https://api.wandb.ai.
+wandb: Appending key for api.wandb.ai to your netrc file: /home/ubuntu/.netrc
+wandb: Currently logged in as: minghaozhang79 to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: Tracking run with wandb version 0.27.0
+wandb: Run data is saved locally in /home/ubuntu/code/wandb/run-20260601_093857-tr0d9s8a
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run league_625elem_4env_20260601_093855
+wandb: ⭐️ View project at https://wandb.ai/minghaozhang79/fluxphased
+wandb: 🚀 View run at https://wandb.ai/minghaozhang79/fluxphased/runs/tr0d9s8a
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 102.0 GB
+FluxPhased League Training
+Config: configs/league_quick_test.yaml
+Device: cuda
+Environment: E=4, R=4, N=625, P=4, bins=64
+State dim: 163783, Action dim: 13753
+[wandb] Initialized run: league_625elem_4env_20260601_093855
+Warp 1.10.1 initialized:
+   CUDA Toolkit 12.8, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Workstation Edition" (95 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/ubuntu/.cache/warp/1.10.1
+============================================================
+Critic Pre-training: 5 demo episodes
+============================================================
+
+  Collecting demo data for team 0...
+  [retry 0/3] Collecting 5 episodes...
+Module radar_sim.gpu.vec_array 0e899e2 load on device 'cuda:0' took 5.14 ms  (cached)
+Module radar_sim.gpu.vec_channel 6a2afee load on device 'cuda:0' took 0.48 ms  (cached)
+  [collector] 4/5 episodes...
+  [collector] 8/5 episodes...
+  [collector] Collected 16000 transitions from 5 episodes
+  [collector] Scene coverage: {'recon': 1, 'detect': 0, 'jam': 0, 'comm': 2}
+  [collector] Launch rate: 0/5 (0%)
+  [collector] Task CV: 0.256 (need >0.10 for diversity)
+  [collector] ⚠ FAIL: only 0 episodes for rarest scene (need ≥5)
+  [collector] ⚠ FAIL: launch rate 0% < 30%
+  ↻ Coverage failed, retrying... (retry 1/3)
+  [retry 1/3] Collecting 10 episodes...
+  [collector] 4/10 episodes...
+  [collector] 8/10 episodes...
+  [collector] 12/10 episodes...
+  [collector] Collected 24000 transitions from 10 episodes
+  [collector] Scene coverage: {'recon': 1, 'detect': 0, 'jam': 0, 'comm': 3}
+  [collector] Launch rate: 0/10 (0%)
+  [collector] Task CV: 0.453 (need >0.10 for diversity)
+  [collector] ⚠ FAIL: only 0 episodes for rarest scene (need ≥5)
+  [collector] ⚠ FAIL: launch rate 0% < 30%
+  ↻ Coverage failed, retrying... (retry 2/3)
+  [retry 2/3] Collecting 10 episodes...
+  [collector] 4/10 episodes...
+  [collector] 8/10 episodes...
+  [collector] 12/10 episodes...
+  [collector] Collected 24000 transitions from 10 episodes
+  [collector] Scene coverage: {'recon': 1, 'detect': 0, 'jam': 0, 'comm': 3}
+  [collector] Launch rate: 0/10 (0%)
+  [collector] Task CV: 0.488 (need >0.10 for diversity)
+  [collector] ⚠ FAIL: only 0 episodes for rarest scene (need ≥5)
+  [collector] ⚠ FAIL: launch rate 0% < 30%
+  ⚠ Coverage still insufficient after 25 episodes — proceeding anyway
+
+[CriticPretrain] Pre-training critics on 64000 transitions (10 epochs)...
+  [p0000] epoch 0/10: value_loss=51720.1529 priv_loss=30.6240
+  [p0000] epoch 9/10: value_loss=0.0001 priv_loss=0.4690
+  [p0001] epoch 0/10: value_loss=9985.2530 priv_loss=2.6500
+  [p0001] epoch 9/10: value_loss=0.0001 priv_loss=0.4702
+  [p0002] epoch 0/10: value_loss=1303.0127 priv_loss=18.7210
+  [p0002] epoch 9/10: value_loss=0.0001 priv_loss=0.4056
+[CriticPretrain] Done.
+
+[CriticPretrain] Pre-training commander critics on 64000 transitions (10 epochs)...
+  [p0000] epoch 0/9: cmd_value_loss=7.8952
+  [p0000] epoch 9/9: cmd_value_loss=0.1506
+  [p0001] epoch 0/9: cmd_value_loss=8.4192
+  [p0001] epoch 9/9: cmd_value_loss=0.1507
+  [p0002] epoch 0/9: cmd_value_loss=7.7481
+  [p0002] epoch 9/9: cmd_value_loss=0.1509
+[CriticPretrain] Commander critics done.
+  BC pretraining (reusing collected data, 5 epochs)...
+
+[BCPretrain] Behavior cloning on 64000 transitions (5 epochs)...
+  [p0000] epoch 0/5: task=1.1597 param=0.0665 veh=0.5056
+  [p0000] epoch 4/5: task=0.7013 param=0.0316 veh=0.4995
+  [p0001] epoch 0/5: task=1.1485 param=0.0666 veh=1.1667
+  [p0001] epoch 4/5: task=0.6912 param=0.0308 veh=1.1667
+  [p0002] epoch 0/5: task=1.1534 param=0.0659 veh=0.5183
+  [p0002] epoch 4/5: task=0.6935 param=0.0312 veh=0.5182
+[BCPretrain] Done.
+
+[BCPretrain] Commander BC on 64000/64000 transitions (5 epochs)...
+  [p0000] epoch 0/4: cmd_bc_loss=0.0112
+  [p0000] epoch 4/4: cmd_bc_loss=0.0000
+  [p0001] epoch 0/4: cmd_bc_loss=0.0100
+  [p0001] epoch 4/4: cmd_bc_loss=0.0000
+  [p0002] epoch 0/4: cmd_bc_loss=0.0087
+  [p0002] epoch 4/4: cmd_bc_loss=0.0000
+[BCPretrain] Commander BC done.
+  BC models snapshotted for KL penalty
+
+  Collecting demo data for team 1...
+  [retry 0/3] Collecting 5 episodes...
+  [collector] 4/5 episodes...
+  [collector] 8/5 episodes...
+  [collector] Collected 16000 transitions from 5 episodes
+  [collector] Scene coverage: {'recon': 2, 'detect': 0, 'jam': 0, 'comm': 2}
+  [collector] Launch rate: 0/5 (0%)
+  [collector] Task CV: 0.355 (need >0.10 for diversity)
+  [collector] ⚠ FAIL: only 0 episodes for rarest scene (need ≥5)
+  [collector] ⚠ FAIL: launch rate 0% < 30%
+  ↻ Coverage failed, retrying... (retry 1/3)
+  [retry 1/3] Collecting 10 episodes...
+  [collector] 4/10 episodes...
+  [collector] 8/10 episodes...
+  [collector] 12/10 episodes...
+  [collector] Collected 24000 transitions from 10 episodes
+  [collector] Scene coverage: {'recon': 1, 'detect': 0, 'jam': 0, 'comm': 3}
+  [collector] Launch rate: 0/10 (0%)
+  [collector] Task CV: 0.364 (need >0.10 for diversity)
+  [collector] ⚠ FAIL: only 0 episodes for rarest scene (need ≥5)
+  [collector] ⚠ FAIL: launch rate 0% < 30%
+  ↻ Coverage failed, retrying... (retry 2/3)
+  [retry 2/3] Collecting 10 episodes...

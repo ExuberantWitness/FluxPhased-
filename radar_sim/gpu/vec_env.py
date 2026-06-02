@@ -16,6 +16,7 @@ from .vec_channel import VecChannel
 from .vec_receiver import VecReceiver
 from .vec_interference import VecInterference
 from .waveform_gpu import WaveformGeneratorGPU
+from ..config import DEFAULT_ROWS, DEFAULT_COLS
 
 SPEED_OF_LIGHT = 299792458.0
 
@@ -25,7 +26,7 @@ class RadarSimVecEnv:
 
     def __init__(
         self, num_envs: int = 10, n_radars: int = 4,
-        rows: int = 25, cols: int = 25,
+        rows: int = DEFAULT_ROWS, cols: int = DEFAULT_COLS,
         fc: float = 10e9, bandwidth: float = 200e6,
         prf: float = 10e3, pulses_per_cpi: int = 32,
         n_targets: int = 1, tx_power_w: float = 1.0,

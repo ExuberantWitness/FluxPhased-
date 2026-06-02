@@ -8,11 +8,20 @@ parameter schemas used by YAML config loading.
 from dataclasses import dataclass, field
 from typing import Tuple, List
 
+# ---------------------------------------------------------------------------
+# Global array geometry defaults — single source of truth.
+# Change these to switch the entire codebase to a new array size
+# (e.g. 24×26, 32×26, etc.). All GPU constructors and config dataclasses
+# read from these constants.
+# ---------------------------------------------------------------------------
+DEFAULT_ROWS: int = 25
+DEFAULT_COLS: int = 25
+
 
 @dataclass
 class ArrayGeometry:
-    rows: int = 25
-    cols: int = 25
+    rows: int = DEFAULT_ROWS
+    cols: int = DEFAULT_COLS
     dx_wl: float = 0.5
     dy_wl: float = 0.5
     taper: str = "uniform"

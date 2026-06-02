@@ -7,6 +7,8 @@ and array gain → IQ-level interference. Uses torch broadcasting; no Warp.
 import numpy as np
 import torch
 
+from ..config import DEFAULT_ROWS, DEFAULT_COLS
+
 SPEED_OF_LIGHT = 299792458.0
 DEG2RAD = np.pi / 180.0
 DEFAULT_POLARIZATION_LOSS_DB = 3.0
@@ -23,7 +25,7 @@ class VecInterference:
 
     def __init__(
         self, fc: float = 10e9, bandwidth: float = 200e6,
-        rows: int = 25, cols: int = 25,
+        rows: int = DEFAULT_ROWS, cols: int = DEFAULT_COLS,
         num_envs: int = 10, n_radars: int = 4,
         n_elem: int = 625, device: str = "cuda",
         polarization_loss_db: float = DEFAULT_POLARIZATION_LOSS_DB,

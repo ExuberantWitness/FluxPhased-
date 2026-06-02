@@ -54,7 +54,7 @@ def validate_self_interference():
 
     for iso_db in [10.0, 20.0, 25.0, 30.0, 40.0]:
         env = MFARVecEnv(
-            num_envs=1, n_radars=2, rows=5, cols=5,
+            num_envs=1, n_radars=2, rows=25, cols=25,
             pulses_per_cpi=2, bandwidth=10e6, prf=10e3,
             tx_power_w=50000.0, tx_rx_isolation_db=iso_db,
             device=device,

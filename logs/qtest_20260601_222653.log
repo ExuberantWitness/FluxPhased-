@@ -1,0 +1,713 @@
+wandb: [wandb.login()] Using explicit session credentials for https://api.wandb.ai.
+wandb: Appending key for api.wandb.ai to your netrc file: /home/ubuntu/.netrc
+wandb: Currently logged in as: minghaozhang79 to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: Tracking run with wandb version 0.27.0
+wandb: Run data is saved locally in /home/ubuntu/code/wandb/run-20260601_222659-1zjyt2nu
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run league_625elem_4env_20260601_222654
+wandb: ⭐️ View project at https://wandb.ai/minghaozhang79/fluxphased
+wandb: 🚀 View run at https://wandb.ai/minghaozhang79/fluxphased/runs/1zjyt2nu
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 102.0 GB
+FluxPhased League Training
+Config: configs/league_quick_test.yaml
+Device: cuda
+Environment: E=4, R=4, N=625, P=4, bins=64
+State dim: 163783, Action dim: 13753
+[wandb] Initialized run: league_625elem_4env_20260601_222654
+Warp 1.10.1 initialized:
+   CUDA Toolkit 12.8, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Workstation Edition" (95 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/ubuntu/.cache/warp/1.10.1
+============================================================
+Critic Pre-training: 5 demo episodes
+============================================================
+
+  Collecting demo data for team 0...
+  [retry 0/3] Collecting 5 episodes...
+Module radar_sim.gpu.vec_array 0e899e2 load on device 'cuda:0' took 14.25 ms  (cached)
+Module radar_sim.gpu.vec_channel 6a2afee load on device 'cuda:0' took 3.14 ms  (cached)
+  [collector] 4/5 episodes...
+  [collector] 8/5 episodes...
+  [collector] Collected 6400 transitions from 5 episodes
+  [collector] Scene coverage: {'recon': 2, 'detect': 0, 'jam': 2, 'comm': 2}
+  [collector] Launch rate: 2/5 (40%)
+  [collector] Task CV: 0.521 (need >0.10 for diversity)
+  [collector] ⚠ FAIL: only 0 episodes for rarest scene (need ≥5)
+  ↻ Coverage failed, retrying... (retry 1/3)
+  [retry 1/3] Collecting 10 episodes...
+  [collector] 4/10 episodes...
+  [collector] 8/10 episodes...
+  [collector] 12/10 episodes...
+  [collector] Collected 9600 transitions from 10 episodes
+  [collector] Scene coverage: {'recon': 3, 'detect': 3, 'jam': 3, 'comm': 3}
+  [collector] Launch rate: 3/10 (30%)
+  [collector] Task CV: 0.171 (need >0.10 for diversity)
+  [collector] ⚠ FAIL: only 3 episodes for rarest scene (need ≥5)
+  ↻ Coverage failed, retrying... (retry 2/3)
+  [retry 2/3] Collecting 10 episodes...
+  [collector] 4/10 episodes...
+  [collector] 8/10 episodes...
+  [collector] 12/10 episodes...
+  [collector] Collected 9600 transitions from 10 episodes
+  [collector] Scene coverage: {'recon': 3, 'detect': 2, 'jam': 3, 'comm': 3}
+  [collector] Launch rate: 3/10 (30%)
+  [collector] Task CV: 0.231 (need >0.10 for diversity)
+  [collector] ⚠ FAIL: only 2 episodes for rarest scene (need ≥5)
+  ⚠ Coverage still insufficient after 25 episodes — proceeding anyway
+
+[CriticPretrain] Pre-training critics on 25600 transitions (10 epochs)...
+  [p0000] epoch 0/10: value_loss=190014.7109 priv_loss=974.5584
+  [p0000] epoch 9/10: value_loss=0.1277 priv_loss=3.7303
+  [p0001] epoch 0/10: value_loss=195144.2929 priv_loss=74.4301
+  [p0001] epoch 9/10: value_loss=0.0046 priv_loss=3.5078
+  [p0002] epoch 0/10: value_loss=18429.7285 priv_loss=257.0065
+  [p0002] epoch 9/10: value_loss=0.0051 priv_loss=2.4610
+[CriticPretrain] Done.
+
+[CriticPretrain] Pre-training commander critics on 25600 transitions (10 epochs)...
+  [p0000] epoch 0/9: cmd_value_loss=0.0000
+  [p0000] epoch 9/9: cmd_value_loss=0.0000
+  [p0001] epoch 0/9: cmd_value_loss=0.0000
+  [p0001] epoch 9/9: cmd_value_loss=0.0000
+  [p0002] epoch 0/9: cmd_value_loss=0.0000
+  [p0002] epoch 9/9: cmd_value_loss=0.0000
+[CriticPretrain] Commander critics done.
+  BC pretraining (reusing collected data, 5 epochs)...
+
+[BCPretrain] Behavior cloning on 25600 transitions (5 epochs)...
+  [p0000] epoch 0/5: task=1.3275 param=0.0947 veh=1.1596
+  [p0000] epoch 4/5: task=1.0663 param=0.0755 veh=0.5534
+  [p0001] epoch 0/5: task=1.3271 param=0.0958 veh=1.2181
+  [p0001] epoch 4/5: task=1.0681 param=0.0764 veh=0.4622
+  [p0002] epoch 0/5: task=1.3241 param=0.0912 veh=0.6113
+  [p0002] epoch 4/5: task=1.0394 param=0.0744 veh=0.2633
+[BCPretrain] Done.
+
+[BCPretrain] Commander BC on 25600/25600 transitions (5 epochs)...
+  [p0000] epoch 0/4: cmd_bc_loss=0.0262
+  [p0000] epoch 4/4: cmd_bc_loss=0.0013
+  [p0001] epoch 0/4: cmd_bc_loss=0.0241
+  [p0001] epoch 4/4: cmd_bc_loss=0.0013
+  [p0002] epoch 0/4: cmd_bc_loss=0.0238
+  [p0002] epoch 4/4: cmd_bc_loss=0.0013
+[BCPretrain] Commander BC done.
+  BC models snapshotted for KL penalty
+
+  Collecting demo data for team 1...
+  [retry 0/3] Collecting 5 episodes...
+  [collector] 4/5 episodes...
+  [collector] 8/5 episodes...
+  [collector] Collected 6400 transitions from 5 episodes
+  [collector] Scene coverage: {'recon': 2, 'detect': 1, 'jam': 2, 'comm': 2}
+  [collector] Launch rate: 2/5 (40%)
+  [collector] Task CV: 0.159 (need >0.10 for diversity)
+  [collector] ⚠ FAIL: only 1 episodes for rarest scene (need ≥5)
+  ↻ Coverage failed, retrying... (retry 1/3)
+  [retry 1/3] Collecting 10 episodes...
+  [collector] 4/10 episodes...
+  [collector] 8/10 episodes...
+  [collector] 12/10 episodes...
+  [collector] Collected 9600 transitions from 10 episodes
+  [collector] Scene coverage: {'recon': 3, 'detect': 1, 'jam': 3, 'comm': 3}
+  [collector] Launch rate: 3/10 (30%)
+  [collector] Task CV: 0.255 (need >0.10 for diversity)
+  [collector] ⚠ FAIL: only 1 episodes for rarest scene (need ≥5)
+  ↻ Coverage failed, retrying... (retry 2/3)
+  [retry 2/3] Collecting 10 episodes...
+  [collector] 4/10 episodes...
+  [collector] 8/10 episodes...
+  [collector] 12/10 episodes...
+  [collector] Collected 9600 transitions from 10 episodes
+  [collector] Scene coverage: {'recon': 3, 'detect': 0, 'jam': 3, 'comm': 2}
+  [collector] Launch rate: 3/10 (30%)
+  [collector] Task CV: 0.182 (need >0.10 for diversity)
+  [collector] ⚠ FAIL: only 0 episodes for rarest scene (need ≥5)
+  ⚠ Coverage still insufficient after 25 episodes — proceeding anyway
+
+[CriticPretrain] Pre-training critics on 25600 transitions (10 epochs)...
+  [p0003] epoch 0/10: value_loss=178279.0404 priv_loss=98.8707
+  [p0003] epoch 9/10: value_loss=0.1123 priv_loss=16.0988
+  [p0004] epoch 0/10: value_loss=81933.5729 priv_loss=33.0803
+  [p0004] epoch 9/10: value_loss=0.0917 priv_loss=6.5295
+  [p0005] epoch 0/10: value_loss=106052.0229 priv_loss=69.7940
+  [p0005] epoch 9/10: value_loss=0.3267 priv_loss=13.0788
+[CriticPretrain] Done.
+
+[CriticPretrain] Pre-training commander critics on 25600 transitions (10 epochs)...
+  [p0003] epoch 0/9: cmd_value_loss=0.0000
+  [p0003] epoch 9/9: cmd_value_loss=0.0000
+  [p0004] epoch 0/9: cmd_value_loss=0.0003
+  [p0004] epoch 9/9: cmd_value_loss=0.0000
+  [p0005] epoch 0/9: cmd_value_loss=0.0000
+  [p0005] epoch 9/9: cmd_value_loss=0.0000
+[CriticPretrain] Commander critics done.
+  BC pretraining (reusing collected data, 5 epochs)...
+
+[BCPretrain] Behavior cloning on 25600 transitions (5 epochs)...
+  [p0003] epoch 0/5: task=1.3281 param=0.1166 veh=0.7127
+  [p0003] epoch 4/5: task=1.0625 param=0.0931 veh=0.2451
+  [p0004] epoch 0/5: task=1.3245 param=0.1119 veh=0.6656
+  [p0004] epoch 4/5: task=1.0603 param=0.0930 veh=0.2611
+  [p0005] epoch 0/5: task=1.3285 param=0.1133 veh=1.3728
+  [p0005] epoch 4/5: task=1.0715 param=0.0931 veh=0.4796
+[BCPretrain] Done.
+
+[BCPretrain] Commander BC on 25600/25600 transitions (5 epochs)...
+  [p0003] epoch 0/4: cmd_bc_loss=0.0245
+  [p0003] epoch 4/4: cmd_bc_loss=0.0013
+  [p0004] epoch 0/4: cmd_bc_loss=0.0285
+  [p0004] epoch 4/4: cmd_bc_loss=0.0013
+  [p0005] epoch 0/4: cmd_bc_loss=0.0245
+  [p0005] epoch 4/4: cmd_bc_loss=0.0013
+[BCPretrain] Commander BC done.
+  BC models snapshotted for KL penalty
+  Critic pre-training complete.
+
+============================================================
+PSRO Iteration 0/3
+============================================================
+[League] Iteration 0: Evaluating payoff matrix...
+  [payoff] p0000 vs p0003 (1/9)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 600: alive=3 red_wins=0/1 wr_sofar=0.00
+    step 700: alive=1 red_wins=0/3 wr_sofar=0.00
+win_rate=0.12 (217.4s)
+  [payoff] p0000 vs p0004 (2/9)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=3 red_wins=0/1 wr_sofar=0.00
+    step 600: alive=3 red_wins=0/1 wr_sofar=0.00
+    step 700: alive=2 red_wins=1/2 wr_sofar=0.50
+win_rate=0.38 (214.8s)
+  [payoff] p0000 vs p0005 (3/9)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 600: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 700: alive=3 red_wins=1/1 wr_sofar=1.00
+win_rate=0.62 (217.2s)
+  [payoff] p0001 vs p0003 (4/9)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 600: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 700: alive=4 red_wins=0/0 wr_sofar=0.00
+win_rate=0.50 (218.1s)
+  [payoff] p0001 vs p0004 (5/9)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 600: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 700: alive=4 red_wins=0/0 wr_sofar=0.00
+win_rate=0.50 (215.8s)
+  [payoff] p0001 vs p0005 (6/9)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 600: alive=3 red_wins=1/1 wr_sofar=1.00
+    step 700: alive=1 red_wins=2/3 wr_sofar=0.67
+win_rate=0.62 (217.2s)
+  [payoff] p0002 vs p0003 (7/9)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=3 red_wins=1/1 wr_sofar=1.00
+    step 600: alive=3 red_wins=1/1 wr_sofar=1.00
+    step 700: alive=3 red_wins=1/1 wr_sofar=1.00
+win_rate=0.62 (217.8s)
+  [payoff] p0002 vs p0004 (8/9)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 600: alive=2 red_wins=1/2 wr_sofar=0.50
+    step 700: alive=1 red_wins=2/3 wr_sofar=0.67
+win_rate=0.62 (215.9s)
+  [payoff] p0002 vs p0005 (9/9)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=3 red_wins=1/1 wr_sofar=1.00
+    step 600: alive=2 red_wins=2/2 wr_sofar=1.00
+    step 700: alive=1 red_wins=3/3 wr_sofar=1.00
+win_rate=0.88 (213.6s)
+  Team 0 sigma=[0. 0. 1.] NashConv=0.0000 H_task=-0.000 effK=1.00
+  Team 1 sigma=[0. 1. 0.] NashConv=0.0833 H_task=-0.000 effK=1.00
+  Training main (team 0, p0000) against p0004...
+    [missile] step=200 in_flight=8 pos_range=[5509, 6258]m
+    [missile] step=400 in_flight=8 pos_range=[4955, 5636]m
+    [missile] step=600 in_flight=8 pos_range=[4564, 5724]m
+    ep 1/5  steps=800 timeout  wr=0.00  avg_r=229.8743
+    [missile] step=200 in_flight=8 pos_range=[6128, 6595]m
+    [missile] step=400 in_flight=8 pos_range=[5124, 5972]m
+    [missile] step=600 in_flight=8 pos_range=[4744, 6372]m
+    ep 2/5  steps=800 timeout  wr=0.00  avg_r=215.1981
+    [missile] step=200 in_flight=8 pos_range=[5263, 5846]m
+    [missile] step=400 in_flight=8 pos_range=[3984, 4752]m
+    [missile] step=600 in_flight=8 pos_range=[3488, 4842]m
+    ep 3/5  steps=800 timeout  wr=0.00  avg_r=209.6450
+    [missile] step=200 in_flight=8 pos_range=[5169, 8782]m
+    [missile] step=400 in_flight=8 pos_range=[4300, 4833]m
+    [missile] step=600 in_flight=8 pos_range=[3578, 4757]m
+    ep 4/5  steps=800 timeout  wr=0.00  avg_r=211.8149
+    [missile] step=200 in_flight=8 pos_range=[5803, 6469]m
+    [missile] step=400 in_flight=8 pos_range=[4250, 5268]m
+    [missile] step=600 in_flight=8 pos_range=[3539, 5386]m
+    ep 5/5  steps=800 timeout  wr=0.00  avg_r=211.9790
+    ── ep 5/5  wr=0.00  avg_r=211.9790
+  Training main_exploiter (team 0, p0001) against p0003...
+    [missile] step=200 in_flight=8 pos_range=[6519, 6842]m
+    [missile] step=400 in_flight=8 pos_range=[6085, 6901]m
+    [missile] step=600 in_flight=8 pos_range=[5953, 6918]m
+    ep 1/5  steps=800 timeout  wr=0.00  avg_r=230.6773
+    [missile] step=200 in_flight=8 pos_range=[5488, 6094]m
+    [missile] step=400 in_flight=8 pos_range=[3116, 3637]m
+    [missile] step=600 in_flight=8 pos_range=[2260, 3490]m
+    ep 2/5  steps=800 timeout  wr=0.00  avg_r=222.1974
+    [missile] step=200 in_flight=8 pos_range=[5204, 5626]m
+    [missile] step=400 in_flight=8 pos_range=[4566, 5165]m
+    [missile] step=600 in_flight=8 pos_range=[4216, 5217]m
+    ep 3/5  steps=800 timeout  wr=0.00  avg_r=222.0526
+    [missile] step=200 in_flight=8 pos_range=[5708, 6178]m
+    [missile] step=400 in_flight=8 pos_range=[4150, 5227]m
+    [missile] step=600 in_flight=8 pos_range=[3715, 5054]m
+    ep 4/5  steps=800 timeout  wr=0.00  avg_r=220.7727
+    [missile] step=200 in_flight=8 pos_range=[5855, 6315]m
+    [missile] step=400 in_flight=8 pos_range=[5066, 5999]m
+    [missile] step=600 in_flight=8 pos_range=[4877, 6082]m
+    ep 5/5  steps=800 timeout  wr=0.00  avg_r=222.3139
+    ── ep 5/5  wr=0.00  avg_r=222.3139
+  Training league_exploiter (team 0, p0002) against p0005...
+    [missile] step=200 in_flight=8 pos_range=[5483, 5780]m
+    [missile] step=400 in_flight=8 pos_range=[5060, 5667]m
+    [missile] step=600 in_flight=8 pos_range=[4860, 5633]m
+    ep 1/5  steps=800 timeout  wr=0.00  avg_r=228.4966
+    [missile] step=200 in_flight=8 pos_range=[5577, 6611]m
+    [missile] step=400 in_flight=8 pos_range=[4008, 4909]m
+    [missile] step=600 in_flight=8 pos_range=[3781, 5063]m
+    ep 2/5  steps=800 timeout  wr=0.00  avg_r=234.9596
+    [missile] step=200 in_flight=8 pos_range=[6810, 7619]m
+    [missile] step=400 in_flight=8 pos_range=[5901, 7123]m
+    [missile] step=600 in_flight=8 pos_range=[5680, 6758]m
+    ep 3/5  steps=800 timeout  wr=0.00  avg_r=231.6792
+    [missile] step=200 in_flight=8 pos_range=[6376, 6818]m
+    [missile] step=400 in_flight=8 pos_range=[5141, 6882]m
+    [missile] step=600 in_flight=8 pos_range=[4446, 6413]m
+    ep 4/5  steps=800 timeout  wr=0.00  avg_r=223.8519
+    [missile] step=200 in_flight=8 pos_range=[5023, 5964]m
+    [missile] step=400 in_flight=8 pos_range=[3161, 3676]m
+    [missile] step=600 in_flight=8 pos_range=[2685, 3594]m
+    ep 5/5  steps=800 timeout  wr=0.00  avg_r=229.3285
+    ── ep 5/5  wr=0.00  avg_r=229.3285
+  Training main (team 1, p0003) against p0000...
+    [missile] step=200 in_flight=8 pos_range=[5781, 6206]m
+    [missile] step=400 in_flight=8 pos_range=[4245, 5096]m
+    [missile] step=600 in_flight=8 pos_range=[3576, 5193]m
+    ep 1/5  steps=800 timeout  wr=0.00  avg_r=252.1790
+    [missile] step=200 in_flight=8 pos_range=[5614, 7201]m
+    [missile] step=400 in_flight=8 pos_range=[4745, 5690]m
+    [missile] step=600 in_flight=8 pos_range=[4775, 5462]m
+    ep 2/5  steps=800 timeout  wr=0.00  avg_r=262.4654
+    [missile] step=200 in_flight=8 pos_range=[5404, 6045]m
+    [missile] step=400 in_flight=8 pos_range=[4844, 5493]m
+    [missile] step=600 in_flight=8 pos_range=[4196, 5616]m
+    ep 3/5  steps=800 timeout  wr=0.00  avg_r=262.5599
+    [missile] step=200 in_flight=8 pos_range=[5306, 5919]m
+    [missile] step=400 in_flight=8 pos_range=[3978, 5005]m
+    [missile] step=600 in_flight=8 pos_range=[3688, 4861]m
+    ep 4/5  steps=800 timeout  wr=0.00  avg_r=262.8299
+    [missile] step=200 in_flight=8 pos_range=[5309, 5876]m
+    [missile] step=400 in_flight=8 pos_range=[3747, 4513]m
+    [missile] step=600 in_flight=8 pos_range=[3194, 4513]m
+    ep 5/5  steps=800 timeout  wr=0.00  avg_r=262.0991
+    ── ep 5/5  wr=0.00  avg_r=262.0991
+  Training main_exploiter (team 1, p0004) against p0006...
+    [missile] step=200 in_flight=8 pos_range=[5233, 6550]m
+    [missile] step=400 in_flight=8 pos_range=[3960, 4507]m
+    [missile] step=600 in_flight=8 pos_range=[3421, 4170]m
+    ep 1/5  steps=800 timeout  wr=0.00  avg_r=263.9381
+    [missile] step=200 in_flight=8 pos_range=[5791, 8002]m
+    [missile] step=400 in_flight=8 pos_range=[4711, 5474]m
+    [missile] step=600 in_flight=8 pos_range=[4525, 6114]m
+    ep 2/5  steps=800 timeout  wr=0.00  avg_r=249.6777
+    [missile] step=200 in_flight=8 pos_range=[6403, 6935]m
+    [missile] step=400 in_flight=8 pos_range=[5880, 6883]m
+    [missile] step=600 in_flight=8 pos_range=[5340, 6888]m
+    ep 3/5  steps=800 timeout  wr=0.00  avg_r=247.5029
+    [missile] step=200 in_flight=8 pos_range=[5204, 6629]m
+    [missile] step=400 in_flight=8 pos_range=[4105, 4795]m
+    [missile] step=600 in_flight=8 pos_range=[3819, 4713]m
+    ep 4/5  steps=800 timeout  wr=0.00  avg_r=245.1864
+    [missile] step=200 in_flight=8 pos_range=[5143, 5536]m
+    [missile] step=400 in_flight=8 pos_range=[3549, 5048]m
+    [missile] step=600 in_flight=8 pos_range=[3362, 5087]m
+    ep 5/5  steps=800 timeout  wr=0.00  avg_r=248.6457
+    ── ep 5/5  wr=0.00  avg_r=248.6457
+  Training league_exploiter (team 1, p0005) against p0000...
+    [missile] step=200 in_flight=8 pos_range=[5178, 5812]m
+    [missile] step=400 in_flight=8 pos_range=[4135, 4766]m
+    [missile] step=600 in_flight=8 pos_range=[3907, 4776]m
+    ep 1/5  steps=800 timeout  wr=0.00  avg_r=263.8785
+    [missile] step=200 in_flight=8 pos_range=[5156, 6482]m
+    [missile] step=400 in_flight=8 pos_range=[2289, 3125]m
+    [missile] step=600 in_flight=8 pos_range=[1944, 3229]m
+    ep 2/5  steps=800 timeout  wr=0.00  avg_r=249.7283
+    [missile] step=200 in_flight=8 pos_range=[5192, 5651]m
+    [missile] step=400 in_flight=8 pos_range=[4489, 4934]m
+    [missile] step=600 in_flight=8 pos_range=[3719, 5184]m
+    ep 3/5  steps=800 timeout  wr=0.00  avg_r=247.3784
+    [missile] step=200 in_flight=8 pos_range=[5756, 6838]m
+    [missile] step=400 in_flight=8 pos_range=[3625, 4266]m
+    [missile] step=600 in_flight=8 pos_range=[2668, 4654]m
+    ep 4/5  steps=800 timeout  wr=0.00  avg_r=243.4170
+    [missile] step=200 in_flight=8 pos_range=[5348, 6182]m
+    [missile] step=400 in_flight=8 pos_range=[3885, 4836]m
+    [missile] step=600 in_flight=8 pos_range=[3000, 4686]m
+    ep 5/5  steps=800 timeout  wr=0.00  avg_r=246.5769
+    ── ep 5/5  wr=0.00  avg_r=246.5769
+[League] Iteration 0 complete in 12080.5s
+[League] alpha=0.000 (schedule=linear) beta_kl=0.100
+  Checkpoint saved at iteration 0
+
+============================================================
+PSRO Iteration 1/3
+============================================================
+[League] Iteration 1: Evaluating payoff matrix...
+  [payoff] p0000 vs p0009 (4/36)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 600: alive=2 red_wins=1/2 wr_sofar=0.50
+    step 700: alive=1 red_wins=1/3 wr_sofar=0.33
+win_rate=0.38 (215.7s)
+  [payoff] p0000 vs p0010 (5/36)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 600: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 700: alive=3 red_wins=1/1 wr_sofar=1.00
+win_rate=0.62 (213.5s)
+  [payoff] p0000 vs p0011 (6/36)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=3 red_wins=1/1 wr_sofar=1.00
+    step 600: alive=2 red_wins=1/2 wr_sofar=0.50
+    step 700: alive=2 red_wins=1/2 wr_sofar=0.50
+win_rate=0.50 (217.5s)
+  [payoff] p0001 vs p0009 (10/36)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 600: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 700: alive=3 red_wins=0/1 wr_sofar=0.00
+win_rate=0.38 (215.6s)
+  [payoff] p0001 vs p0010 (11/36)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 600: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 700: alive=3 red_wins=0/1 wr_sofar=0.00
+win_rate=0.38 (215.2s)
+  [payoff] p0001 vs p0011 (12/36)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 600: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 700: alive=3 red_wins=0/1 wr_sofar=0.00
+win_rate=0.38 (212.8s)
+  [payoff] p0002 vs p0009 (16/36)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=3 red_wins=0/1 wr_sofar=0.00
+    step 600: alive=3 red_wins=0/1 wr_sofar=0.00
+    step 700: alive=2 red_wins=0/2 wr_sofar=0.00
+win_rate=0.25 (218.4s)
+  [payoff] p0002 vs p0010 (17/36)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 600: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 700: alive=4 red_wins=0/0 wr_sofar=0.00
+win_rate=0.50 (215.8s)
+  [payoff] p0002 vs p0011 (18/36)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=3 red_wins=1/1 wr_sofar=1.00
+    step 600: alive=2 red_wins=1/2 wr_sofar=0.50
+    step 700: alive=2 red_wins=1/2 wr_sofar=0.50
+win_rate=0.50 (212.9s)
+  [payoff] p0006 vs p0003 (19/36)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=3 red_wins=0/1 wr_sofar=0.00
+    step 600: alive=3 red_wins=0/1 wr_sofar=0.00
+    step 700: alive=2 red_wins=1/2 wr_sofar=0.50
+win_rate=0.50 (218.6s)
+  [payoff] p0006 vs p0004 (20/36)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 600: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 700: alive=4 red_wins=0/0 wr_sofar=0.00
+win_rate=0.50 (213.2s)
+  [payoff] p0006 vs p0005 (21/36)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 600: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 700: alive=3 red_wins=0/1 wr_sofar=0.00
+win_rate=0.38 (216.1s)
+  [payoff] p0006 vs p0009 (22/36)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=2 red_wins=0/2 wr_sofar=0.00
+    step 600: alive=2 red_wins=0/2 wr_sofar=0.00
+    step 700: alive=2 red_wins=0/2 wr_sofar=0.00
+win_rate=0.25 (216.3s)
+  [payoff] p0006 vs p0010 (23/36)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 600: alive=3 red_wins=1/1 wr_sofar=1.00
+    step 700: alive=2 red_wins=1/2 wr_sofar=0.50
+win_rate=0.50 (217.2s)
+  [payoff] p0006 vs p0011 (24/36)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 600: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 700: alive=2 red_wins=1/2 wr_sofar=0.50
+win_rate=0.50 (217.8s)
+  [payoff] p0007 vs p0003 (25/36)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 600: alive=3 red_wins=1/1 wr_sofar=1.00
+    step 700: alive=2 red_wins=2/2 wr_sofar=1.00
+win_rate=0.75 (216.9s)
+  [payoff] p0007 vs p0004 (26/36)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 600: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 700: alive=2 red_wins=2/2 wr_sofar=1.00
+win_rate=0.75 (218.2s)
+  [payoff] p0007 vs p0005 (27/36)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 600: alive=3 red_wins=1/1 wr_sofar=1.00
+    step 700: alive=2 red_wins=2/2 wr_sofar=1.00
+win_rate=0.75 (216.9s)
+  [payoff] p0007 vs p0009 (28/36)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 600: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 700: alive=3 red_wins=0/1 wr_sofar=0.00
+win_rate=0.38 (214.8s)
+  [payoff] p0007 vs p0010 (29/36)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=3 red_wins=0/1 wr_sofar=0.00
+    step 600: alive=2 red_wins=0/2 wr_sofar=0.00
+win_rate=0.25 (179.6s)
+  [payoff] p0007 vs p0011 (30/36)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 600: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 700: alive=3 red_wins=1/1 wr_sofar=1.00
+win_rate=0.62 (215.6s)
+  [payoff] p0008 vs p0003 (31/36)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 600: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 700: alive=2 red_wins=1/2 wr_sofar=0.50
+win_rate=0.50 (216.9s)
+  [payoff] p0008 vs p0004 (32/36)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 600: alive=3 red_wins=0/1 wr_sofar=0.00
+    step 700: alive=2 red_wins=0/2 wr_sofar=0.00
+win_rate=0.25 (216.1s)
+  [payoff] p0008 vs p0005 (33/36)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=3 red_wins=1/1 wr_sofar=1.00
+    step 600: alive=1 red_wins=2/3 wr_sofar=0.67
+    step 700: alive=1 red_wins=2/3 wr_sofar=0.67
+win_rate=0.62 (217.2s)
+  [payoff] p0008 vs p0009 (34/36)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 600: alive=3 red_wins=1/1 wr_sofar=1.00
+    step 700: alive=3 red_wins=1/1 wr_sofar=1.00
+win_rate=0.62 (216.6s)
+  [payoff] p0008 vs p0010 (35/36)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 600: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 700: alive=4 red_wins=0/0 wr_sofar=0.00
+win_rate=0.50 (217.7s)
+  [payoff] p0008 vs p0011 (36/36)...     step 100: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 500: alive=4 red_wins=0/0 wr_sofar=0.00
+    step 600: alive=3 red_wins=1/1 wr_sofar=1.00
+    step 700: alive=2 red_wins=2/2 wr_sofar=1.00
+win_rate=0.75 (216.9s)
+  Team 0 sigma=[0.333 0.    0.    0.    0.333 0.333] NashConv=0.0625 H_task=-0.000 effK=3.00
+  Team 1 sigma=[0.    0.333 0.    0.333 0.333 0.   ] NashConv=0.0694 H_task=-0.000 effK=3.00
+  Training main (team 0, p0000) against p0009...
+    [missile] step=200 in_flight=8 pos_range=[5178, 6324]m
+    [missile] step=400 in_flight=8 pos_range=[4002, 5144]m
+    [missile] step=600 in_flight=8 pos_range=[3656, 5231]m
+    ep 1/5  steps=800 timeout  wr=0.00  avg_r=206.0006
+    [missile] step=200 in_flight=8 pos_range=[6189, 6351]m
+    [missile] step=400 in_flight=8 pos_range=[5776, 6652]m
+    [missile] step=600 in_flight=8 pos_range=[5683, 6580]m
+    ep 2/5  steps=800 timeout  wr=0.00  avg_r=195.9429
+    [missile] step=200 in_flight=8 pos_range=[6298, 8921]m
+    [missile] step=400 in_flight=8 pos_range=[5412, 6811]m
+    [missile] step=600 in_flight=8 pos_range=[5369, 6966]m
+    ep 3/5  steps=800 timeout  wr=0.00  avg_r=182.5810
+    [missile] step=200 in_flight=8 pos_range=[5624, 6499]m
+    [missile] step=400 in_flight=8 pos_range=[4479, 5599]m
+    [missile] step=600 in_flight=8 pos_range=[4116, 5645]m
+    ep 4/5  steps=800 timeout  wr=0.00  avg_r=182.8960
+    [missile] step=200 in_flight=8 pos_range=[5033, 7078]m
+    [missile] step=400 in_flight=8 pos_range=[3811, 4256]m
+    [missile] step=600 in_flight=8 pos_range=[3207, 4213]m
+    ep 5/5  steps=800 timeout  wr=0.00  avg_r=186.9487
+    ── ep 5/5  wr=0.00  avg_r=186.9487
+  Training main_exploiter (team 0, p0001) against p0009...
+    [missile] step=200 in_flight=8 pos_range=[5935, 6467]m
+    [missile] step=400 in_flight=8 pos_range=[3966, 5065]m
+    [missile] step=600 in_flight=8 pos_range=[3671, 5163]m
+    ep 1/5  steps=800 timeout  wr=0.00  avg_r=182.9793
+    [missile] step=200 in_flight=8 pos_range=[5077, 5814]m
+    [missile] step=400 in_flight=8 pos_range=[2904, 3438]m
+    [missile] step=600 in_flight=8 pos_range=[2506, 3455]m
+    ep 2/5  steps=800 timeout  wr=0.00  avg_r=194.6477
+    [missile] step=200 in_flight=8 pos_range=[5209, 5623]m
+    [missile] step=400 in_flight=8 pos_range=[4054, 5162]m
+    [missile] step=600 in_flight=8 pos_range=[3822, 5185]m
+    ep 3/5  steps=800 timeout  wr=0.00  avg_r=205.9427
+    [missile] step=200 in_flight=8 pos_range=[5618, 5935]m
+    [missile] step=400 in_flight=8 pos_range=[3126, 3809]m
+    [missile] step=600 in_flight=8 pos_range=[2725, 4543]m
+    ep 4/5  steps=800 timeout  wr=0.00  avg_r=203.9821
+    [missile] step=200 in_flight=8 pos_range=[5422, 5862]m
+    [missile] step=400 in_flight=8 pos_range=[5115, 5906]m
+    [missile] step=600 in_flight=8 pos_range=[3873, 5804]m
+    ep 5/5  steps=800 timeout  wr=0.00  avg_r=205.7728
+    ── ep 5/5  wr=0.00  avg_r=205.7728
+  Training league_exploiter (team 0, p0002) against p0003...
+    [missile] step=200 in_flight=8 pos_range=[5109, 6451]m
+    [missile] step=400 in_flight=8 pos_range=[4294, 4956]m
+    [missile] step=600 in_flight=8 pos_range=[3973, 4828]m
+    ep 1/5  steps=800 timeout  wr=0.00  avg_r=203.5093
+    [missile] step=200 in_flight=8 pos_range=[5359, 5982]m
+    [missile] step=400 in_flight=8 pos_range=[3597, 4511]m
+    [missile] step=600 in_flight=8 pos_range=[3026, 4487]m
+    ep 2/5  steps=800 timeout  wr=0.00  avg_r=204.8095
+    [missile] step=200 in_flight=8 pos_range=[5344, 6619]m
+    [missile] step=400 in_flight=8 pos_range=[4180, 5246]m
+    [missile] step=600 in_flight=8 pos_range=[3705, 5318]m
+    ep 3/5  steps=800 timeout  wr=0.00  avg_r=202.1813
+    [missile] step=200 in_flight=8 pos_range=[5033, 5666]m
+    [missile] step=400 in_flight=8 pos_range=[1938, 2628]m
+    [missile] step=600 in_flight=8 pos_range=[1411, 2591]m
+    ep 4/5  steps=800 timeout  wr=0.00  avg_r=197.2416
+    [missile] step=200 in_flight=8 pos_range=[5217, 5669]m
+    [missile] step=400 in_flight=8 pos_range=[2062, 2947]m
+    [missile] step=600 in_flight=8 pos_range=[1479, 3052]m
+    ep 5/5  steps=800 timeout  wr=0.00  avg_r=194.6222
+    ── ep 5/5  wr=0.00  avg_r=194.6222
+  Training main (team 1, p0003) against p0013...
+    [missile] step=200 in_flight=8 pos_range=[4985, 5476]m
+    [missile] step=400 in_flight=8 pos_range=[2785, 3993]m
+    [missile] step=600 in_flight=8 pos_range=[3155, 4079]m
+    ep 1/5  steps=800 timeout  wr=0.00  avg_r=252.9473
+    [missile] step=200 in_flight=8 pos_range=[5287, 5871]m
+    [missile] step=400 in_flight=8 pos_range=[4739, 5376]m
+    [missile] step=600 in_flight=8 pos_range=[4808, 5300]m
+    ep 2/5  steps=800 timeout  wr=0.00  avg_r=256.6309
+    [missile] step=200 in_flight=8 pos_range=[5067, 5467]m
+    [missile] step=400 in_flight=8 pos_range=[4108, 4730]m
+    [missile] step=600 in_flight=8 pos_range=[3759, 4469]m
+    ep 3/5  steps=800 timeout  wr=0.00  avg_r=257.9628
+    [missile] step=200 in_flight=8 pos_range=[5814, 6142]m
+    [missile] step=400 in_flight=8 pos_range=[4939, 6087]m
+    [missile] step=600 in_flight=8 pos_range=[4765, 6167]m
+    ep 4/5  steps=800 timeout  wr=0.00  avg_r=259.5451
+    [missile] step=200 in_flight=8 pos_range=[5382, 5670]m
+    [missile] step=400 in_flight=8 pos_range=[3365, 4529]m
+    [missile] step=600 in_flight=8 pos_range=[3014, 4802]m
+    ep 5/5  steps=800 timeout  wr=0.00  avg_r=256.0155
+    ── ep 5/5  wr=0.00  avg_r=256.0155
+  Training main_exploiter (team 1, p0004) against p0012...
+    [missile] step=200 in_flight=8 pos_range=[6093, 7539]m
+    [missile] step=400 in_flight=8 pos_range=[5777, 6695]m
+    [missile] step=600 in_flight=8 pos_range=[5275, 6795]m
+    ep 1/5  steps=800 timeout  wr=0.00  avg_r=262.4266
+    [missile] step=200 in_flight=8 pos_range=[5663, 7378]m
+    [missile] step=400 in_flight=8 pos_range=[4344, 5315]m
+    [missile] step=600 in_flight=8 pos_range=[3790, 5403]m
+    ep 2/5  steps=800 timeout  wr=0.00  avg_r=257.4593
+    [missile] step=200 in_flight=8 pos_range=[5640, 7822]m
+    [missile] step=400 in_flight=8 pos_range=[5477, 5690]m
+    [missile] step=600 in_flight=8 pos_range=[5045, 5759]m
+    ep 3/5  steps=800 timeout  wr=0.00  avg_r=257.8893
+    [missile] step=200 in_flight=8 pos_range=[5071, 5953]m
+    [missile] step=400 in_flight=8 pos_range=[3885, 4842]m
+    [missile] step=600 in_flight=8 pos_range=[3595, 4834]m
+    ep 4/5  steps=800 timeout  wr=0.00  avg_r=253.4560
+    [missile] step=200 in_flight=8 pos_range=[5136, 6608]m
+    [missile] step=400 in_flight=8 pos_range=[4245, 4571]m
+    [missile] step=600 in_flight=8 pos_range=[3182, 4563]m

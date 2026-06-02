@@ -1,6 +1,6 @@
 """Test suite for cruise missile combat in MFAR environment.
 
-Uses small array (5x5=25 elements, 8 pulses) to fit on 6GB GPU.
+Standard 25×25 array configuration.
 """
 
 import sys
@@ -133,14 +133,14 @@ def test_bpsk_batch_roundtrip():
 def test_env_step_with_commander():
     """Test 5: full env step with commander actions launches missile.
 
-    Uses small config: 5x5=25 elements, 8 pulses to fit GPU.
+    Uses 25×25=625 element array configuration.
     """
     from radar_sim.gpu.vec_mfar_env import MFARVecEnv
 
     N_in, N_out = 8, 4  # small latent dims for test
     env = MFARVecEnv(
-        num_envs=1, n_radars=4, rows=5, cols=5,
-        pulses_per_cpi=8, bandwidth=10e6, prf=10e3,
+        num_envs=1, n_radars=4, rows=25, cols=25,
+        pulses_per_cpi=8, fft_size=64,
         num_input_length=N_in, num_output_length=N_out,
         device="cuda",
     )
@@ -190,8 +190,8 @@ def test_win_condition():
     from radar_sim.gpu.vec_mfar_env import MFARVecEnv
 
     env = MFARVecEnv(
-        num_envs=1, n_radars=4, rows=5, cols=5,
-        pulses_per_cpi=8, bandwidth=10e6, prf=10e3,
+        num_envs=1, n_radars=4, rows=25, cols=25,
+        pulses_per_cpi=8, fft_size=64,
         device="cuda",
     )
     env.reset()
@@ -221,8 +221,8 @@ def test_backward_compat():
     from radar_sim.gpu.vec_mfar_env import MFARVecEnv
 
     env = MFARVecEnv(
-        num_envs=1, n_radars=4, rows=5, cols=5,
-        pulses_per_cpi=8, bandwidth=10e6, prf=10e3,
+        num_envs=1, n_radars=4, rows=25, cols=25,
+        pulses_per_cpi=8, fft_size=64,
         device="cuda",
     )
     env.reset()
@@ -247,8 +247,8 @@ def test_state_dim():
 
     N_out = 8
     env = MFARVecEnv(
-        num_envs=1, n_radars=4, rows=5, cols=5,
-        pulses_per_cpi=8, bandwidth=10e6, prf=10e3,
+        num_envs=1, n_radars=4, rows=25, cols=25,
+        pulses_per_cpi=8, fft_size=64,
         num_output_length=N_out,
         device="cuda",
     )

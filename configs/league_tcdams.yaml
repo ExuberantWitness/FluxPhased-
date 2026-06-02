@@ -52,13 +52,18 @@ ppo:
     buffer_size: 128
 
 curriculum:
-  # Tuned for the requested num_envs=1, 25x25 budget. Reduce episode counts
-  # vs the default 5x5 config so a full A->D pass fits the 8-40h envelope.
+  # Tuned for num_envs=1, 25×25 budget.
+  # NOTE: PhasedTrainer ignores these — it uses training.warmup_episodes and
+  # training.psro_iterations instead (pure PSRO, no hardcoded phases).
   phase_a_episodes: 500
   phase_b_episodes: 1000
   phase_c_iterations: 10
   phase_c_episodes_per_iter: 200
   phase_d_episodes: 1000
+
+training:
+  warmup_episodes: 0
+  psro_iterations: 10
 
 reward_shaping:
   detect_snr_weight: 0.1

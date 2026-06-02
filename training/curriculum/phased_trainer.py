@@ -213,7 +213,7 @@ class PhasedTrainer:
             # ── Chunked collection + incremental pretraining ──
             # 50 episodes × 2000 steps × 700KB/transition ≈ 280 GB on CPU.
             # Collect in chunks of 10, train, free, repeat to stay within RAM.
-            chunk_size = 10
+            chunk_size = 5   # 5 episodes ≈ 14 GB CPU — safe for 91 GB system
             total_needed = self.critic_pretrain_episodes
             total_episodes = 0
             coverage_pass = False

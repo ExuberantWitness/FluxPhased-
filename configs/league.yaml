@@ -46,14 +46,11 @@ reward_shaping:
   snr_threshold_db: 10.0
 
 env:
-  # Use small config for training (5x5), full config for evaluation
-  rows: 5
-  cols: 5
+  rows: 25
+  cols: 25
   num_envs: 4
   n_radars: 4
   pulses_per_cpi: 4
   fft_size: 64
   device: "cuda"
-  # 50 kW peak — compensates for 5×5 small array (25 elements vs 625 for 25×25)
-  # Produces ~15-25 dB SNR at 5-10 km after CPI with matched filter processing gain
-  tx_power_w: 50000
+  tx_power_w: 1.0

@@ -1,0 +1,25 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 102.0 GB
+FluxPhased League Training
+Config: configs/league_25x25_12env.yaml
+Device: cuda
+Environment: E=8, R=4, N=625, P=4, bins=64
+State dim: 163783, Action dim: 13753
+============================================================
+Phase A: Single-Task Pre-Training
+============================================================
+Warp 1.10.1 initialized:
+   CUDA Toolkit 12.8, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Workstation Edition" (95 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/ubuntu/.cache/warp/1.10.1
+
+  === Pre-training team 0 ===
+
+  Pre-training task: recon (team 0)
+Module radar_sim.gpu.vec_array 0e899e2 load on device 'cuda:0' took 11.21 ms  (cached)
+Module radar_sim.gpu.vec_channel 6a2afee load on device 'cuda:0' took 1.47 ms  (cached)
+    Episode 0: {'commander': {}, 'radar': {}}

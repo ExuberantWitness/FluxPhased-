@@ -30,7 +30,7 @@ if device == "cuda":
 def make_env(**kwargs):
     from radar_sim.gpu.vec_mfar_env import MFARVecEnv
     defaults = dict(
-        num_envs=1, n_radars=2, rows=5, cols=5,
+        num_envs=1, n_radars=2, rows=25, cols=25,
         pulses_per_cpi=4, bandwidth=10e6, prf=10e3,
         tx_power_w=50000.0,
         device=device,

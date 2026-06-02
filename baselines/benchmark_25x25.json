@@ -2,8 +2,8 @@
   "config": {
     "num_envs": 2,
     "n_radars": 2,
-    "rows": 5,
-    "cols": 5,
+    "rows": 25,
+    "cols": 25,
     "pulses_per_cpi": 4,
     "n_targets": 1,
     "fft_size": 64,

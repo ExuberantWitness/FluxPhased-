@@ -12,11 +12,11 @@ import torch
 import numpy as np
 
 
-def make_small_env(**overrides):
-    """Create a small MFAR env for testing."""
+def make_test_env(**overrides):
+    """Create an MFAR env for testing (25×25)."""
     from radar_sim.gpu.vec_mfar_env import MFARVecEnv
     defaults = dict(
-        num_envs=1, n_radars=4, rows=5, cols=5,
+        num_envs=1, n_radars=4, rows=25, cols=25,
         pulses_per_cpi=4, bandwidth=10e6, prf=10e3,
         num_input_length=4, num_output_length=4,
         device="cuda",
@@ -47,7 +47,7 @@ print("=" * 60)
 
 
 def test_random_policy():
-    env = make_small_env()
+    env = make_test_env()
     env.reset()
     policy = make_random_policy(env, seed=42)
 
@@ -83,7 +83,7 @@ print("=" * 60)
 
 
 def test_ground_truth():
-    env = make_small_env()
+    env = make_test_env()
     env.reset()
     result = env.step()
 
@@ -117,7 +117,7 @@ print("=" * 60)
 
 
 def test_episode_collector():
-    env = make_small_env()
+    env = make_test_env()
     policy = make_random_policy(env, seed=42)
 
     from radar_sim.evaluation.collectors.episode_collector import EpisodeCollector
@@ -158,7 +158,7 @@ print("=" * 60)
 def test_perception_metrics():
     from radar_sim.evaluation.metrics.perception import PerceptionMetrics
 
-    env = make_small_env()
+    env = make_test_env()
     env.reset()
     pm = PerceptionMetrics(env)
 
@@ -207,7 +207,7 @@ def test_combat_metrics():
     from radar_sim.evaluation.collectors.episode_collector import EpisodeCollector
     from radar_sim.evaluation.metrics.combat import CombatMetrics
 
-    env = make_small_env()
+    env = make_test_env()
 
     # Episode with missile launch
     cmd_dim = env.battlefield.commander_action_dim
@@ -250,7 +250,7 @@ def test_game_metrics():
     from radar_sim.evaluation.collectors.episode_collector import EpisodeCollector
     from radar_sim.evaluation.metrics.game import GameMetrics
 
-    env = make_small_env()
+    env = make_test_env()
     collector = EpisodeCollector(env, max_steps=3)
 
     episodes = collector.run_episodes(n_episodes=5, max_steps=3)
@@ -404,7 +404,7 @@ def test_accelerated_eval():
         return 0.5
 
     evaluator = AcceleratedEvaluator(
-        env_factory=make_small_env,
+        env_factory=make_test_env,
         metric_fn=const_metric,
         confidence=0.95,
         half_width=0.05,
@@ -468,7 +468,7 @@ def test_pz_integration():
 
     env = FluxPhasedPZEnv(
         max_steps=5, device="cuda",
-        rows=5, cols=5, pulses_per_cpi=4,
+        rows=25, cols=25, pulses_per_cpi=4,
         num_input_length=4, num_output_length=4,
     )
 

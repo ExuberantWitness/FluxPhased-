@@ -1,0 +1,34 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 102.0 GB
+FluxPhased League Training
+Config: configs/league_25x25_12env.yaml
+Device: cuda
+Environment: E=8, R=4, N=625, P=4, bins=64
+State dim: 163783, Action dim: 13753
+wandb: [wandb.login()] Using explicit session credentials for https://api.wandb.ai.
+wandb: Appending key for api.wandb.ai to your netrc file: /home/ubuntu/.netrc
+wandb: Currently logged in as: minghaozhang79 to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: setting up run oebm6glw
+wandb: Tracking run with wandb version 0.27.0
+wandb: Run data is saved locally in /home/ubuntu/code/wandb/run-20260529_004548-oebm6glw
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run league_625elem_8env_20260529_004546
+wandb: ⭐️ View project at https://wandb.ai/minghaozhang79/fluxphased
+wandb: 🚀 View run at https://wandb.ai/minghaozhang79/fluxphased/runs/oebm6glw
+[wandb] Initialized run: league_625elem_8env_20260529_004546
+Warp 1.10.1 initialized:
+   CUDA Toolkit 12.8, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Workstation Edition" (95 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/ubuntu/.cache/warp/1.10.1
+
+============================================================
+PSRO Iteration 0/30
+============================================================
+[League] Iteration 0: Evaluating payoff matrix...
+  [payoff] p0000 vs p0003 (1/9)... Module radar_sim.gpu.vec_array 0e899e2 load on device 'cuda:0' took 11.05 ms  (cached)
+Module radar_sim.gpu.vec_channel 6a2afee load on device 'cuda:0' took 1.57 ms  (cached)
+Terminated

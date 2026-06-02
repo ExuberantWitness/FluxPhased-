@@ -29,8 +29,7 @@ class FluxPhasedPZEnv(ParallelEnv):
             commander observations. If None, commander obs latents are zero-filled.
         max_steps: Episode truncation limit.
         device: "cuda" or "cpu".
-        **mfar_kwargs: Passed to MFARVecEnv. For testing, use small arrays
-            (e.g. rows=2, cols=2, pulses_per_cpi=2).
+        **mfar_kwargs: Passed to MFARVecEnv (25×25 array by default).
     """
 
     metadata = {"name": "FluxPhased-v0", "render_modes": []}

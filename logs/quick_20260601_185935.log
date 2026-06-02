@@ -1,0 +1,56 @@
+wandb: [wandb.login()] Using explicit session credentials for https://api.wandb.ai.
+wandb: Appending key for api.wandb.ai to your netrc file: /home/ubuntu/.netrc
+wandb: Currently logged in as: minghaozhang79 to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: Tracking run with wandb version 0.27.0
+wandb: Run data is saved locally in /home/ubuntu/code/wandb/run-20260601_185939-h4cgq1vw
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run league_625elem_4env_20260601_185936
+wandb: ⭐️ View project at https://wandb.ai/minghaozhang79/fluxphased
+wandb: 🚀 View run at https://wandb.ai/minghaozhang79/fluxphased/runs/h4cgq1vw
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 102.0 GB
+FluxPhased League Training
+Config: configs/league_quick_test.yaml
+Device: cuda
+Environment: E=4, R=4, N=625, P=4, bins=64
+State dim: 163783, Action dim: 13753
+[wandb] Initialized run: league_625elem_4env_20260601_185936
+Warp 1.10.1 initialized:
+   CUDA Toolkit 12.8, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Workstation Edition" (95 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/ubuntu/.cache/warp/1.10.1
+============================================================
+Critic Pre-training: 5 demo episodes
+============================================================
+
+  Collecting demo data for team 0...
+  [retry 0/3] Collecting 5 episodes...
+Module radar_sim.gpu.vec_array 0e899e2 load on device 'cuda:0' took 12.13 ms  (cached)
+Module radar_sim.gpu.vec_channel 6a2afee load on device 'cuda:0' took 0.68 ms  (cached)
+  [collector] 4/5 episodes...
+  [collector] 8/5 episodes...
+  [collector] Collected 16000 transitions from 5 episodes
+  [collector] Scene coverage: {'recon': 2, 'detect': 1, 'jam': 1, 'comm': 2}
+  [collector] Launch rate: 1/5 (20%)
+  [collector] Task CV: 0.779 (need >0.10 for diversity)
+  [collector] ⚠ FAIL: only 1 episodes for rarest scene (need ≥5)
+  [collector] ⚠ FAIL: launch rate 20% < 30%
+  ↻ Coverage failed, retrying... (retry 1/3)
+  [retry 1/3] Collecting 10 episodes...
+  [collector] 4/10 episodes...
+  [collector] 8/10 episodes...
+  [collector] 12/10 episodes...
+  [collector] Collected 24000 transitions from 10 episodes
+  [collector] Scene coverage: {'recon': 3, 'detect': 0, 'jam': 0, 'comm': 3}
+  [collector] Launch rate: 0/10 (0%)
+  [collector] Task CV: 0.470 (need >0.10 for diversity)
+  [collector] ⚠ FAIL: only 0 episodes for rarest scene (need ≥5)
+  [collector] ⚠ FAIL: launch rate 0% < 30%
+  ↻ Coverage failed, retrying... (retry 2/3)
+  [retry 2/3] Collecting 10 episodes...
+  [collector] 4/10 episodes...
+  [collector] 8/10 episodes...

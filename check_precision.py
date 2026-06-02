@@ -8,7 +8,7 @@ from radar_sim.gpu.waveform_gpu import generate_lfm
 def step(prealloc):
     gc.collect(); torch.cuda.empty_cache(); torch.cuda.synchronize()
     torch.manual_seed(42); np.random.seed(42)
-    e = MFARVecEnv(num_envs=1, n_radars=4, rows=5, cols=5,
+    e = MFARVecEnv(num_envs=1, n_radars=4, rows=25, cols=25,
                    pulses_per_cpi=4, fft_size=64, device='cuda',
                    cpi_preallocate=prealloc)
     e.reset()

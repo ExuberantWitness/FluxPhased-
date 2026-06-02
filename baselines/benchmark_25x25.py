@@ -1,11 +1,10 @@
 """Baseline performance benchmark for FluxPhased GPU simulation.
 
 Records VRAM usage, per-phase timing, and numerical fingerprints
-under the 5x5 small-array configuration (matching test_mfar.py).
+under the 25x25 array configuration.
 
 Usage:
-    cd E:/DATA/vscode/FluxPhased
-    python baselines/benchmark_5x5.py
+    python baselines/benchmark_25x25.py
 """
 
 import sys
@@ -27,7 +26,7 @@ DEV = torch.device(DEVICE)
 
 def benchmark():
     print("=" * 60)
-    print("FluxPhased GPU Performance Benchmark (5x5 baseline)")
+    print("FluxPhased GPU Performance Benchmark (25x25 baseline)")
     print("=" * 60)
 
     if DEVICE == "cuda":
@@ -40,12 +39,12 @@ def benchmark():
 
     from radar_sim.gpu.vec_mfar_env import MFARVecEnv
 
-    # --- Config (same as test_mfar.py) ---
+    # --- Config ---
     config = {
         "num_envs": 2,
         "n_radars": 2,
-        "rows": 5,
-        "cols": 5,
+        "rows": 25,
+        "cols": 25,
         "pulses_per_cpi": 4,
         "n_targets": 1,
         "fft_size": 64,
@@ -187,7 +186,7 @@ def benchmark():
         "numerical": fp,
     }
 
-    out_path = os.path.join(os.path.dirname(__file__), "benchmark_5x5.json")
+    out_path = os.path.join(os.path.dirname(__file__), "benchmark_25x25.json")
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(output, f, indent=2, ensure_ascii=False)
     print(f"\nSaved to: {out_path}")

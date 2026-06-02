@@ -12,11 +12,18 @@ diversity. Fingerprints are recorded per (policy_id, team) since
 a policy plays a single team during any evaluation game.
 """
 
+import time
 import torch
 import numpy as np
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 
 from .opponent_pool import OpponentPool
+
+try:
+    import wandb
+    WANDB_AVAILABLE = True
+except ImportError:
+    WANDB_AVAILABLE = False
 
 
 class PayoffMatrix:
@@ -67,70 +74,99 @@ class PayoffMatrix:
         """Evaluate win rate of red vs blue over multiple games.
 
         Uses deterministic policy inference for both sides.
+        Resets all envs in parallel; extra envs beyond n_eval_games are
+        harmless — we just count the first n_eval_games completions.
         """
         red_wins = 0
         total = 0
         remaining = self.n_eval_games
         E = env.num_envs
+        live_envs = set()
 
         while remaining > 0:
             batch = min(E, remaining)
             env.reset()
+            live_envs = set(range(batch))
 
-            game_ended = False
             for step in range(self.max_steps_per_game):
+                if not live_envs:
+                    break
+                if step % 100 == 0 and step > 0:
+                    wr_sofar = red_wins / max(total, 1)
+                    print(f"    step {step}: alive={len(live_envs)} "
+                          f"red_wins={red_wins}/{total} wr_sofar={wr_sofar:.2f}",
+                          flush=True)
+                    if WANDB_AVAILABLE and wandb.run is not None:
+                        wandb.log({
+                            f"eval_match/{red_policy_id}_vs_{blue_policy_id}/step": step,
+                            f"eval_match/{red_policy_id}_vs_{blue_policy_id}/wr_sofar": wr_sofar,
+                            f"eval_match/{red_policy_id}_vs_{blue_policy_id}/alive": len(live_envs),
+                            f"eval_match/{red_policy_id}_vs_{blue_policy_id}/games_done": total,
+                        })
                 with torch.no_grad():
-                    # Red team (team 0): deterministic policy
                     red = red_trainer.get_own_actions(env, team=0, deterministic=True)
-                    # Blue team (team 1): deterministic policy
                     blue = blue_trainer.get_own_actions(env, team=1, deterministic=True)
 
-                    actions = torch.zeros(batch, env.n_radars, env.action_dim, device=self.device)
+                    actions = torch.zeros(E, env.n_radars, env.action_dim, device=self.device)
                     for i, r in enumerate(range(red["r_start"], red["r_end"])):
                         actions[:, r, :] = red["radar_actions"][i]
                     for i, r in enumerate(range(blue["r_start"], blue["r_end"])):
                         actions[:, r, :] = blue["radar_actions"][i]
 
                     commander_actions = torch.zeros(
-                        batch, env.n_teams, env.battlefield.commander_action_dim,
+                        E, env.n_teams, env.battlefield.commander_action_dim,
                         device=self.device,
                     )
                     commander_actions[:, 0, :] = red["commander_action"]
                     commander_actions[:, 1, :] = blue["commander_action"]
 
+                    # Force missile launch during eval: the deterministic
+                    # commander of an untrained network outputs ~0 for
+                    # launch_flag (tanh(0)≈0 < 0.5 threshold), so no missile
+                    # ever flies and all games end as draws.  We override
+                    # launch_flag + target here because eval is meant to
+                    # measure radar-policy quality, not launch timing.
+                    half_y = env.map_size[1] / 2.0  # 10 km
+                    commander_actions[:, 0, 0] = 1.0   # Red: launch
+                    commander_actions[:, 0, 1] = 0.0   # target_x
+                    commander_actions[:, 0, 2] = 1.0   # target_y → (0, +10km) Blue territory
+                    commander_actions[:, 1, 0] = 1.0   # Blue: launch
+                    commander_actions[:, 1, 1] = 0.0   # target_x
+                    commander_actions[:, 1, 2] = -1.0  # target_y → (0, -10km) Red territory
+
+                    # Zero radar instruction dims for consistency with training.
+                    # Deterministic commander already outputs ~0 here, but be explicit.
+                    commander_actions[:, :, 3:] = 0.0
+
                 result = env.step(actions=actions, commander_actions=commander_actions)
 
-                # Accumulate per-team task fingerprints if env provides them.
                 fp_t = result.get("task_fingerprint", None)
                 if fp_t is not None:
-                    # fp_t: [E, n_teams, 4]; team 0 = red, team 1 = blue.
                     fp_red = fp_t[:batch, 0].mean(dim=0).detach().cpu().numpy()
                     fp_blue = fp_t[:batch, 1].mean(dim=0).detach().cpu().numpy()
                     self._accumulate_fingerprint(red_policy_id, fp_red)
                     self._accumulate_fingerprint(blue_policy_id, fp_blue)
 
                 if result["dones"].any():
-                    for e in range(batch):
+                    for e in sorted(live_envs):
                         if result["dones"][e]:
+                            live_envs.discard(e)
                             if result["winners"][e] == 0:
                                 red_wins += 1
                             total += 1
-                    game_ended = True
-                    break
+                            remaining -= 1
 
-            if not game_ended:
-                # Step cap reached without a natural termination — score
-                # this batch as a draw so PSRO still gets a payoff entry.
-                red_wins += 0.5 * batch
-                total += batch
-
-            remaining -= batch
+            # Score any still-live envs as draws (step cap reached)
+            for e in sorted(live_envs):
+                red_wins += 0.5
+                total += 1
+                remaining -= 1
+            live_envs.clear()
 
         win_rate = red_wins / max(total, 1)
         self.matrix[(red_policy_id, blue_policy_id)] = win_rate
         self.matrix[(blue_policy_id, red_policy_id)] = 1.0 - win_rate
 
-        # Update pool win rates
         self.pool.update_win_rate(red_policy_id, blue_policy_id, win_rate >= 0.5)
         self.pool.update_win_rate(blue_policy_id, red_policy_id, win_rate < 0.5)
 
@@ -152,6 +188,8 @@ class PayoffMatrix:
             if rec.team == 1 and rec.is_active
         ]
 
+        total_pairs = len(red_policies) * len(blue_policies)
+        n_done = 0
         for r_id in red_policies:
             for b_id in blue_policies:
                 key = (r_id, b_id)
@@ -159,13 +197,21 @@ class PayoffMatrix:
                     r_trainer = trainers.get(r_id)
                     b_trainer = trainers.get(b_id)
                     if r_trainer and b_trainer:
+                        print(f"  [payoff] {r_id} vs {b_id} ({n_done + 1}/{total_pairs})...",
+                              end=" ", flush=True)
+                        t0 = time.time()
                         self.evaluate_pair(r_id, b_id, env, r_trainer, b_trainer)
+                        elapsed = time.time() - t0
+                        win_rate = self.matrix.get(key, 0.5)
+                        print(f"win_rate={win_rate:.2f} ({elapsed:.1f}s)", flush=True)
+                n_done += 1
 
-    def get_submatrix(self, team: int) -> np.ndarray:
+    def get_submatrix(self, team: int, exclude_roles: Optional[List[str]] = None) -> np.ndarray:
         """Get payoff submatrix for one team's perspective.
 
         Args:
             team: 0 (red) or 1 (blue)
+            exclude_roles: optional list of role strings to exclude (e.g. ["mutant"])
         Returns:
             payoff: [K, K_opponent] numpy array, K = policies for this team
             own_policies: list of K policy_ids
@@ -174,10 +220,12 @@ class PayoffMatrix:
         own_policies = [
             pid for pid, rec in self.pool.policies.items()
             if rec.team == team and rec.is_active
+            and (exclude_roles is None or rec.role not in exclude_roles)
         ]
         opp_policies = [
             pid for pid, rec in self.pool.policies.items()
             if rec.team != team and rec.is_active
+            and (exclude_roles is None or rec.role not in exclude_roles)
         ]
 
         n_own = len(own_policies)

@@ -1,0 +1,41 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 102.0 GB
+FluxPhased League Training
+Config: configs/league_25x25_12env.yaml
+Device: cuda
+Environment: E=8, R=4, N=625, P=4, bins=64
+State dim: 163783, Action dim: 13753
+Warp 1.10.1 initialized:
+   CUDA Toolkit 12.8, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Workstation Edition" (95 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/ubuntu/.cache/warp/1.10.1
+
+============================================================
+PSRO Iteration 0/30
+============================================================
+[League] Iteration 0: Evaluating payoff matrix...
+  [payoff] p0000 vs p0003 (1/9)... Module radar_sim.gpu.vec_array 0e899e2 load on device 'cuda:0' took 10.98 ms  (cached)
+Module radar_sim.gpu.vec_channel 6a2afee load on device 'cuda:0' took 1.48 ms  (cached)
+Traceback (most recent call last):
+  File "/home/ubuntu/miniconda3/envs/fluxphased/lib/python3.10/runpy.py", line 196, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/home/ubuntu/miniconda3/envs/fluxphased/lib/python3.10/runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "/home/ubuntu/code/training/train.py", line 222, in <module>
+    main()
+  File "/home/ubuntu/code/training/train.py", line 218, in main
+    trainer.run_all()
+  File "/home/ubuntu/code/training/curriculum/phased_trainer.py", line 70, in run_all
+    metrics = self.league.psro_iteration(env)
+  File "/home/ubuntu/code/training/flux_league.py", line 212, in psro_iteration
+    self.payoff.evaluate_all(env, self.trainers)
+  File "/home/ubuntu/code/training/self_play/payoff_matrix.py", line 168, in evaluate_all
+    self.evaluate_pair(r_id, b_id, env, r_trainer, b_trainer)
+  File "/home/ubuntu/code/training/self_play/payoff_matrix.py", line 91, in evaluate_pair
+    actions[:, r, :] = red["radar_actions"][i]
+RuntimeError: The expanded size of the tensor (2) must match the existing size (8) at non-singleton dimension 0.  Target sizes: [2, 13753].  Tensor sizes: [8, 13753]
+ERROR conda.cli.main_run:execute(148): `conda run python -m training.train --config configs/league_25x25_12env.yaml --seed 42` failed. (See above for error)

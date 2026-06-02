@@ -1,0 +1,43 @@
+wandb: [wandb.login()] Using explicit session credentials for https://api.wandb.ai.
+wandb: Appending key for api.wandb.ai to your netrc file: /home/ubuntu/.netrc
+wandb: Currently logged in as: minghaozhang79 to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: setting up run 8crrprrf
+wandb: Tracking run with wandb version 0.27.0
+wandb: Run data is saved locally in /home/ubuntu/code/wandb/run-20260602_073152-8crrprrf
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run league_625elem_4env_20260602_073150
+wandb: ⭐️ View project at https://wandb.ai/minghaozhang79/fluxphased
+wandb: 🚀 View run at https://wandb.ai/minghaozhang79/fluxphased/runs/8crrprrf
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 102.0 GB
+FluxPhased League Training
+Config: configs/league_25x25_configA.yaml
+Device: cuda
+Environment: E=4, R=4, N=625, P=4, bins=64
+State dim: 163783, Action dim: 13753
+[wandb] Initialized run: league_625elem_4env_20260602_073150
+Warp 1.10.1 initialized:
+   CUDA Toolkit 12.8, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Workstation Edition" (95 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/ubuntu/.cache/warp/1.10.1
+============================================================
+Critic Pre-training: 50 demo episodes
+============================================================
+
+  Collecting demo data for team 0...
+  [retry 0/3] Collecting 50 episodes...
+Module radar_sim.gpu.vec_array 0e899e2 load on device 'cuda:0' took 5.11 ms  (cached)
+Module radar_sim.gpu.vec_channel 6a2afee load on device 'cuda:0' took 0.50 ms  (cached)
+  [collector] 4/50 episodes...
+  [collector] 8/50 episodes...
+  [collector] 12/50 episodes...
+  [collector] 16/50 episodes...
+  [collector] 20/50 episodes...
+  [collector] 24/50 episodes...
+  [collector] 28/50 episodes...
+  [collector] 32/50 episodes...
+  [collector] 36/50 episodes...

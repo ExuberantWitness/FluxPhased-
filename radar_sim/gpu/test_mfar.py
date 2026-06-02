@@ -29,8 +29,8 @@ if device == "cuda":
     print(f"VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
 
 
-def fresh_mfar_env(num_envs=2, rows=5, cols=5):
-    """Create a small MFAR env for testing."""
+def fresh_mfar_env(num_envs=2, rows=25, cols=25):
+    """Create an MFAR env for testing (25×25)."""
     from radar_sim.gpu.vec_mfar_env import MFARVecEnv
     gc.collect()
     if device == "cuda":
@@ -267,7 +267,7 @@ def test_per_element_steering():
     from radar_sim.gpu.vec_array import VecArray
 
     arr = VecArray(
-        rows=5, cols=5, fc=10e9,
+        rows=25, cols=25, fc=10e9,
         num_envs=1, n_radars=1, device=device,
     )
 
