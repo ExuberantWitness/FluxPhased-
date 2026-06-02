@@ -1561,7 +1561,7 @@ FluxLeague Manager
 │   └── League Exploiter × 2     (trains vs full population, resettable)
 ├── Payoff Matrix + Meta-Solver  (Nash equilibrium via LP)
 ├── Hierarchical PPO per team
-│   ├── Commander PPO             (68-dim obs → 35-dim action)
+│   ├── Commander PPO             (76-dim obs → 35-dim action)
 │   └── Radar PPO (shared)        (spectrum+state → 22*N+3 action)
 └── GPU Simulation (MFARVecEnv)
 ```
