@@ -210,16 +210,19 @@ class PhasedTrainer:
         for team in range(n_teams):
             print(f"\n  Collecting demo data for team {team}...", flush=True)
 
-            # ── Auto-retry loop: collect until coverage passes ──
-            max_retries = 3
+            # ── Chunked collection + incremental pretraining ──
+            # 50 episodes × 2000 steps × 700KB/transition ≈ 280 GB on CPU.
+            # Collect in chunks of 10, train, free, repeat to stay within RAM.
+            chunk_size = 10
+            total_needed = self.critic_pretrain_episodes
             total_episodes = 0
-            data = None
+            coverage_pass = False
 
-            for retry in range(max_retries):
-                n_ep = self.critic_pretrain_episodes if retry == 0 else max(10, self.critic_pretrain_episodes // 4)
-                print(f"  [retry {retry}/{max_retries}] Collecting {n_ep} episodes...",
+            for chunk_start in range(0, total_needed, chunk_size):
+                n_ep = min(chunk_size, total_needed - chunk_start)
+                print(f"  [chunk {chunk_start // chunk_size}] Collecting {n_ep} episodes...",
                       flush=True)
-                new_data = collector.collect(
+                data = collector.collect(
                     env=env,
                     scripted_policy=use_radar_policy,
                     scripted_commander=use_commander_policy,
@@ -229,70 +232,54 @@ class PhasedTrainer:
                 )
                 total_episodes += n_ep
 
-                # Merge data
-                if data is None:
-                    data = new_data
-                else:
-                    for key in data:
-                        if key == "coverage":
-                            continue
-                        data[key] = torch.cat([data[key], new_data[key]], dim=0)
-
-                cov = new_data["coverage"]
+                cov = data["coverage"]
+                print(f"  Launch rate: {cov['launch_pct']:.0f}% | Scenes: {cov['scene_counts']}",
+                      flush=True)
                 if cov["ok"]:
-                    print(f"  ✓ Coverage passed after {total_episodes} episodes "
-                          f"({retry + 1} collection(s))", flush=True)
-                    break
-                elif retry < max_retries - 1:
-                    print(f"  ↻ Coverage failed, retrying... (retry {retry + 1}/{max_retries})",
-                          flush=True)
-                else:
-                    print(f"  ⚠ Coverage still insufficient after {total_episodes} "
-                          f"episodes — proceeding anyway", flush=True)
+                    coverage_pass = True
 
-            # Pre-train critics of this team's trainers
-            team_trainers = {
-                pid: t for pid, t in self.league.trainers.items()
-                if self.league.pool.policies[pid].team == team
-            }
-            # Temporarily restrict trainers to just this team
-            all_trainers = self.league.trainers
-            self.league.trainers = team_trainers
-            self.league.pretrain_critic(
-                data,
-                n_epochs=self.critic_pretrain_epochs,
-                batch_size=256,
-            )
-            self.league.pretrain_commander_critic(
-                data,
-                n_epochs=getattr(self, "critic_pretrain_epochs", 50),
-                batch_size=256,
-            )
-
-            # BC pretraining — reuse same data to avoid duplicate collection
-            if self.bc_pretrain_epochs > 0:
-                print(f"  BC pretraining (reusing collected data, "
-                      f"{self.bc_pretrain_epochs} epochs)...", flush=True)
-                self.league.pretrain_actor_bc(
+                # ── Incremental pretraining on this chunk ──
+                team_trainers = {
+                    pid: t for pid, t in self.league.trainers.items()
+                    if self.league.pool.policies[pid].team == team
+                }
+                all_trainers = self.league.trainers
+                self.league.trainers = team_trainers
+                self.league.pretrain_critic(
                     data,
-                    n_epochs=self.bc_pretrain_epochs,
-                    batch_size=self.bc_pretrain_batch_size,
+                    n_epochs=self.critic_pretrain_epochs,
+                    batch_size=256,
                 )
-                self.league.pretrain_commander_bc(
+                self.league.pretrain_commander_critic(
                     data,
-                    n_epochs=self.bc_pretrain_epochs,
-                    batch_size=self.bc_pretrain_batch_size,
+                    n_epochs=getattr(self, "critic_pretrain_epochs", 50),
+                    batch_size=256,
                 )
-                # ── Snapshot BC-pretrained actors for KL penalty ──
-                for trainer in team_trainers.values():
-                    trainer.set_bc_pretrained()
-                print(f"  BC models snapshotted for KL penalty", flush=True)
 
-            self.league.trainers = all_trainers
+                if self.bc_pretrain_epochs > 0:
+                    self.league.pretrain_actor_bc(
+                        data,
+                        n_epochs=self.bc_pretrain_epochs,
+                        batch_size=self.bc_pretrain_batch_size,
+                    )
+                    self.league.pretrain_commander_bc(
+                        data,
+                        n_epochs=self.bc_pretrain_epochs,
+                        batch_size=self.bc_pretrain_batch_size,
+                    )
+                    for trainer in team_trainers.values():
+                        trainer.set_bc_pretrained()
 
-            # Free GPU memory before collecting data for the next team
-            del data
-            torch.cuda.empty_cache()
+                self.league.trainers = all_trainers
+                del data
+                torch.cuda.empty_cache()
+
+            if coverage_pass:
+                print(f"  ✓ Coverage passed after {total_episodes} episodes", flush=True)
+            else:
+                print(f"  ⚠ Coverage not fully met after {total_episodes} episodes "
+                      f"— proceeding anyway", flush=True)
+            print(f"  BC models snapshotted for KL penalty", flush=True)
 
         # ── Restore HPEDF scheduler augmentation setting ──
         _hpedf_scheduler.augment_noise = prev_augment
