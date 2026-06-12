@@ -765,7 +765,7 @@ def create_team_policy(team: int, n_elem: int = 625, n_pulses: int = 32,
                        n_bins: int = 1024, num_output_length: int = 16,
                        device: str = "cuda", encoder_kwargs: dict = None,
                        sub_array_size: int = 0) -> dict:
-    commander = CommanderActorCritic(obs_dim=68, act_dim=35, hidden_dim=256).to(device)
+    commander = CommanderActorCritic(obs_dim=76, act_dim=35, hidden_dim=256).to(device)
     if sub_array_size > 0:
         radar = SubArrayRadarActorCritic(
             n_elem=n_elem, n_pulses=n_pulses, n_bins=n_bins,
@@ -859,7 +859,7 @@ class TeamPPOTrainer:
 
     def init_buffers(self, env_state_dim: int, env_action_dim: int):
         self.commander_buffer = RolloutBuffer(
-            self.buffer_size_commander, obs_dim=68, act_dim=35,
+            self.buffer_size_commander, obs_dim=76, act_dim=35,
             gamma=self.gamma, gae_lambda=self.gae_lambda, device=self.device)
         self.radar_buffer = RolloutBuffer(
             self.buffer_size_radar, obs_dim=env_state_dim, act_dim=env_action_dim,

@@ -439,28 +439,31 @@ class VecBattlefield:
             if n_own > 1:
                 obs[:, t, 4 + N_in:4 + 2 * N_in] = radar_latents[:, own_idx[1]]
 
-            # ── NEW: Enemy radar positions [68:72] ──
-            obs[:, t, 68] = radar_pos[:, enemy_idx[0], 0] / half_x
-            obs[:, t, 69] = radar_pos[:, enemy_idx[0], 1] / half_y
+            # ── NEW: Enemy radar positions ──
+            off_enemy = 4 + 2 * N_in
+            obs[:, t, off_enemy] = radar_pos[:, enemy_idx[0], 0] / half_x
+            obs[:, t, off_enemy + 1] = radar_pos[:, enemy_idx[0], 1] / half_y
             if n_enemy > 1:
-                obs[:, t, 70] = radar_pos[:, enemy_idx[1], 0] / half_x
-                obs[:, t, 71] = radar_pos[:, enemy_idx[1], 1] / half_y
+                obs[:, t, off_enemy + 2] = radar_pos[:, enemy_idx[1], 0] / half_x
+                obs[:, t, off_enemy + 3] = radar_pos[:, enemy_idx[1], 1] / half_y
             else:
-                obs[:, t, 70] = obs[:, t, 68]
-                obs[:, t, 71] = obs[:, t, 69]
+                obs[:, t, off_enemy + 2] = obs[:, t, off_enemy]
+                obs[:, t, off_enemy + 3] = obs[:, t, off_enemy + 1]
 
-            # ── NEW: Previous enemy centroid [72:74] (crude velocity signal) ──
-            obs[:, t, 72] = self._prev_enemy_centroid[:, t, 0]
-            obs[:, t, 73] = self._prev_enemy_centroid[:, t, 1]
+            # ── NEW: Previous enemy centroid (crude velocity signal) ──
+            off_vel = off_enemy + 4
+            obs[:, t, off_vel] = self._prev_enemy_centroid[:, t, 0]
+            obs[:, t, off_vel + 1] = self._prev_enemy_centroid[:, t, 1]
 
             # Update persistent buffer for next step
             enemy_center = radar_pos[:, enemy_idx, :].mean(dim=1)  # [E, 3]
             self._prev_enemy_centroid[:, t, 0] = enemy_center[:, 0] / half_x
             self._prev_enemy_centroid[:, t, 1] = enemy_center[:, 1] / half_y
 
-            # ── NEW: Missile flight status [74:76] ──
-            obs[:, t, 74] = self.missile.in_flight[:, t].float()
-            obs[:, t, 75] = self.missile.in_flight[:, enemy_t].float()
+            # ── NEW: Missile flight status ──
+            off_msl = off_vel + 2
+            obs[:, t, off_msl] = self.missile.in_flight[:, t].float()
+            obs[:, t, off_msl + 1] = self.missile.in_flight[:, enemy_t].float()
 
         return obs
 

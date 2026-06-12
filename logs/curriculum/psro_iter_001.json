@@ -1,0 +1,24 @@
+{
+  "iteration": 1,
+  "p0000_train": {
+    "episodes": 50,
+    "win_rate": 0.0,
+    "avg_reward": 5.470177774567856
+  },
+  "p0001_train": {
+    "episodes": 50,
+    "win_rate": 0.0,
+    "avg_reward": 5.758522541841958
+  },
+  "p0002_train": {
+    "episodes": 50,
+    "win_rate": 0.0,
+    "avg_reward": 5.711455508908257
+  },
+  "p0003_train": {
+    "episodes": 50,
+    "win_rate": 0.0,
+    "avg_reward": 5.524262275747024
+  },
+  "elapsed_s": 1525.2239439487457
+}

@@ -165,8 +165,8 @@ def test_env_step_with_commander():
 
     assert result["missile_pos"].shape == (1, 2, 3)
     assert result["dones"].shape == (1,)
-    assert result["commander_obs"].shape == (1, 2, 4 + 2 * N_in), \
-        f"Expected (1, 2, {4 + 2 * N_in}), got {result['commander_obs'].shape}"
+    assert result["commander_obs"].shape == (1, 2, 4 + 2 * N_in + 8), \
+        f"Expected (1, 2, {4 + 2 * N_in + 8}), got {result['commander_obs'].shape}"
     assert result["radar_instructions"].shape == (1, 4, N_out), \
         f"Expected (1, 4, {N_out}), got {result['radar_instructions'].shape}"
     assert result["radar_rewards"].shape == (1, 4)

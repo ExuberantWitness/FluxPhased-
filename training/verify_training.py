@@ -49,7 +49,7 @@ def run_verification():
     r_per_team = env.n_radars // env.n_teams  # 2
 
     # Create networks
-    cmd_ac = CommanderActorCritic(obs_dim=68, act_dim=35, hidden_dim=128).to(device)
+    cmd_ac = CommanderActorCritic(obs_dim=76, act_dim=35, hidden_dim=128).to(device)
     radar_ac = RadarActorCritic(
         n_elem=n_elem, n_pulses=n_pulses, n_bins=n_bins,
         spectrum_hidden=64, commander_instr_dim=env.num_output_length,
@@ -113,14 +113,14 @@ def run_verification():
             # Commander action (team 0)
             cmd_obs = commander_obs[:, team, :]  # [E, 68]
             with torch.no_grad():
-                cmd_action, cmd_logp, cmd_val = cmd_ac.get_action(cmd_obs)
+                cmd_action, cmd_logp, cmd_val, _ = cmd_ac.get_action(cmd_obs)
 
             # Radar actions (both radars, shared policy)
             radar_obs_0 = state[:, 0, :]  # [E, state_dim]
             radar_obs_1 = state[:, 1, :]  # [E, state_dim]
             with torch.no_grad():
-                radar_act_0, radar_logp_0, radar_val_0 = radar_ac.get_action(radar_obs_0)
-                radar_act_1, radar_logp_1, radar_val_1 = radar_ac.get_action(radar_obs_1)
+                radar_act_0, radar_logp_0, radar_val_0, _ = radar_ac.get_action(radar_obs_0)
+                radar_act_1, radar_logp_1, radar_val_1, _ = radar_ac.get_action(radar_obs_1)
 
             # Build full action tensor for env
             actions = torch.zeros(env.num_envs, env.n_radars, action_dim, device=device)
@@ -213,7 +213,7 @@ def run_verification():
             mb_adv = adv_t[indices]
             mb_ret = ret_t[indices]
 
-            new_logp, entropy, value = radar_ac.evaluate_actions(mb_obs, mb_act)
+            new_logp, entropy, value, _ = radar_ac.evaluate_actions(mb_obs, mb_act)
             ratio = torch.exp(new_logp - mb_old_logp)
 
             surr1 = ratio * mb_adv
@@ -247,7 +247,7 @@ def run_verification():
             mb_adv = adv_t[indices]
             mb_ret = ret_t[indices]
 
-            new_logp, entropy, value = cmd_ac.evaluate_actions(mb_obs, mb_act)
+            new_logp, entropy, value, _ = cmd_ac.evaluate_actions(mb_obs, mb_act)
             ratio = torch.exp(new_logp - mb_old_logp)
 
             surr1 = ratio * mb_adv

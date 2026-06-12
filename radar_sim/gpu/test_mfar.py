@@ -272,13 +272,14 @@ def test_per_element_steering():
     )
 
     # All elements same direction
-    az_same = torch.zeros(1, 1, 25, device=DEV)
-    el_same = torch.zeros(1, 1, 25, device=DEV)
+    N = arr.n_elem  # 625 for 25x25
+    az_same = torch.zeros(1, 1, N, device=DEV)
+    el_same = torch.zeros(1, 1, N, device=DEV)
     w_same = arr.steer_per_element(az_same, el_same).clone()
 
     # Each element different direction
-    az_diff = torch.linspace(-30, 30, 25, device=DEV).reshape(1, 1, 25)
-    el_diff = torch.zeros(1, 1, 25, device=DEV)
+    az_diff = torch.linspace(-30, 30, N, device=DEV).reshape(1, 1, N)
+    el_diff = torch.zeros(1, 1, N, device=DEV)
     w_diff = arr.steer_per_element(az_diff, el_diff).clone()
 
     print(f"  Same-dir weights shape: {w_same.shape}")

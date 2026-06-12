@@ -1,37 +1,14 @@
 {
   "iteration": 0,
   "p0000_train": {
-    "episodes": 5,
+    "episodes": 50,
     "win_rate": 0.0,
-    "avg_reward": 211.97899646623992
+    "avg_reward": 5.338676308409776
   },
   "p0001_train": {
-    "episodes": 5,
+    "episodes": 50,
     "win_rate": 0.0,
-    "avg_reward": 222.31385505949146
+    "avg_reward": 5.522742438642308
   },
-  "p0002_train": {
-    "episodes": 5,
-    "win_rate": 0.0,
-    "avg_reward": 229.3284852795303
-  },
-  "p0003_train": {
-    "episodes": 5,
-    "win_rate": 0.0,
-    "avg_reward": 262.09908354729413
-  },
-  "p0004_train": {
-    "episodes": 5,
-    "win_rate": 0.0,
-    "avg_reward": 248.64570080041887
-  },
-  "p0005_train": {
-    "episodes": 5,
-    "win_rate": 0.0,
-    "avg_reward": 246.5768875710666
-  },
-  "elapsed_s": 12080.503717422485,
-  "alpha": 0.0,
-  "beta_kl": 0.1,
-  "alpha_schedule": "linear"
+  "elapsed_s": 745.1884365081787
 }
