@@ -50,12 +50,9 @@ conda activate fluxphased
 
 ```bash
 # PyTorch — choose ONE of the following:
-#
-# A) Standard GPUs (RTX 4090 / A100 / RTX 30xx, CUDA 12.1):
-conda install pytorch==2.4.1 torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia -y
-#
-# B) Blackwell GPUs (RTX 50xx / RTX PRO 6000, sm_120) — requires PyTorch ≥2.11 + CUDA ≥13.0:
-conda install pytorch==2.12.0 torchvision torchaudio pytorch-cuda=13.2 -c pytorch -c nvidia -y
+
+# Blackwell GPUs (RTX 50xx / RTX PRO 6000, sm_120) — requires PyTorch ≥2.11 + CUDA ≥13.0:
+conda install pytorch==2.12.0 torchvision pytorch-cuda=13.2 -c pytorch -c nvidia -y
 
 # Intel ITT library (fixes "undefined symbol: iJIT_NotifyEvent" if using conda PyTorch)
 conda install ittapi -c conda-forge -y
@@ -88,12 +85,9 @@ pip install pandas==2.0.3
 
 ```bash
 # PyTorch — choose ONE of the following:
-#
-# A) Standard GPUs (RTX 4090 / A100 / RTX 30xx, CUDA 12.1):
-pip install torch==2.4.1 torchvision==0.19.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cu121
-#
-# B) Blackwell GPUs (RTX 50xx / RTX PRO 6000, sm_120) — requires PyTorch ≥2.11 + CUDA ≥13.0:
-pip install torch==2.12.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu132
+
+# Blackwell GPUs (RTX 50xx / RTX PRO 6000, sm_120) — requires PyTorch ≥2.11 + CUDA ≥13.0:
+pip install torch==2.12.0 torchvision --index-url https://download.pytorch.org/whl/cu132
 
 # Intel ITT library (fixes "undefined symbol: iJIT_NotifyEvent" if using conda PyTorch)
 pip install ittapi
