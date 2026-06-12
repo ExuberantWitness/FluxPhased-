@@ -91,34 +91,32 @@ No kills occur in any evaluation game. All episodes end via truncation (timeout)
 
 ## 3. Root cause analysis
 
-### Primary cause: Episode too short for missile kill
+### Primary cause: Ran stale monolithic `train_league.py` instead of modular `training/` package
 
-The production config has:
+> **Update (2026-06-13):** `train_league.py` has been deleted. The correct training system is the modular `training/` package invoked via `python -m training.train --config configs/league_25x25_configA.yaml`.
 
-```python
-LEAGUE_DEFAULTS = {
-    "max_steps_per_episode": 50,        # ← too short
-    "episodes_per_training": 50,
-}
-```
+The experiment was run using the monolithic `train_league.py` (last updated 2025-05-22), which had **fatal parameter errors** compared to the correct modular config `configs/league_25x25_configA.yaml`:
 
-The missile physics requires ~600 steps for a cruise missile to travel from one side of the 20 km × 20 km battlefield to the other (missile speed = 62,500 m/s in env, but each CPI step corresponds to a large time increment with fft_size=32768). With `max_steps_per_episode=50`, **no missile ever reaches its target** within an episode.
+| Parameter | `train_league.py` (wrong) | `configA.yaml` (correct) | Impact |
+|-----------|--------------------------|--------------------------|--------|
+| `pulses_per_cpi` | 1 | 4 | 4× CPI resolution loss |
+| `speed_ms` | not set (default 244.4) | 62,500 | **3 orders of magnitude** — missile flies 2.44 cm/step instead of 25 m/step |
+| `max_steps_per_episode` | 50 | 2000 | Episode too short even with correct speed |
+| `n_radars` | 2 | 4 | 1v1 instead of 2v2 |
+| `num_envs` | 1 | 4 | Under-utilizes 98 GB VRAM |
 
-Consequences:
-1. **No kill events** → reward signal for the most important strategic action (launch + guide missile to kill) is never triggered
-2. **Flat payoff matrix** → all policy matchups result in the same outcome (timeout, no kill), so NashConv = 0 and sigma concentrates on one policy
-3. **No gradient signal for missile guidance** → the commander's launch decision and the radar's beam steering for missile support never receive meaningful feedback
-4. **PSRO adds policies but they are indistinguishable** → new policies can't exploit existing ones because there's no win/loss differentiation
+**Time-scale mismatch**: With `speed_ms=244.4` m/s and `dt≈0.1 ms` (implied by `pulses_per_cpi=1`), each step moves the missile **2.44 cm**. A 15 km intercept requires ~615,000 steps, but episodes are capped at 50. The missile never reaches its target.
+
+With `configA.yaml`: `speed_ms=62500` m/s × `dt≈0.4 ms` = **25 m/step**. A 15 km intercept takes ~600 steps, well within the 2000-step episode limit.
 
 ### Secondary causes
 
-| Factor | Current | Issue |
-|--------|---------|-------|
-| `max_steps_per_episode` | 50 | Too short for any combat resolution (~600 steps needed) |
-| `episodes_per_training` | 50 | Low sample efficiency for 25×25 array (163,783-dim obs, 13,753-dim action) |
-| `n_radars=2` | 2 radars (1v1) | Minimal team interaction; reduced strategic complexity |
-| Reward sparsity | Kill bonus = 10.0 | Only awarded on actual kill; with no kills, shaped reward dominates but is weak |
-| Commander training | Separate PPO | Commander needs to coordinate launch timing + target selection, but with 50-step episodes it never sees the outcome of its launch decision |
+| Factor | `train_league.py` | `configA.yaml` | Issue |
+|--------|-------------------|----------------|-------|
+| `episodes_per_training` | 50 | 500 | Low sample efficiency for 625-element array |
+| `n_radars` | 2 (1v1) | 4 (2v2) | Minimal team interaction |
+| Reward sparsity | Kill bonus = 10.0 | Kill bonus = 10.0 | Only awarded on actual kill — with correct physics, this becomes reachable |
+| Commander training | Separate PPO | Separate PPO | With correct physics, launch decision has measurable outcome |
 
 ### Why policy_loss still converges in Phase A
 
@@ -126,46 +124,17 @@ Phase A pre-trains on single tasks (recon/detect/jam) using shaped rewards (SNR,
 
 ---
 
-## 4. Recommended fixes
+## 4. Resolution
 
-### Critical (must fix for non-zero win rate)
+**2026-06-13 fix:**
+1. Deleted stale `train_league.py` from repository
+2. All dependent test files (`tests/minimal_detect_test.py`, `tests/selfplay_detect_test.py`) migrated to use modular `training/` package imports
+3. Correct training invocation: `python -m training.train --config configs/league_25x25_configA.yaml`
+4. `configA.yaml` already has correct parameters: `speed_ms=62500`, `pulses_per_cpi=4`, `max_steps=2000`, `n_radars=4`, `num_envs=4`
 
-```python
-LEAGUE_DEFAULTS = {
-    "max_steps_per_episode": 1000,      # 50 → 1000: allow missile flight (~600 steps)
-    "episodes_per_training": 500,       # 50 → 500: more data for 13,753-dim action space
-}
-```
+### Expected behavior with correct config
 
-### Important (improve learning efficiency)
-
-```python
-CURRICULUM_DEFAULTS = {
-    "phase_a_episodes": 200,            # 50 → 200: stronger single-task base
-    "phase_b_episodes": 100,            # 30 → 100: more multi-task experience
-    "phase_c_iterations": 5,            # 3 → 5: more PSRO iterations for diversity
-    "phase_c_episodes_per_iter": 100,   # 30 → 100: more games per iteration
-    "phase_d_episodes": 100,            # 40 → 100: more exploiter training
-}
-```
-
-### Nice to have
-
-- Increase `n_radars` from 2 to 4 (standard 2v2 adversarial setup) for richer team interaction
-- Use `num_envs=2-4` instead of 1 for better GPU utilization and sample diversity
-- Add curriculum on `max_steps_per_episode`: start at 200 in Phase A, ramp to 1000 by Phase C
-- Tune reward shaping: increase `missile_guidance_weight` and add intermediate rewards for missile proximity to target
-
-### Estimated training time with recommended settings
-
-With `max_steps=1000` and `episodes=500`:
-- Phase A: ~4 hours (3 tasks × 200 eps × ~4 min/ep at 1000 steps)
-- Phase B: ~2 hours
-- Phase C: ~10 hours (5 iters × 100 eps × ~4 min/ep)
-- Phase D: ~4 hours
-- **Total: ~20 hours per cell, ~60 hours for all 3 cells**
-
-With the RTX PRO 6000's 98 GB VRAM, `num_envs=4` would cut this to ~15 hours total by batching 4 environments per step.
+With `speed_ms=62500` and `max_steps=2000`, a missile can traverse ~50 km — far exceeding the 20 km battlefield. Kills should occur within the first few hundred steps of each episode, providing the reward signal needed for PSRO to differentiate policies (non-zero NashConv, effK > 1, win_rate > 0).
 
 ---
 

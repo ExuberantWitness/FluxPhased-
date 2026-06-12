@@ -24,11 +24,9 @@ import torch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from train_league import (
-    DenseRewardShaper,
-    TeamPPOTrainer,
-    create_team_policy,
-)
+from training.ppo.reward_shaping import DenseRewardShaper
+from training.ppo.ppo_trainer import TeamPPOTrainer
+from training.ppo.actor_critic import create_team_policy
 from radar_sim.gpu.vec_mfar_env import MFARVecEnv
 
 # ── Config ────────────────────────────────────────────────────────────────
@@ -55,7 +53,6 @@ REWARD_WEIGHTS = {
     "comm_reliability_weight": 0.05,
     "recon_intel_weight": 0.03,
     "beam_accuracy_weight": 5.0,
-    "beam_sigma": 15.0,
     "snr_threshold_db": 10.0,
 }
 
@@ -151,10 +148,10 @@ def run(device: str = "cuda", total_steps: int = 50000, log_interval: int = 200)
                 # Evaluate actions for log_prob
                 rep_obs = own["transition"]["radar_obs"]
                 rep_action = own["transition"]["radar_action"]
-                rep_logp, _, rep_val = trainer.radar_trainer.ac.evaluate_actions(rep_obs, rep_action)
+                rep_logp, _, rep_val, _ = trainer.radar_trainer.ac.evaluate_actions(rep_obs, rep_action)
                 cmd_obs = own["transition"]["cmd_obs"]
                 cmd_act = own["transition"]["cmd_action"]
-                cmd_logp, _, cmd_val = trainer.commander_trainer.ac.evaluate_actions(cmd_obs, cmd_act)
+                cmd_logp, _, cmd_val, _ = trainer.commander_trainer.ac.evaluate_actions(cmd_obs, cmd_act)
                 transitions[team] = {
                     "cmd_obs": cmd_obs, "cmd_action": cmd_act,
                     "cmd_logp": cmd_logp, "cmd_val": cmd_val.squeeze(-1),
@@ -173,7 +170,7 @@ def run(device: str = "cuda", total_steps: int = 50000, log_interval: int = 200)
                 reward_info = trainer.store_transition(env, result, transitions[team], team=team)
 
                 if step % log_interval == 0:
-                    beam_acc = reward_info["shaped_rewards"]["beam_accuracy"].item()
+                    beam_acc = reward_info["shaped_rewards"]["beam_accuracy_reward"].item()
                     total_shaped = reward_info["shaped_rewards"]["total_shaped"].mean().item()
                     beam_az_t0 = result["beam_az"][0, team].mean().item()
                     history[team]["beam_acc"].append(beam_acc)

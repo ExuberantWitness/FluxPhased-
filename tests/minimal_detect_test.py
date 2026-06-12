@@ -20,17 +20,13 @@ import time
 import numpy as np
 import torch
 
-# Allow importing train_league from parent dir
+# Allow importing from parent dir
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from train_league import (
-    DenseRewardShaper,
-    RadarActorCritic,
-    RolloutBuffer,
-    TeamPPOTrainer,
-    PPOTrainer,
-    create_team_policy,
-)
+from training.ppo.reward_shaping import DenseRewardShaper
+from training.ppo.actor_critic import RadarActorCritic, create_team_policy
+from training.ppo.buffer import RolloutBuffer
+from training.ppo.ppo_trainer import TeamPPOTrainer, PPOTrainer
 from radar_sim.gpu.vec_mfar_env import MFARVecEnv
 
 # ── Config ────────────────────────────────────────────────────────────────
@@ -58,7 +54,6 @@ REWARD_WEIGHTS = {
     "comm_reliability_weight": 0.05,
     "recon_intel_weight": 0.03,
     "beam_accuracy_weight": 5.0,  # dominant signal for beam learning
-    "beam_sigma": 15.0,           # max gradient at dAz=15° (initial offset)
     "snr_threshold_db": 10.0,
 }
 
@@ -113,7 +108,7 @@ def compute_random_baseline(env: MFARVecEnv, n_steps: int = 200) -> dict:
         result = env.step(actions=actions, commander_actions=commander_actions)
         shaped = shaper(result)
         total_shaped += shaped["total_shaped"].mean().item()
-        beam_acc_vals.append(shaped["beam_accuracy"].item())
+        beam_acc_vals.append(shaped["beam_accuracy_reward"].item())
 
     return {
         "avg_total_shaped": total_shaped / n_steps,
@@ -222,11 +217,11 @@ def run(device: str = "cuda", total_steps: int = 50000, log_interval: int = 200)
             # Evaluate actions for team 0 only
             rep_obs = own["transition"]["radar_obs"]
             rep_action = own["transition"]["radar_action"]
-            rep_logp, _, rep_val = trainer.radar_trainer.ac.evaluate_actions(
+            rep_logp, _, rep_val, _ = trainer.radar_trainer.ac.evaluate_actions(
                 rep_obs, rep_action)
             cmd_obs_0 = own["transition"]["cmd_obs"]
             cmd_act_0 = own["transition"]["cmd_action"]
-            cmd_logp, _, cmd_val = trainer.commander_trainer.ac.evaluate_actions(
+            cmd_logp, _, cmd_val, _ = trainer.commander_trainer.ac.evaluate_actions(
                 cmd_obs_0, cmd_act_0)
 
             transition = {
@@ -238,7 +233,7 @@ def run(device: str = "cuda", total_steps: int = 50000, log_interval: int = 200)
 
             reward_info = trainer.store_transition(env, result, transition, team=0)
             ep_reward += reward_info["radar_reward"].mean().item()
-            ep_beam_acc += reward_info["shaped_rewards"]["beam_accuracy"].item()
+            ep_beam_acc += reward_info["shaped_rewards"]["beam_accuracy_reward"].item()
 
             # Log beam angles
             if step % log_interval == 0:
@@ -246,7 +241,7 @@ def run(device: str = "cuda", total_steps: int = 50000, log_interval: int = 200)
                 beam_az_t0 = beam_az_all[..., 0:1].mean().item()  # team 0 only
                 beam_az = beam_az_all.mean().item()  # overall mean
                 beam_el = result["beam_el"].mean().item()
-                beam_acc = reward_info["shaped_rewards"]["beam_accuracy"].item()
+                beam_acc = reward_info["shaped_rewards"]["beam_accuracy_reward"].item()
                 total = reward_info["shaped_rewards"]["total_shaped"].mean().item()
 
                 rewards_history.append(total)

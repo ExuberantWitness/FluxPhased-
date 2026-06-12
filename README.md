@@ -1979,7 +1979,7 @@ Commander launch_flag>0.5 → 导弹发射 → 飞行 494,824 步 → 进入 kil
 
 #### 修改文件
 
-- `train_league.py`：DenseRewardShaper（team_filter, beam_sigma），SubArrayRadarActorCritic（全局 beam head, extract fix, bias init, task_head init），PPOTrainer（return normalization），PPO_DEFAULTS，ENV_DEFAULTS，REWARD_CONFIG，FluxLeague.initialize（policy 数量）
+- `training/ppo/`：DenseRewardShaper，SubArrayRadarActorCritic，PPOTrainer，PPO_DEFAULTS，ENV_DEFAULTS，REWARD_CONFIG，FluxLeague.initialize（policy 数量）。注：单体 `train_league.py` 已于 2026-06-13 删除，所有训练统一使用模块化入口 `python -m training.train --config ...`。
 - `radar_sim/gpu/vec_element_processor.py`：COMM 固定 BPSK 参数，MF 公式修正
 - `radar_sim/gpu/vec_mfar_env.py`：流模式 COMM RX 修复，跨队直射路径
 - `radar_sim/gpu/vec_battlefield.py`：COMM 参考波形同步
@@ -2012,7 +2012,7 @@ Commander launch_flag>0.5 → 导弹发射 → 飞行 494,824 步 → 进入 kil
 
 #### D1 修复（1 行）
 
-`train_league.py` `DenseRewardShaper.__call__`:
+`training/ppo/reward_shaping.py` `DenseRewardShaper.__call__`（原 `train_league.py`，已删除）:
 
 ```python
 # Before:
@@ -2230,14 +2230,19 @@ spec = torch.abs(mf_time) ** 2
 
 ---
 
-#### Single-File Consolidation / 单文件整合
+#### Single-File Consolidation / 单文件整合（已弃用）
+
+> ⚠️ **已弃用 (2026-06-13)**：单体 `train_league.py` 因参数致命错误（`pulses_per_cpi=1` + 未设 `speed_ms` = 每步导弹飞 2.44cm）导致 win_rate=0%，已删除。所有训练统一使用模块化入口：
 
 原有 16 个训练文件整合为单一 `train_league.py`，消除 YAML 配置和包内相对导入，直接运行：
 
 ```bash
 conda activate fluxphased
-python train_league.py --cells R0 --seed 42           # 单 cell 全流程
-python train_league.py --cells R0 R1 R3 --seed 42      # 三组消融
+# 已弃用——改用模块化入口：
+python -m training.train --config configs/league_25x25_configA.yaml
+# 消融实验通过 --override 切换 meta_solver：
+python -m training.train --config configs/league_25x25_configA.yaml --override league.meta_solver=nash
+python -m training.train --config configs/league_25x25_configA.yaml --override league.meta_solver=tc_dams --override league.tcdams_lambda=0.3
 ```
 
 ---
@@ -2285,7 +2290,7 @@ R0 (Nash baseline) 在 RTX 4090 + streaming 模式下完整跑通 Phase A→B→
 **修改文件**：
 - `radar_sim/gpu/vec_mfar_env.py` — 新增 `cpi_preallocate` 参数 + streaming 脉冲循环
 - `radar_sim/gpu/vec_element_processor.py` — `process_rx_cpi_unified` 新增 `iq_is_fft` 参数
-- `train_league.py` — **新增**：16 文件整合的单体联赛训练脚本
+- `train_league.py` — ~~已删除（2026-06-13）~~：参数致命错误（pulses_per_cpi=1、未设 speed_ms），已迁移至模块化 `training/` 包 + `configs/league_25x25_configA.yaml`
 - `check_precision.py` — **新增**：streaming vs pre-allocated 精度对比脚本
 
 ---
