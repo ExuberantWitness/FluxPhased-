@@ -1,44 +1,28 @@
 """Vectorized battlefield game state for E parallel environments.
 
-Manages team structure, commander actions, missile BPSK comm link,
-kill conditions, and win checks. All tensors on GPU.
+Manages team structure, drone laser weapon, BPSK comm from radar to drone,
+commander perfect link, illumination kill model, and win conditions.
+All tensors on GPU.
 """
 
 import torch
-import numpy as np
 
-from .vec_missile import VecMissile
-from .waveform_gpu import (
-    encode_bpsk, modulate_bpsk,
-    demodulate_bpsk_batch, decode_bpsk_batch,
-)
+from .vec_weapon import VecLaser
+from .vec_drone import VecDrone
 
 TEAM_RED = 0
 TEAM_BLUE = 1
 
-# Task IDs (must match vec_element_processor)
-TASK_COMM = 3
-
 
 class VecBattlefield:
-    """Vectorized battlefield: team structure + missile combat + win conditions.
+    """Vectorized battlefield: team structure + drone laser combat + win conditions.
 
     Team layout (for R=4 radars):
       radar 0,1 → team 0 (Red)
       radar 2,3 → team 1 (Blue)
 
-    Commander obs: 4 + 2 * num_input_length
-      [0:2]            own radar 0 position (x, y) / half_map
-      [2:4]            own radar 1 position (x, y) / half_map
-      [4:4+N_in]       radar 0 latent (from radar NN encoder)
-      [4+N_in:4+2*N_in] radar 1 latent
-
-    Commander action: 3 + 2 * num_output_length
-      [0]              launch_flag (>0.5 triggers launch)
-      [1]              target_x (normalized -1..1)
-      [2]              target_y (normalized -1..1)
-      [3:3+N_out]      instruction to radar 0
-      [3+N_out:3+2*N_out] instruction to radar 1
+    Commander obs: 4 + 2 * num_input_length + 8 = 76
+    Commander action: 5 [fire_on_off, aim_x, aim_y, aim_z, reserved]
     """
 
     def __init__(
@@ -47,15 +31,9 @@ class VecBattlefield:
         n_radars: int = 4,
         n_teams: int = 2,
         map_size=(20000.0, 20000.0),
-        speed_ms: float = 244.4,
-        kill_radius_m: float = 500.0,
-        missile_rcs_dbsm: float = 10.0,
-        rcs_nose_dbsm: float = -5.0,
-        rcs_side_dbsm: float = 12.0,
-        rcs_tail_dbsm: float = 3.0,
-        swerling_model: int = 3,
-        red_launch_pos=(0.0, -10000.0),
-        blue_launch_pos=(0.0, 10000.0),
+        kill_radius_m: float = 0.2,
+        illumination_time_s: float = 0.002,
+        drone_altitude_m: float = 3000.0,
         fs: float = 200e6,
         symbol_rate: float = 1e6,
         num_input_length: int = 32,
@@ -72,12 +50,11 @@ class VecBattlefield:
         self.device = device
         self.num_input_length = num_input_length
         self.num_output_length = num_output_length
-        self.commander_obs_dim = 4 + 2 * num_input_length + 8  # 68 → 76: +enemy pos +velocity
+        self.commander_obs_dim = 4 + 2 * num_input_length + 8
+        self.commander_action_dim = 5  # fire, aim_x, aim_y, aim_z, reserved
         self.reward_config = reward_config or {}
-        self.commander_action_dim = 3 + 2 * num_output_length
 
         dev = torch.device(device)
-        self._last_comm_crc_ok = torch.zeros(num_envs, n_teams, dtype=torch.bool, device=dev)
 
         # Team mapping: radar i → team_id[i]
         r_per_team = n_radars // n_teams
@@ -85,7 +62,6 @@ class VecBattlefield:
             [i // r_per_team for i in range(n_radars)],
             dtype=torch.long, device=dev,
         )
-        # team → list of radar indices
         self.team_radar_indices = []
         for t in range(n_teams):
             self.team_radar_indices.append(
@@ -95,18 +71,17 @@ class VecBattlefield:
                 )
             )
 
-        # Launch positions per team
-        self.launch_pos = torch.zeros(n_teams, 3, device=dev)
-        self.launch_pos[TEAM_RED] = torch.tensor([red_launch_pos[0], red_launch_pos[1], 0.0])
-        self.launch_pos[TEAM_BLUE] = torch.tensor([blue_launch_pos[0], blue_launch_pos[1], 0.0])
-
-        # Missile subsystem
-        self.missile = VecMissile(
+        # Drone + Laser subsystems
+        self.drone = VecDrone(
+            num_envs=num_envs, n_teams=n_teams, n_radars=n_radars,
+            altitude_m=drone_altitude_m, map_size=map_size,
+            fs=fs, symbol_rate=symbol_rate, device=device,
+        )
+        self.laser = VecLaser(
             num_envs=num_envs, n_teams=n_teams,
-            speed_ms=speed_ms, kill_radius_m=kill_radius_m,
-            rcs_dbsm=missile_rcs_dbsm, device=device,
-            rcs_nose_dbsm=rcs_nose_dbsm, rcs_side_dbsm=rcs_side_dbsm,
-            rcs_tail_dbsm=rcs_tail_dbsm, swerling_model=swerling_model,
+            kill_radius_m=kill_radius_m,
+            illumination_time_s=illumination_time_s,
+            device=device,
         )
 
         # Game state
@@ -118,207 +93,61 @@ class VecBattlefield:
     def reset(self, env_ids=None):
         if env_ids is None:
             env_ids = torch.arange(self.num_envs)
-        self.missile.reset(env_ids)
+        self.drone.reset(env_ids)
+        self.laser.reset(env_ids)
         self.alive[env_ids] = True
         self.dones[env_ids] = False
         self.winners[env_ids] = -1
         self.step_count[env_ids] = 0
-        if hasattr(self, '_prev_enemy_centroid'):
-            self._prev_enemy_centroid[env_ids] = 0.0
 
     # ------------------------------------------------------------------
-    # Commander actions
+    # Commander actions (perfect link to drone)
     # ------------------------------------------------------------------
 
     def process_commander_actions(
         self,
         commander_actions: torch.Tensor,
-        radar_pos: torch.Tensor,
     ):
-        """Process commander launch decisions (first 3 dims of commander action).
+        """Process commander fire/aim via perfect data link to drone.
 
         Args:
-            commander_actions: [E, n_teams, commander_action_dim]
-                [..., 0] = launch_flag (>0.5 triggers launch)
-                [..., 1] = target_x (normalized -1..1 → map coords)
-                [..., 2] = target_y (normalized -1..1 → map coords)
-            radar_pos: [E, R, 3]
+            commander_actions: [E, n_teams, 5]
+                [..., 0] = fire_on_off (>0.5 → fire)
+                [..., 1] = aim_x (normalized -1..1)
+                [..., 2] = aim_y (normalized -1..1)
+                [..., 3] = aim_z (normalized -1..1)
+                [..., 4] = reserved
         """
-        for t in range(self.n_teams):
-            launch_flag = commander_actions[:, t, 0]  # [E]
-            target_x = commander_actions[:, t, 1]  # [E] normalized
-            target_y = commander_actions[:, t, 2]
-
-            # Find envs that want to launch and don't have missile in flight
-            want_launch = launch_flag > 0.5
-            not_flying = ~self.missile.in_flight[:, t]
-            can_launch = want_launch & not_flying & ~self.dones
-            env_ids = torch.where(can_launch)[0]
-
-            if env_ids.numel() == 0:
-                continue
-
-            n = env_ids.numel()
-            start = self.launch_pos[t].unsqueeze(0).expand(n, 3).clone()
-
-            # Denormalize target coordinates
-            half_x = self.map_size[0] / 2.0
-            half_y = self.map_size[1] / 2.0
-            target = torch.zeros(n, 3, device=torch.device(self.device))
-            target[:, 0] = target_x[env_ids] * half_x
-            target[:, 1] = target_y[env_ids] * half_y
-            target[:, 2] = 0.0
-
-            self.missile.launch(env_ids, t, start, target)
-
-    def extract_radar_instructions(
-        self,
-        commander_actions: torch.Tensor,
-    ) -> torch.Tensor:
-        """Extract per-radar instruction vectors from commander actions.
-
-        Args:
-            commander_actions: [E, n_teams, commander_action_dim]
-        Returns:
-            instructions: [E, R, num_output_length]
-        """
-        E = self.num_envs
-        dev = torch.device(self.device)
-        N_out = self.num_output_length
-        result = torch.zeros(E, self.n_radars, N_out, device=dev)
-
-        for t in range(self.n_teams):
-            own_idx = self.team_radar_indices[t]
-            n_own = own_idx.shape[0]
-            inst_start = 3
-            inst_end = inst_start + N_out
-
-            result[:, own_idx[0]] = commander_actions[:, t, inst_start:inst_end]
-            if n_own > 1:
-                result[:, own_idx[1]] = commander_actions[:, t, inst_end:inst_end + N_out]
-
-        return result
+        self.drone.process_commander_actions(commander_actions)
 
     # ------------------------------------------------------------------
-    # Missile BPSK communication
+    # Radar BPSK comm to drone
     # ------------------------------------------------------------------
 
-    def process_missile_comm(
+    def process_radar_comm(
         self,
-        radar_pos: torch.Tensor,
-        task_ids: torch.Tensor,
-        comm_params: torch.Tensor,
         tx_signal: torch.Tensor,
+        radar_pos: torch.Tensor,
         channel,
-        processor,
     ):
-        """BPSK comm from radar comm elements to missile.
+        """BPSK comm from radar TX to drone (physical channel).
 
-        Pipeline per team:
-        1. Collect comm element TX signals across team's radars
-        2. Sum (coherent combining approximation)
-        3. Compute one-way channel: radar_mean_pos → missile_pos
-        4. Apply channel (gain + noise)
-        5. BPSK demodulate → decode (X, Y)
-        6. CRC pass → update missile target
+        Full-signal matched filter: drone receives sum of all elements'
+        TX, applies channel, BPSK demodulates. No task_ids needed.
 
         Args:
-            radar_pos: [E, R, 3]
-            task_ids: [E, R, N] int
-            comm_params: [E, R, N, 3]
             tx_signal: [E, R, N, S] complex64
+            radar_pos: [E, R, 3]
             channel: VecChannel instance
-            processor: VecElementProcessor instance
         """
-        dev = torch.device(self.device)
-        E = self.num_envs
-        S = tx_signal.shape[-1]
-
-        self._last_comm_crc_ok.zero_()
-
-        for t in range(self.n_teams):
-            # BPSK comm requires a missile in flight to receive.
-            # Pre-launch comm check is not physically meaningful —
-            # the Commander decides launch based on tactical assessment,
-            # not CRC gating.  CRC is used for mid-flight target updates
-            # and comm_reliability reward shaping.
-            flying = self.missile.in_flight[:, t]  # [E]
-            if not flying.any():
-                continue
-
-            flying_idx = torch.where(flying)[0]
-            team_r = self.team_radar_indices[t]  # [R/2]
-
-            # Comm mask: [E, R, N] bool → select team radars
-            team_tasks = task_ids[:, team_r, :]  # [E, R/2, N]
-            comm_mask = (team_tasks == TASK_COMM)  # [E, R/2, N]
-
-            # Check if any comm elements exist for this team
-            has_comm = comm_mask.any(dim=-1).any(dim=-1)  # [E]
-            active = flying & has_comm
-            if not active.any():
-                continue
-            active_idx = torch.where(active)[0]
-
-            # Sum comm element TX signals per env
-            team_tx = tx_signal[:, team_r, :, :]  # [E, R/2, N, S]
-            masked = team_tx * comm_mask.unsqueeze(-1)  # [E, R/2, N, S]
-            combined = masked.sum(dim=(1, 2))  # [E, S]
-
-            # Only process active envs
-            sig = combined[active_idx]  # [n_active, S]
-
-            # One-way channel: mean radar pos → missile pos
-            team_pos = radar_pos[:, team_r, :]  # [E, R/2, 3]
-            radar_mean = team_pos.mean(dim=1)  # [E, 3]
-            m_pos = self.missile.missile_pos[:, t, :]  # [E, 3]
-
-            tx_p = radar_mean[active_idx]  # [n_active, 3]
-            rx_p = m_pos[active_idx]
-
-            _, _, gain = channel.compute_params_one_way(
-                tx_p, rx_p,
-                tx_power_w=1.0,
-                directivity_db=44.0,
-                system_loss_db=3.0,
-            )
-
-            # Apply channel
-            rx = channel.apply_one_way(sig, gain)  # [n_active, S]
-
-            # Add noise
-            noise = torch.randn_like(rx) * channel.noise_std
-            rx = rx + noise
-
-            # BPSK demodulate
-            bits = demodulate_bpsk_batch(rx, self.symbol_rate, self.fs, n_bits=32)
-            data_x, data_y, crc_ok = decode_bpsk_batch(bits)
-
-            # Store CRC status for evaluation
-            self._last_comm_crc_ok[active_idx, t] = crc_ok
-
-            # ── Terminal guidance: update missile target via BPSK ──
-            # BPSK payload now encodes the actual enemy radar centroid,
-            # updated each step by vec_mfar_env before TX assembly.
-            # Only update when CRC passes (reliable comm link).
-            if crc_ok.any():
-                crc_good = crc_ok  # [n_active]
-                half_x = self.map_size[0] / 2.0
-                half_y = self.map_size[1] / 2.0
-                new_target = torch.zeros(crc_good.sum(), 3, device=dev)
-                new_target[:, 0] = data_x[crc_good] * half_x
-                new_target[:, 1] = data_y[crc_good] * half_y
-                new_target[:, 2] = 0.0
-                self.missile.update_target(
-                    active_idx[crc_good], t, new_target,
-                )
+        self.drone.process_radar_comm(tx_signal, radar_pos, channel)
 
     # ------------------------------------------------------------------
-    # Missile physics + kill check
+    # Laser kill check
     # ------------------------------------------------------------------
 
-    def step_missiles(self, dt: float, radar_pos: torch.Tensor):
-        """Advance missile physics and check kills.
+    def step_lasers(self, dt: float, radar_pos: torch.Tensor) -> torch.Tensor:
+        """Advance laser illumination and check kills.
 
         Args:
             dt: time step (seconds)
@@ -326,25 +155,63 @@ class VecBattlefield:
         Returns:
             kills: [E, n_teams, n_enemy_radars] bool
         """
-        self.missile.step(dt)
         self.step_count += 1
 
+        # Resolve aim: commander > radar
+        self.drone.update_aim()
+
+        # Build enemy positions per team
+        dev = torch.device(self.device)
         kills = torch.zeros(
             self.num_envs, self.n_teams, self.n_radars // self.n_teams,
-            dtype=torch.bool, device=torch.device(self.device),
+            dtype=torch.bool, device=dev,
         )
 
         for t in range(self.n_teams):
             enemy_team = 1 - t
-            enemy_idx = self.team_radar_indices[enemy_team]  # [R/2]
+            enemy_idx = self.team_radar_indices[enemy_team]
             enemy_pos = radar_pos[:, enemy_idx, :]  # [E, R/2, 3]
 
-            # Only check alive enemies
+            # Only alive enemies
             enemy_alive = self.alive[:, enemy_idx]  # [E, R/2]
             enemy_pos = enemy_pos * enemy_alive.unsqueeze(-1).float()
 
-            k = self.missile.check_kill(enemy_pos)  # [E, T, R/2]
-            kills[:, t, :] = k[:, t, :]
+            # Fire status
+            fire_on = self.drone.fire_on[:, t]
+
+            # Build per-team inputs for laser
+            # aim_pos needs [E, n_teams, 3] → we process per team
+            # actual_pos needs [E, n_teams, n_enemy, 3]
+            actual_pos = enemy_pos.unsqueeze(1)  # [E, 1, R/2, 3]
+
+            # Expand aim and fire for single-team check
+            aim_expanded = self.drone.laser_aim[:, t:t+1, :].unsqueeze(2).expand(
+                -1, -1, enemy_idx.shape[0], -1)  # [E, 1, R/2, 3]
+
+            # Temporarily set laser state for this team's check
+            # Use laser.step with expanded inputs
+            dist = (aim_expanded - actual_pos).norm(dim=-1)  # [E, 1, R/2]
+            on_target = (dist < self.laser.kill_radius_m).any(dim=-1)  # [E, 1]
+            on_target = on_target & fire_on.unsqueeze(-1)  # [E, 1]
+
+            # Continuous illumination
+            illum = self.laser.illumination_time[:, t:t+1]
+            illum = torch.where(
+                on_target, illum + dt, torch.zeros_like(illum))
+            kill_eligible = (illum >= self.laser.illumination_time_s) & on_target
+
+            in_range = dist < self.laser.kill_radius_m  # [E, 1, R/2]
+            team_kills = in_range & kill_eligible.unsqueeze(-1)  # [E, 1, R/2]
+            kills[:, t, :] = team_kills[:, 0, :]
+
+            # Update laser illumination state
+            self.laser.illumination_time[:, t] = illum[:, 0]
+            self.laser.on_target[:, t] = on_target[:, 0]
+
+            # Reset timer after kill
+            if team_kills.any():
+                killed_envs = team_kills.any(dim=-1)[:, 0]
+                self.laser.illumination_time[killed_envs, t] = 0.0
 
         return kills
 
@@ -353,11 +220,9 @@ class VecBattlefield:
         for t in range(self.n_teams):
             enemy_team = 1 - t
             enemy_idx = self.team_radar_indices[enemy_team]
-            # kills[:, t, :] → which enemy radars were killed by team t's missile
-            team_kills = kills[:, t, :]  # [E, R/2]
+            team_kills = kills[:, t, :]
             for j, r_idx in enumerate(enemy_idx):
-                killed = team_kills[:, j]  # [E]
-                self.alive[:, r_idx] = self.alive[:, r_idx] & ~killed
+                self.alive[:, r_idx] = self.alive[:, r_idx] & ~team_kills[:, j]
 
     def check_win(self):
         """Check win conditions: destroy any enemy radar.
@@ -369,7 +234,7 @@ class VecBattlefield:
         for t in range(self.n_teams):
             enemy_team = 1 - t
             enemy_idx = self.team_radar_indices[enemy_team]
-            any_dead = (~self.alive[:, enemy_idx]).any(dim=-1)  # [E]
+            any_dead = (~self.alive[:, enemy_idx]).any(dim=-1)
             newly_won = any_dead & ~self.dones
             self.winners[newly_won] = t
             self.dones = self.dones | newly_won
@@ -385,87 +250,15 @@ class VecBattlefield:
         radar_pos: torch.Tensor,
         radar_latents: torch.Tensor,
     ) -> torch.Tensor:
-        """Build commander observation [E, n_teams, 76].
-
-        Layout per team (expanded from 68 to 76):
-          [0:2]            own radar 0 position (x, y) / half_map
-          [2:4]            own radar 1 position (x, y) / half_map
-          [4:36]           radar 0 latent (32-dim from radar NN encoder)
-          [36:68]          radar 1 latent (32-dim)
-          [68:70]          enemy radar 0 position (x, y) / half_map   ← NEW
-          [70:72]          enemy radar 1 position (x, y) / half_map   ← NEW
-          [72:74]          previous enemy centroid (x, y) / half_map  ← NEW (velocity signal)
-          [74:76]          missile flight [in_flight_own, in_flight_enemy] ← NEW
-
-        The additional 8 dims give the Commander explicit knowledge of
-        enemy positions and a crude velocity signal (Δcentroid/Δt),
-        enabling trajectory prediction for launch direction.
+        """Build commander observation via drone.
 
         Args:
             radar_pos: [E, R, 3]
-            radar_latents: [E, R, num_input_length] from radar NN encoder
+            radar_latents: [E, R, num_input_length]
+        Returns:
+            obs: [E, n_teams, commander_obs_dim]
         """
-        E = self.num_envs
-        dev = torch.device(self.device)
-        N_in = self.num_input_length
-        half_x = self.map_size[0] / 2.0
-        half_y = self.map_size[1] / 2.0
-
-        # Init persistent previous-enemy-centroid buffer if needed
-        if not hasattr(self, '_prev_enemy_centroid'):
-            self._prev_enemy_centroid = torch.zeros(E, self.n_teams, 2, device=dev)
-
-        obs = torch.zeros(E, self.n_teams, self.commander_obs_dim, device=dev)
-
-        for t in range(self.n_teams):
-            own_idx = self.team_radar_indices[t]
-            enemy_t = 1 - t
-            enemy_idx = self.team_radar_indices[enemy_t]
-            n_own = own_idx.shape[0]
-            n_enemy = enemy_idx.shape[0]
-
-            # Own radar positions [0:4]
-            obs[:, t, 0] = radar_pos[:, own_idx[0], 0] / half_x
-            obs[:, t, 1] = radar_pos[:, own_idx[0], 1] / half_y
-            if n_own > 1:
-                obs[:, t, 2] = radar_pos[:, own_idx[1], 0] / half_x
-                obs[:, t, 3] = radar_pos[:, own_idx[1], 1] / half_y
-            else:
-                obs[:, t, 2] = obs[:, t, 0]
-                obs[:, t, 3] = obs[:, t, 1]
-
-            # Radar latents [4:4+2*N_in] = [4:36] and [36:68]
-            obs[:, t, 4:4 + N_in] = radar_latents[:, own_idx[0]]
-            if n_own > 1:
-                obs[:, t, 4 + N_in:4 + 2 * N_in] = radar_latents[:, own_idx[1]]
-
-            # ── NEW: Enemy radar positions ──
-            off_enemy = 4 + 2 * N_in
-            obs[:, t, off_enemy] = radar_pos[:, enemy_idx[0], 0] / half_x
-            obs[:, t, off_enemy + 1] = radar_pos[:, enemy_idx[0], 1] / half_y
-            if n_enemy > 1:
-                obs[:, t, off_enemy + 2] = radar_pos[:, enemy_idx[1], 0] / half_x
-                obs[:, t, off_enemy + 3] = radar_pos[:, enemy_idx[1], 1] / half_y
-            else:
-                obs[:, t, off_enemy + 2] = obs[:, t, off_enemy]
-                obs[:, t, off_enemy + 3] = obs[:, t, off_enemy + 1]
-
-            # ── NEW: Previous enemy centroid (crude velocity signal) ──
-            off_vel = off_enemy + 4
-            obs[:, t, off_vel] = self._prev_enemy_centroid[:, t, 0]
-            obs[:, t, off_vel + 1] = self._prev_enemy_centroid[:, t, 1]
-
-            # Update persistent buffer for next step
-            enemy_center = radar_pos[:, enemy_idx, :].mean(dim=1)  # [E, 3]
-            self._prev_enemy_centroid[:, t, 0] = enemy_center[:, 0] / half_x
-            self._prev_enemy_centroid[:, t, 1] = enemy_center[:, 1] / half_y
-
-            # ── NEW: Missile flight status ──
-            off_msl = off_vel + 2
-            obs[:, t, off_msl] = self.missile.in_flight[:, t].float()
-            obs[:, t, off_msl + 1] = self.missile.in_flight[:, enemy_t].float()
-
-        return obs
+        return self.drone.get_commander_obs(radar_pos, radar_latents)
 
     # ------------------------------------------------------------------
     # Rewards
@@ -491,30 +284,20 @@ class VecBattlefield:
             own_idx = self.team_radar_indices[t]
             enemy_idx = self.team_radar_indices[enemy_team]
 
-            # Any kill by this team's missile?
             team_kills = kills[:, t, :].any(dim=-1)  # [E]
+            commander_rewards[:, t] += team_kills.float() * self.reward_config.get('kill_bonus', 100.0)
 
-            # Commander: kill/death rewards
-            commander_rewards[:, t] += team_kills.float() * self.reward_config.get('kill_bonus', 10.0)
-
-            # Any own radar killed by enemy?
             own_killed = kills[:, enemy_team, :].any(dim=-1)
             commander_rewards[:, t] += own_killed.float() * self.reward_config.get('death_penalty', -10.0)
 
-            # Radar agents on this team
             for ri in own_idx:
-                radar_rewards[:, ri] += team_kills.float() * self.reward_config.get('radar_kill_share', 1.0)
+                radar_rewards[:, ri] += team_kills.float() * self.reward_config.get('radar_kill_share', 5.0)
                 radar_rewards[:, ri] += own_killed.float() * self.reward_config.get('radar_death_share', -1.0)
-
-            # Emission cost per step
-            for ri in own_idx:
                 radar_rewards[:, ri] += self.reward_config.get('emission_cost', -0.001)
 
-            # Urgency: commander penalized for not launching
-            # Increased from -0.01 to -0.05/step to provide stronger
-            # learning signal for launch timing (plan Step 5).
-            not_launched = ~self.missile.launched[:, t] & ~self.dones
-            commander_rewards[:, t] += not_launched.float() * self.reward_config.get('urgency_penalty', -0.05)
+            # Illumination progress reward
+            progress = self.laser.get_illumination_progress()  # [E, T]
+            commander_rewards[:, t] += progress[:, t] * self.reward_config.get('illumination_reward', 1.0)
 
         return {
             "radar_rewards": radar_rewards,

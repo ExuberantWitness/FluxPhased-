@@ -880,7 +880,7 @@ def create_team_policy(
     """
     commander = CommanderActorCritic(
         obs_dim=76,
-        act_dim=35,
+        act_dim=5,
         hidden_dim=256,
     ).to(device)
 

@@ -1,0 +1,100 @@
+# FluxPhased- Laser Drone Configuration — 25×25 Array
+# Pure physics engine + RadarPolicy (DSP+NN)
+# Weapon: space-based laser on drone, continuous 2ms illumination
+#
+# GPU: RTX PRO 6000 Blackwell (98 GB VRAM)
+# Sub-Array Decomposed Policy: 25 sub-arrays of 5×5 blocks
+
+sub_array_size: 5
+
+league:
+  population_cap: 50
+  n_eval_games: 10
+  meta_solver: "nash"
+  pfsp_temperature: 1.0
+  exploiter_reset_prob: 0.1
+  episodes_per_training: 100
+  max_steps_per_episode: 600000    # max pulses = 60s / 100μs = 600K
+  checkpoint_dir: "checkpoints/league_laser_25x25"
+
+  mutation:
+    enabled: true
+    epsilon: 0.05
+    n_mutants_per_policy: 3
+    n_top_policies: 2
+    win_rate_threshold: 0.55
+
+ppo:
+  commander:
+    lr: 3.0e-4
+    clip_range: 0.2
+    entropy_coef: 0.01
+  radar:
+    lr: 1.0e-4
+    clip_range: 0.1
+    entropy_coef: 0.02
+  shared:
+    gamma: 0.999
+    gae_lambda: 0.99
+    n_step_returns: 400
+    value_coef: 0.5
+    max_grad_norm: 0.5
+    n_epochs: 3
+    batch_size: 128
+    buffer_size: 2048
+    buffer_size_commander: 2048
+    buffer_size_radar: 2048
+
+training:
+  warmup_episodes: 0
+  psro_iterations: 30
+  critic_pretrain_episodes: 50
+  critic_pretrain_epochs: 50
+  bc_pretrain_epochs: 20
+  bc_pretrain_batch_size: 128
+
+reward_shaping:
+  detect_snr_weight: 0.1
+  beam_accuracy_weight: 5.0
+  position_estimate_error_weight: 2.0
+  comm_crc_weight: 0.5
+  illumination_progress_weight: 1.0
+  kill_bonus: 100.0
+  jam_effectiveness_weight: 0.1
+  death_penalty: -10.0
+  emission_cost: -0.001
+  snr_threshold_db: 10.0
+  team_reward_weight: 0.1
+  team_kill_weight: 1.0
+
+privileged_critic:
+  enabled: true
+  encoder_hidden: [512, 256]
+
+env:
+  rows: 25
+  cols: 25
+  num_envs: 4
+  n_radars: 4
+  n_teams: 2
+  pulses_per_cpi: 4
+  fft_size: 64
+  device: "cuda"
+  tx_power_w: 1.0
+  cpi_preallocate: false
+
+  # Timing
+  prf: 10e3                      # 10 kHz → PRI = 100μs
+  pulses_per_control: 5           # NN at 2kHz = 500μs intervals
+
+  # Physics
+  bandwidth: 200e6                # 200 MHz
+  vehicle_speed_ms: 20.0          # ~72 km/h max
+
+  # Weapon
+  kill_radius_m: 0.2              # 20cm
+  illumination_time_s: 0.002      # 2ms continuous
+  drone_altitude_m: 3000.0        # 3km
+
+  # Map
+  map_size: [20000.0, 20000.0]    # 20km × 20km
