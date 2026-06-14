@@ -1,0 +1,83 @@
+# FluxPhased- Laser Drone Training Config — 25×25 Array
+# Practical training: shorter episodes (200 pulses = 20ms) for faster iteration
+# Laser kill requires 2ms = 20 pulses continuous illumination
+
+sub_array_size: 5
+
+league:
+  population_cap: 10
+  episodes_per_training: 5
+  max_steps_per_episode: 500     # 500 pulses = 50ms simulation
+  checkpoint_dir: "checkpoints/laser_25x25"
+
+ppo:
+  commander:
+    lr: 3.0e-4
+    clip_range: 0.2
+    entropy_coef: 0.01
+  radar:
+    lr: 1.0e-4
+    clip_range: 0.1
+    entropy_coef: 0.02
+  shared:
+    gamma: 0.999
+    gae_lambda: 0.99
+    n_epochs: 3
+    batch_size: 128
+    buffer_size: 512
+    buffer_size_commander: 512
+    buffer_size_radar: 512
+    value_coef: 1.0           # raised from 0.5 — critic was lagging badly (v8 value_loss=8.38)
+    vf_clip_range: 10.0       # scalar clamp on value pred to prevent spikes destabilizing shared trunk
+    max_grad_norm: 0.5
+
+training:
+  psro_iterations: 20
+  # Behavior cloning auxiliary loss: supervise commander to aim at enemy in obs.
+  # Decays linearly over cmd_bc_decay_iters so PPO can take over later.
+  cmd_bc_weight_init: 1.0
+  cmd_bc_weight_final: 1.0
+  cmd_bc_decay_iters: 10
+  # Commander log_std annealing schedule
+  log_std_init: -1.0          # std≈0.37, good exploration
+  log_std_floor: -6.0         # std≈2.5e-3, ~7.5m physical noise at 3km (kills come from t⁴ gradient)
+  log_std_decay: 0.20         # per-iter linear decrement (reaches floor by iter ~25)
+  # MAPPO centralized team critic (sees global team state, decentralized actor)
+  use_mappo: true
+
+reward_shaping:
+  detect_snr_weight: 0.1
+  beam_accuracy_weight: 5.0
+  illumination_progress_weight: 1.0
+  kill_bonus: 100.0
+  death_penalty: -10.0
+  emission_cost: -0.001
+  snr_threshold_db: 10.0
+  team_reward_weight: 0.1
+  team_kill_weight: 1.0
+  # Dense (1/r²)×t⁴ beam reward — normalized to typical engagement distance
+  beam_reward_weight: 5.0
+  beam_hit_radius_m: 500.0       # accumulate t when beam within this radius
+  beam_r_ref_m: 3000.0           # spatial=1 at typical team separation (~3km)
+  beam_r_floor_m: 2.0            # prevent 1/0 explosion
+  beam_spatial_cap: 1000.0       # allow strong gradient up to spatial=1000 (r≈95m)
+  beam_temporal_epsilon: 0.05    # floor: nearby-but-not-hitting gets small reward
+
+env:
+  rows: 25
+  cols: 25
+  num_envs: 4
+  n_radars: 4
+  n_teams: 2
+  pulses_per_cpi: 4
+  fft_size: 64
+  device: "cuda"
+  tx_power_w: 1.0
+  prf: 10000.0
+  pulses_per_control: 5
+  bandwidth: 200000000.0
+  vehicle_speed_ms: 20.0
+  kill_radius_m: 0.2
+  illumination_time_s: 0.002
+  drone_altitude_m: 3000.0
+  map_size: [20000.0, 20000.0]

@@ -21,6 +21,8 @@ from training.radar_policy import CPIAccumulator
 from training.ppo.actor_critic import (
     SubArrayRadarActorCritic,
     CommanderActorCritic,
+    TeamCritic,
+    build_team_state,
 )
 from training.ppo.buffer import RolloutBuffer
 
@@ -138,6 +140,25 @@ class LaserTrainer:
         self.commander_clip = cmd_cfg.get("clip_range", 0.2)
         self.radar_entropy = rad_cfg.get("entropy_coef", 0.02)
         self.commander_entropy = cmd_cfg.get("entropy_coef", 0.01)
+
+        # MAPPO: centralized team critic (optional). When enabled, replaces
+        # commander's per-agent value_head for advantage computation. Sees
+        # global team state (commander_obs + alive + beam_hit_time + ...).
+        # Decentralized actor (commander_ac) still uses local 76-dim obs.
+        self.use_mappo = cfg.get("training", {}).get("use_mappo", False)
+        if self.use_mappo:
+            self.team_critic = TeamCritic(input_dim=104, hidden_dim=256).to(self.device)
+            # Init last layer bias to expected return (~2.8) like commander value_head
+            last = self.team_critic.net[-1]
+            torch.nn.init.orthogonal_(last.weight, gain=1.0)
+            torch.nn.init.constant_(last.bias, 2.8)
+            self.team_critic_optimizer = torch.optim.Adam(
+                self.team_critic.parameters(),
+                lr=cmd_cfg.get("team_critic_lr", 1e-3),
+            )
+        else:
+            self.team_critic = None
+            self.team_critic_optimizer = None
 
         # CPI accumulator
         self.cpi_buffer = CPIAccumulator(E, R, N, P, S, device=self.device)
@@ -349,12 +370,17 @@ class LaserTrainer:
 
         return {"radar_rewards": radar_rewards, "commander_rewards": cmd_rewards}
 
-    def _ppo_update(self, ac, optimizer, buffer, clip_range, entropy_coef, bc_weight=0.0):
+    def _ppo_update(self, ac, optimizer, buffer, clip_range, entropy_coef,
+                    bc_weight=0.0, team_critic=None, team_critic_optimizer=None):
         """Run one PPO update on the buffer.
 
         Args:
             bc_weight: if > 0, add BC auxiliary loss that supervises commander
                        to copy enemy position from obs[68:70] to action[1:3].
+            team_critic: optional MAPPO centralized critic. When provided, uses
+                         team_state from buffer and team_critic for value
+                         predictions (instead of ac.value_head).
+            team_critic_optimizer: required when team_critic is provided.
         """
         if buffer.ptr < self.batch_size:
             return {}
@@ -378,6 +404,7 @@ class LaserTrainer:
                 advantages = batch["advantages"]
                 returns = batch["returns"]
                 priv_info = batch.get("privileged_info")  # None if buffer has no privileged_infos
+                team_state = batch.get("team_states") if team_critic is not None else None
 
                 advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
@@ -390,9 +417,17 @@ class LaserTrainer:
                 surr2 = torch.clamp(ratio, 1 - clip_range, 1 + clip_range) * advantages
                 policy_loss = -torch.min(surr1, surr2).mean()
 
-                # Use privileged_value when CTDE is active (more accurate critic);
-                # otherwise fall back to deployment value_head output.
-                critic_value = priv_value if priv_info is not None else value
+                # Choose critic for value loss:
+                # - MAPPO: use team_critic(team_state)
+                # - CTDE: use privileged_value (commander's priv head)
+                # - Default: use ac.value_head output
+                if team_critic is not None and team_state is not None:
+                    critic_value = team_critic(team_state)
+                elif priv_info is not None:
+                    critic_value = priv_value
+                else:
+                    critic_value = value
+
                 value_pred = critic_value.squeeze(-1)
                 if self.vf_clip_range is not None:
                     # Clamp value predictions to return range ± vf_clip_range so
@@ -405,7 +440,13 @@ class LaserTrainer:
                 value_loss = ((value_pred - returns) ** 2).mean()
                 entropy_loss = -entropy.mean()
 
-                loss = policy_loss + self.value_coef * value_loss + entropy_coef * entropy_loss
+                # When MAPPO is active, the actor's value_head isn't used.
+                # Build loss accordingly: actor takes policy+BC+entropy,
+                # team_critic takes value loss separately.
+                if team_critic is not None:
+                    loss = policy_loss + entropy_coef * entropy_loss
+                else:
+                    loss = policy_loss + self.value_coef * value_loss + entropy_coef * entropy_loss
 
                 # BC auxiliary loss for commander: aim at enemy position in obs
                 if bc_weight > 0 and obs.shape[1] >= 70:
@@ -419,7 +460,15 @@ class LaserTrainer:
                     total_bc_loss += bc_loss.item()
 
                 optimizer.zero_grad()
+                if team_critic_optimizer is not None:
+                    team_critic_optimizer.zero_grad()
                 loss.backward()
+                if team_critic is not None and team_critic_optimizer is not None:
+                    # Add value loss for team_critic and backprop separately
+                    team_critic_optimizer.zero_grad()
+                    value_loss.backward()
+                    nn.utils.clip_grad_norm_(team_critic.parameters(), self.max_grad_norm)
+                    team_critic_optimizer.step()
                 nn.utils.clip_grad_norm_(ac.parameters(), self.max_grad_norm)
                 optimizer.step()
 
@@ -469,6 +518,7 @@ class LaserTrainer:
         self._last_cmd_val = None
         self._last_cmd_priv_val = None
         self._last_cmd_priv_info = None
+        self._last_team_state = None
 
         episode_stats = {
             "kills": 0, "total_pulses": 0, "radar_updates": 0, "cmd_updates": 0,
@@ -545,6 +595,10 @@ class LaserTrainer:
                             self._last_cmd_priv_info[e, t].cpu()
                             if self._last_cmd_priv_info is not None else None
                         )
+                        team_st = (
+                            self._last_team_state[e, t].cpu()
+                            if self._last_team_state is not None else None
+                        )
                         self.cmd_buf.add(
                             obs=self._last_cmd_obs[e, t].cpu(),
                             action=self._last_cmd_action[e, t].cpu(),
@@ -554,6 +608,7 @@ class LaserTrainer:
                             log_prob=self._last_cmd_logp.reshape(E, env.n_teams)[e, t].item(),
                             privileged_value=priv_val,
                             privileged_info=priv_info,
+                            team_state=team_st,
                         )
 
             # 6. Check kills/dones
@@ -709,6 +764,16 @@ class LaserTrainer:
             self._last_cmd_val = c_val.reshape(E, T)
             self._last_cmd_obs = cmd_obs
 
+            # MAPPO: build team_state and compute V_team (centralized critic)
+            if self.use_mappo:
+                team_state = self._build_team_state_mappo(cmd_obs)  # [E, T, 104]
+                team_state_flat = team_state.reshape(E * T, 104)
+                v_team = self.team_critic(team_state_flat).squeeze(-1)  # [E*T]
+                self._last_cmd_val = v_team.reshape(E, T)  # override per-agent value
+                self._last_team_state = team_state
+            else:
+                self._last_team_state = None
+
         # Cache actions for env step
         self._cached_tx = self._assemble_tx(r_action)
         self._cached_cmd_action = self._last_cmd_action
@@ -759,6 +824,54 @@ class LaserTrainer:
 
         return priv
 
+    def _build_team_state_mappo(self, cmd_obs):
+        """Build team_state [E, T, 104] for MAPPO centralized critic.
+
+        Combines commander_obs (76) with task_fingerprint, alive, missile state,
+        using the existing build_team_state helper. Missile fields are zeros
+        (no missile weapon in this laser-only mode).
+        """
+        env = self.env
+        E = env.num_envs
+        T = env.n_teams
+        dev = torch.device(self.device)
+
+        # Per-team team_state via build_team_state (handles batching)
+        # Reshape cmd_obs to [E*T, 76] for batched call
+        cmd_flat = cmd_obs.reshape(E * T, -1)  # [E*T, 76]
+
+        # Alive flags per radar [E, R]
+        radar_alive = env.radar_alive if hasattr(env, "radar_alive") else None
+        if radar_alive is None:
+            alive = torch.ones(E, env.n_radars, dtype=torch.bool, device=dev)
+        else:
+            alive = radar_alive.bool()
+
+        # Expand alive to [E*T, R] (each team sees same alive array)
+        alive_expanded = alive.unsqueeze(1).expand(E, T, env.n_radars).reshape(E * T, env.n_radars)
+
+        # task_fingerprint: zeros (no task extraction in laser mode)
+        task_fp = torch.zeros(E * T, T, 4, device=dev)
+
+        # avg_snr: zeros (would need radar spectrum processing)
+        avg_snr = torch.zeros(E * T, env.n_radars, device=dev)
+
+        # Missile: zeros (no missile in laser mode)
+        missile_pos = torch.zeros(E * T, T, 3, device=dev)
+        missile_in_flight = torch.zeros(E * T, T, dtype=torch.bool, device=dev)
+        missile_target = torch.zeros(E * T, T, 3, device=dev)
+
+        team_state_flat = build_team_state(
+            commander_obs=cmd_flat,
+            task_fingerprint=task_fp,
+            avg_snr=avg_snr,
+            alive=alive_expanded,
+            missile_pos=missile_pos,
+            missile_in_flight=missile_in_flight,
+            missile_target=missile_target,
+        )  # [E*T, 104]
+        return team_state_flat.reshape(E, T, 104)
+
     def update(self, cmd_bc_weight: float = 0.0) -> dict:
         """Run PPO update on both radar and commander buffers.
 
@@ -773,6 +886,8 @@ class LaserTrainer:
             self.commander_ac, self.commander_optimizer, self.cmd_buf,
             self.commander_clip, self.commander_entropy,
             bc_weight=cmd_bc_weight,
+            team_critic=self.team_critic,
+            team_critic_optimizer=self.team_critic_optimizer,
         )
         return {"radar": radar_metrics, "commander": cmd_metrics}
 
