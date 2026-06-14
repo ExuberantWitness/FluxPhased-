@@ -1,0 +1,55 @@
+# Quick smoke test config for laser training — 5×5 array
+sub_array_size: 5
+
+league:
+  population_cap: 2
+  n_eval_games: 2
+  episodes_per_training: 4
+  max_steps_per_episode: 2000    # 2000 pulses = 0.2s
+  checkpoint_dir: "checkpoints/laser_smoke"
+
+ppo:
+  commander:
+    lr: 3.0e-4
+    clip_range: 0.2
+    entropy_coef: 0.01
+  radar:
+    lr: 1.0e-4
+    clip_range: 0.1
+    entropy_coef: 0.02
+  shared:
+    gamma: 0.999
+    gae_lambda: 0.99
+    n_epochs: 2
+    batch_size: 32
+    buffer_size: 256
+    value_coef: 0.5
+    max_grad_norm: 0.5
+
+training:
+  psro_iterations: 3
+
+reward_shaping:
+  kill_bonus: 100.0
+  death_penalty: -10.0
+  illumination_progress_weight: 1.0
+  emission_cost: -0.001
+
+env:
+  rows: 5
+  cols: 5
+  num_envs: 2
+  n_radars: 4
+  n_teams: 2
+  pulses_per_cpi: 4
+  fft_size: 64
+  device: "cuda"
+  tx_power_w: 1.0
+  prf: 10000.0
+  pulses_per_control: 5
+  bandwidth: 200000000.0
+  vehicle_speed_ms: 20.0
+  kill_radius_m: 0.2
+  illumination_time_s: 0.002
+  drone_altitude_m: 3000.0
+  map_size: [20000.0, 20000.0]

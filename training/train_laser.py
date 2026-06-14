@@ -1,0 +1,946 @@
+"""Laser drone weapon training: pulse-level PPO self-play.
+
+Pulse-level loop: env.step() runs every 100μs (1 pulse).
+CPI accumulation + FFT runs every 4 pulses.
+NN decision + PPO transition storage runs every 5 pulses (2kHz).
+PPO update runs when buffer fills.
+
+Usage:
+    python -m training.train_laser --config configs/laser_25x25_config.yaml
+"""
+
+import argparse
+import time
+import yaml
+import torch
+import torch.nn as nn
+import numpy as np
+
+from radar_sim.gpu.vec_mfar_env import MFARVecEnv
+from training.radar_policy import CPIAccumulator
+from training.ppo.actor_critic import (
+    SubArrayRadarActorCritic,
+    CommanderActorCritic,
+)
+from training.ppo.buffer import RolloutBuffer
+
+
+def load_config(path: str) -> dict:
+    with open(path) as f:
+        return yaml.safe_load(f)
+
+
+def build_env(cfg: dict) -> MFARVecEnv:
+    env_cfg = cfg.get("env", {})
+    return MFARVecEnv(
+        num_envs=env_cfg.get("num_envs", 4),
+        n_radars=env_cfg.get("n_radars", 4),
+        rows=env_cfg.get("rows", 25),
+        cols=env_cfg.get("cols", 25),
+        fc=10e9,
+        bandwidth=env_cfg.get("bandwidth", 200e6),
+        prf=env_cfg.get("prf", 10e3),
+        pulses_per_cpi=env_cfg.get("pulses_per_cpi", 4),
+        fft_size=env_cfg.get("fft_size", 64),
+        tx_power_w=env_cfg.get("tx_power_w", 1.0),
+        n_teams=env_cfg.get("n_teams", 2),
+        device=env_cfg.get("device", "cuda"),
+        kill_radius_m=env_cfg.get("kill_radius_m", 0.2),
+        illumination_time_s=env_cfg.get("illumination_time_s", 0.002),
+        drone_altitude_m=env_cfg.get("drone_altitude_m", 3000.0),
+        map_size=env_cfg.get("map_size", [20000.0, 20000.0]),
+        vehicle_speed_ms=env_cfg.get("vehicle_speed_ms", 20.0),
+        reward_config=cfg.get("reward_shaping", {}),
+    )
+
+
+def build_actors(cfg: dict, n_elem: int, n_pulses: int, n_bins: int, device: str):
+    sub_size = cfg.get("sub_array_size", 5)
+    num_output_length = 16
+    # CTDE privileged critic dim for commander — 0 disables (uses deployment value head only)
+    commander_priv_dim = cfg.get("training", {}).get("commander_privileged_dim", 0)
+
+    radar_ac = SubArrayRadarActorCritic(
+        n_elem=n_elem,
+        n_pulses=n_pulses,
+        n_bins=n_bins,
+        sub_array_size=sub_size,
+        commander_instr_dim=num_output_length,
+    ).to(device)
+
+    commander_ac = CommanderActorCritic(
+        obs_dim=76,
+        act_dim=5,
+        hidden_dim=256,
+        privileged_dim=commander_priv_dim,
+    ).to(device)
+
+    return radar_ac, commander_ac
+
+
+class LaserTrainer:
+    """Pulse-level PPO trainer for laser drone weapon system.
+
+    Self-play: one shared (radar + commander) policy plays both teams.
+    Transitions collected from both teams, PPO updates shared networks.
+    """
+
+    def __init__(
+        self,
+        env: MFARVecEnv,
+        radar_ac: nn.Module,
+        commander_ac: nn.Module,
+        cfg: dict,
+    ):
+        self.env = env
+        self.radar_ac = radar_ac
+        self.commander_ac = commander_ac
+        self.cfg = cfg
+        self.device = cfg.get("env", {}).get("device", "cuda")
+        dev = torch.device(self.device)
+
+        E = env.num_envs
+        R = env.n_radars
+        N = env.n_elem
+        P = env.n_pulses
+        S = env.n_samples
+        n_bins = env.n_bins
+
+        self.E, self.R, self.N, self.P, self.S, self.n_bins = E, R, N, P, S, n_bins
+
+        ppo_cfg = cfg.get("ppo", {})
+        shared = ppo_cfg.get("shared", {})
+        cmd_cfg = ppo_cfg.get("commander", {})
+        rad_cfg = ppo_cfg.get("radar", {})
+
+        self.gamma = shared.get("gamma", 0.999)
+        self.gae_lambda = shared.get("gae_lambda", 0.99)
+        self.n_epochs = shared.get("n_epochs", 3)
+        self.batch_size = shared.get("batch_size", 128)
+        self.max_grad_norm = shared.get("max_grad_norm", 0.5)
+        self.value_coef = shared.get("value_coef", 0.5)
+        # Scalar clamp on value predictions to prevent value_loss spikes from
+        # destabilizing the shared actor/critic trunk (PPO 37-details pattern).
+        # None disables clipping.
+        self.vf_clip_range = shared.get("vf_clip_range", None)
+
+        # PPO optimizers
+        self.radar_optimizer = torch.optim.Adam(
+            radar_ac.parameters(),
+            lr=rad_cfg.get("lr", 1e-4),
+        )
+        self.commander_optimizer = torch.optim.Adam(
+            commander_ac.parameters(),
+            lr=cmd_cfg.get("lr", 3e-4),
+        )
+
+        self.radar_clip = rad_cfg.get("clip_range", 0.1)
+        self.commander_clip = cmd_cfg.get("clip_range", 0.2)
+        self.radar_entropy = rad_cfg.get("entropy_coef", 0.02)
+        self.commander_entropy = cmd_cfg.get("entropy_coef", 0.01)
+
+        # CPI accumulator
+        self.cpi_buffer = CPIAccumulator(E, R, N, P, S, device=self.device)
+        self._spectrum = None
+
+        # Cached actions (reused between NN control steps)
+        self._cached_radar_action = None
+        self._cached_cmd_action = torch.zeros(E, env.n_teams, 5, device=dev)
+        self._cached_tx = torch.zeros(E, R, N, S, dtype=torch.complex64, device=dev)
+        self._cached_veh = torch.zeros(E, R, 3, device=dev)
+
+        # Pulse counter
+        self._pulse_count = 0
+        self.pulses_per_control = cfg.get("env", {}).get("pulses_per_control", 5)
+
+        # Element positions for TX assembly
+        dx_m = 0.5 * env.array.wavelength
+        dy_m = 0.5 * env.array.wavelength
+        x_pos = (np.arange(env.cols) - (env.cols - 1) / 2.0) * dx_m
+        y_pos = (np.arange(env.rows) - (env.rows - 1) / 2.0) * dy_m
+        X, Y = np.meshgrid(x_pos, y_pos)
+        self.elem_x = torch.tensor(X.ravel().astype(np.float32), device=dev)
+        self.elem_y = torch.tensor(Y.ravel().astype(np.float32), device=dev)
+        self.wavelength = env.array.wavelength
+
+        # Transition buffer for PPO
+        buf_size = shared.get("buffer_size", 2048)
+        radar_state_dim = radar_ac.spectrum_flat_dim + radar_ac.comm_flat_dim + radar_ac.recon_flat_dim + radar_ac.other_dim
+        radar_action_dim = N * 22 + 3
+        cmd_action_dim = 5
+
+        self.radar_buf = RolloutBuffer(
+            buf_size, obs_dim=radar_state_dim, act_dim=radar_action_dim,
+            gamma=self.gamma, gae_lambda=self.gae_lambda, device=self.device,
+        )
+        self.cmd_buf = RolloutBuffer(
+            buf_size, obs_dim=76, act_dim=cmd_action_dim,
+            gamma=self.gamma, gae_lambda=self.gae_lambda, device=self.device,
+            privileged_dim=getattr(commander_ac, "privileged_dim", 0),
+        )
+
+        # Reward config
+        rc = cfg.get("reward_shaping", {})
+        self.kill_bonus = rc.get("kill_bonus", 100.0)
+        self.death_penalty = rc.get("death_penalty", -10.0)
+        self.illumination_weight = rc.get("illumination_progress_weight", 1.0)
+        self.emission_cost = rc.get("emission_cost", -0.001)
+
+        # Dense (1/r²)×t⁴ reward: guides commander toward sustained close illumination
+        # r = distance from laser aim to nearest enemy (meters)
+        # t = continuous beam-hit time (seconds), accumulates within beam_hit_radius
+        # spatial = (r_ref / max(r, r_floor))², clamped to [0, spatial_cap]
+        # temporal = ε + (t/t_max)⁴  — ε gives tiny reward even at t=0 (nearby)
+        # reward = spatial × temporal × weight
+        self.beam_reward_weight = rc.get("beam_reward_weight", 5.0)
+        self.beam_hit_radius_m = rc.get("beam_hit_radius_m", 200.0)
+        self.beam_r_ref_m = rc.get("beam_r_ref_m", 100.0)
+        self.beam_r_floor_m = rc.get("beam_r_floor_m", 1.0)
+        self.beam_spatial_cap = rc.get("beam_spatial_cap", 100.0)
+        self.beam_temporal_epsilon = rc.get("beam_temporal_epsilon", 0.01)
+        self.t_max = env.battlefield.laser.illumination_time_s
+
+        # Per-team continuous beam-hit time [E, n_teams]
+        self._beam_hit_time = torch.zeros(
+            self.E, env.n_teams, device=torch.device(self.device),
+        )
+
+    def _process_cpi(self):
+        """FFT on accumulated CPI data."""
+        cpi_data = self.cpi_buffer.data()  # [E, R, N, P, S]
+        spectrum = torch.fft.fft(cpi_data, n=self.n_bins, dim=-1)  # [E, R, N, P, n_bins]
+        self._spectrum = spectrum.abs().float()
+        self.cpi_buffer.reset()
+
+    def _build_radar_obs(self, events: dict) -> torch.Tensor:
+        """Build radar observation from spectrum + events."""
+        dev = torch.device(self.device)
+        E, R, N = self.E, self.R, self.N
+
+        if self._spectrum is not None:
+            spec_flat = self._spectrum.reshape(E, R, -1)
+        else:
+            spec_flat = torch.zeros(E, R, N * self.P * self.n_bins, device=dev)
+
+        comm_flat = torch.zeros(E, R, N * 2, device=dev)
+        recon_flat = torch.zeros(E, R, N * 4, device=dev)
+        vehicle = torch.zeros(E, R, 5, device=dev)
+        laser_state = torch.zeros(E, R, 12, device=dev)
+        cmd_instr = torch.zeros(E, R, 16, device=dev)
+
+        if "radar_pos" in events:
+            vehicle[:, :, 0] = events["radar_pos"][:, :, 0]
+            vehicle[:, :, 1] = events["radar_pos"][:, :, 1]
+
+        obs = torch.cat([spec_flat, comm_flat, recon_flat, vehicle, laser_state, cmd_instr], dim=-1)
+        return obs
+
+    def _build_commander_obs(self, events: dict) -> torch.Tensor:
+        """Build commander observation from env battlefield."""
+        dev = torch.device(self.device)
+        radar_latents = torch.zeros(self.E, self.R, 32, device=dev)
+        return self.env.battlefield.get_commander_observation(
+            self.env.radar_pos, radar_latents,
+        )
+
+    def _assemble_tx(self, radar_actions: torch.Tensor) -> torch.Tensor:
+        """Convert flat radar actions [E*R, action_dim] → TX signal [E, R, N, S]."""
+        E, R, N = self.E, self.R, self.N
+        S = self.S
+        dev = torch.device(self.device)
+        ACTION_PER_ELEM = 22
+
+        actions = radar_actions.reshape(E, R, -1)
+
+        # Decode per-element actions
+        elem_actions = actions[:, :, :N * ACTION_PER_ELEM].reshape(E, R, N, ACTION_PER_ELEM)
+        task_ids = elem_actions[..., 0:4].argmax(dim=-1)  # [E, R, N]
+        beam_az = elem_actions[..., 4] * 60.0  # scale from [0,1] → [-60,60] approx
+        beam_el = elem_actions[..., 5] * 45.0
+        wf_types = elem_actions[..., 4:6].argmax(dim=-1).long()
+        detect_params = elem_actions[..., 12:15]
+        jam_params = elem_actions[..., 15:18]
+        comm_params = elem_actions[..., 18:22]
+
+        # Beam steering weights
+        k = 2.0 * np.pi / self.wavelength
+        DEG2RAD = np.pi / 180.0
+        az_rad = beam_az.clamp(-90, 90) * DEG2RAD
+        el_rad = beam_el.clamp(-90, 90) * DEG2RAD
+        u = torch.sin(az_rad) * torch.cos(el_rad)
+        v = torch.sin(el_rad)
+        phase = -k * (self.elem_x.view(1, 1, N) * u + self.elem_y.view(1, 1, N) * v)
+        weights = torch.exp(1j * phase)  # [E, R, N]
+
+        # Simple LFM chirp waveform
+        t = torch.linspace(0, S / 200e6, S, device=dev)
+        bw = 200e6 * 0.5
+        chirp = torch.exp(1j * 2 * np.pi * bw * t**2 / (S / 200e6))  # [S]
+
+        # TX = weights * chirp
+        tx = weights.unsqueeze(-1) * chirp.unsqueeze(0).unsqueeze(0).unsqueeze(0)
+        return tx.to(torch.complex64)
+
+    def _get_rewards(self, result: dict) -> dict:
+        """Compute rewards: (1/r²)×t⁴ dense reward + kill bonus + emission cost.
+
+        r = distance from laser aim to nearest alive enemy
+        t = continuous beam-hit time (accumulates within beam_hit_radius)
+
+        spatial = (r_ref / max(r, r_floor))², clamped to [0, spatial_cap]
+        temporal = ε + (t/t_max)⁴
+        beam_reward = spatial × temporal × weight
+        """
+        dev = torch.device(self.device)
+        dt = self.env.pri
+
+        radar_rewards = result.get("radar_rewards", torch.zeros(self.E, self.R, device=dev)).clone()
+        cmd_rewards = result.get("commander_rewards", torch.zeros(self.E, self.env.n_teams, device=dev)).clone()
+
+        drone = self.env.battlefield.drone
+        radar_pos = self.env.radar_pos
+
+        for t in range(self.env.n_teams):
+            enemy_t = 1 - t
+            enemy_idx = self.env.battlefield.team_radar_indices[enemy_t]
+            enemy_alive = self.env.battlefield.alive[:, enemy_idx]  # [E, R/2]
+
+            if not enemy_alive.any():
+                self._beam_hit_time[:, t] = 0.0
+                continue
+
+            enemy_pos = radar_pos[:, enemy_idx, :]  # [E, R/2, 3]
+            aim = drone.laser_aim[:, t, :].unsqueeze(1)  # [E, 1, 3]
+            dist_all = (aim - enemy_pos).norm(dim=-1)  # [E, R/2]
+
+            # Mask dead enemies with large distance
+            dist_all = dist_all + (~enemy_alive).float() * 1e6
+            min_dist = dist_all.min(dim=-1).values  # [E]
+
+            # Accumulate beam-hit time when within hit radius
+            hitting = min_dist < self.beam_hit_radius_m
+            self._beam_hit_time[:, t] = torch.where(
+                hitting,
+                self._beam_hit_time[:, t] + dt,
+                torch.zeros_like(self._beam_hit_time[:, t]),
+            )
+
+            # Spatial factor: (r_ref / max(r, r_floor))²
+            r_eff = min_dist.clamp(min=self.beam_r_floor_m)
+            spatial = (self.beam_r_ref_m / r_eff) ** 2
+            spatial = spatial.clamp(max=self.beam_spatial_cap)
+
+            # Temporal factor: ε + (t/t_max)⁴
+            t_norm = (self._beam_hit_time[:, t] / self.t_max).clamp(0.0, 1.0)
+            temporal = self.beam_temporal_epsilon + t_norm ** 4
+
+            # Dense beam reward
+            beam_reward = spatial * temporal * self.beam_reward_weight
+            cmd_rewards[:, t] += beam_reward
+
+            # Share a fraction of beam reward with own radars (team reward)
+            own_idx = self.env.battlefield.team_radar_indices[t]
+            for ri in own_idx:
+                radar_rewards[:, ri] += beam_reward * 0.1
+
+        # Kill bonus / death penalty (from env rewards, already included)
+        # Emission cost
+        radar_rewards += self.emission_cost
+
+        return {"radar_rewards": radar_rewards, "commander_rewards": cmd_rewards}
+
+    def _ppo_update(self, ac, optimizer, buffer, clip_range, entropy_coef, bc_weight=0.0):
+        """Run one PPO update on the buffer.
+
+        Args:
+            bc_weight: if > 0, add BC auxiliary loss that supervises commander
+                       to copy enemy position from obs[68:70] to action[1:3].
+        """
+        if buffer.ptr < self.batch_size:
+            return {}
+
+        # Compute returns
+        with torch.no_grad():
+            last_val = torch.zeros(1)
+        buffer.compute_returns(last_val)
+
+        total_policy_loss = 0
+        total_value_loss = 0
+        total_entropy = 0
+        total_bc_loss = 0
+        n_updates = 0
+
+        for epoch in range(self.n_epochs):
+            for batch in buffer.get_minibatches(self.batch_size):
+                obs = batch["obs"]
+                old_actions = batch["actions"]
+                old_log_probs = batch["old_log_probs"]
+                advantages = batch["advantages"]
+                returns = batch["returns"]
+                priv_info = batch.get("privileged_info")  # None if buffer has no privileged_infos
+
+                advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+
+                log_prob, entropy, value, priv_value = ac.evaluate_actions(
+                    obs, old_actions, privileged_info=priv_info,
+                )
+
+                ratio = torch.exp(log_prob - old_log_probs)
+                surr1 = ratio * advantages
+                surr2 = torch.clamp(ratio, 1 - clip_range, 1 + clip_range) * advantages
+                policy_loss = -torch.min(surr1, surr2).mean()
+
+                # Use privileged_value when CTDE is active (more accurate critic);
+                # otherwise fall back to deployment value_head output.
+                critic_value = priv_value if priv_info is not None else value
+                value_pred = critic_value.squeeze(-1)
+                if self.vf_clip_range is not None:
+                    # Clamp value predictions to return range ± vf_clip_range so
+                    # large value_loss spikes (e.g. early-training value=0 vs
+                    # returns=2.8) don't dominate the shared-trunk gradient.
+                    value_pred = value_pred.clamp(
+                        returns.min() - self.vf_clip_range,
+                        returns.max() + self.vf_clip_range,
+                    )
+                value_loss = ((value_pred - returns) ** 2).mean()
+                entropy_loss = -entropy.mean()
+
+                loss = policy_loss + self.value_coef * value_loss + entropy_coef * entropy_loss
+
+                # BC auxiliary loss for commander: aim at enemy position in obs
+                if bc_weight > 0 and obs.shape[1] >= 70:
+                    with torch.no_grad():
+                        enemy_xy = obs[:, 68:70]  # [B, 2] enemy 0 normalized position
+                    features = ac.shared(obs)
+                    mean_raw = ac.action_head(features)
+                    action_mean = torch.tanh(mean_raw)
+                    bc_loss = ((action_mean[:, 1:3] - enemy_xy) ** 2).mean()
+                    loss = loss + bc_weight * bc_loss
+                    total_bc_loss += bc_loss.item()
+
+                optimizer.zero_grad()
+                loss.backward()
+                nn.utils.clip_grad_norm_(ac.parameters(), self.max_grad_norm)
+                optimizer.step()
+
+                total_policy_loss += policy_loss.item()
+                total_value_loss += value_loss.item()
+                total_entropy += entropy.mean().item()
+                n_updates += 1
+
+        buffer.reset()
+        if n_updates == 0:
+            return {}
+        metrics = {
+            "policy_loss": total_policy_loss / n_updates,
+            "value_loss": total_value_loss / n_updates,
+            "entropy": total_entropy / n_updates,
+        }
+        if total_bc_loss > 0:
+            metrics["bc_loss"] = total_bc_loss / n_updates
+        return metrics
+
+    def train_episode(self) -> dict:
+        """Run one training episode (pulse-level loop)."""
+        env = self.env
+        E, R, N = self.E, self.R, self.N
+        dev = torch.device(self.device)
+        max_pulses = self.cfg.get("league", {}).get("max_steps_per_episode", 600000)
+
+        env.reset()
+        self.cpi_buffer.reset()
+        self._spectrum = None
+        self._pulse_count = 0
+        self._beam_hit_time.zero_()
+
+        # Cache initial TX (zeros)
+        self._cached_tx = torch.zeros(E, R, N, self.S, dtype=torch.complex64, device=dev)
+        self._cached_cmd_action = torch.zeros(E, env.n_teams, 5, device=dev)
+        self._cached_veh = torch.zeros(E, R, 3, device=dev)
+
+        # Training metadata for last NN step
+        self._last_radar_obs = None
+        self._last_radar_action = None
+        self._last_radar_logp = None
+        self._last_radar_val = None
+        self._last_cmd_obs = None
+        self._last_cmd_action = None
+        self._last_cmd_logp = None
+        self._last_cmd_val = None
+        self._last_cmd_priv_val = None
+        self._last_cmd_priv_info = None
+
+        episode_stats = {
+            "kills": 0, "total_pulses": 0, "radar_updates": 0, "cmd_updates": 0,
+            "total_beam_reward": 0.0, "total_cmd_reward": 0.0,
+            "min_aim_dist": 1e9, "beam_reward_samples": 0,
+        }
+        events = {"cpi_complete": False, "nn_control_step": False}
+
+        t0 = time.perf_counter()
+
+        for pulse in range(max_pulses):
+            # 1. CPI accumulation check
+            cpi_complete = events.get("cpi_complete", False)
+            if isinstance(cpi_complete, torch.Tensor):
+                cpi_complete = cpi_complete.any()
+            if cpi_complete:
+                self._process_cpi()
+
+            # 2. NN control step
+            nn_control = events.get("nn_control_step", False)
+            if isinstance(nn_control, torch.Tensor):
+                nn_control = nn_control.any()
+            if nn_control:
+                self._nn_step(events)
+
+            # 3. Step env
+            result = env.step(self._cached_tx, self._cached_cmd_action, self._cached_veh)
+
+            # 4. Accumulate RX
+            self.cpi_buffer.append(result["rx_iq"])
+
+            # 5. Store transitions if NN step happened this pulse
+            if nn_control and self._last_radar_obs is not None:
+                rewards = self._get_rewards(result)
+                done = result["dones"].float()
+
+                # Diagnostics: track beam reward and aim distance
+                drone = env.battlefield.drone
+                for t in range(env.n_teams):
+                    episode_stats["total_cmd_reward"] += rewards["commander_rewards"][:, t].sum().item()
+                # Min aim distance across all teams/envs
+                for t in range(env.n_teams):
+                    enemy_idx = env.battlefield.team_radar_indices[1 - t]
+                    enemy_pos = env.radar_pos[:, enemy_idx, :]
+                    aim = drone.laser_aim[:, t, :].unsqueeze(1)
+                    dist = (aim - enemy_pos).norm(dim=-1).min(dim=-1).values
+                    episode_stats["min_aim_dist"] = min(episode_stats["min_aim_dist"], dist.min().item())
+                episode_stats["beam_reward_samples"] += 1
+
+                # Radar transitions: flatten [E, R] → per-radar entries
+                for r in range(R):
+                    for e in range(E):
+                        if self.radar_buf.ptr >= self.radar_buf.buffer_size:
+                            break
+                        self.radar_buf.add(
+                            obs=self._last_radar_obs[e, r].cpu(),
+                            action=self._last_radar_action.reshape(E, R, -1)[e, r].cpu(),
+                            reward=rewards["radar_rewards"][e, r].item(),
+                            done=done[e].item(),
+                            value=self._last_radar_val.reshape(E, R)[e, r].item(),
+                            log_prob=self._last_radar_logp.reshape(E, R)[e, r].item(),
+                        )
+
+                # Commander transitions: flatten [E, T] → per-team entries
+                for t in range(env.n_teams):
+                    for e in range(E):
+                        if self.cmd_buf.ptr >= self.cmd_buf.buffer_size:
+                            break
+                        priv_val = (
+                            self._last_cmd_priv_val[e, t].item()
+                            if self._last_cmd_priv_val is not None else None
+                        )
+                        priv_info = (
+                            self._last_cmd_priv_info[e, t].cpu()
+                            if self._last_cmd_priv_info is not None else None
+                        )
+                        self.cmd_buf.add(
+                            obs=self._last_cmd_obs[e, t].cpu(),
+                            action=self._last_cmd_action[e, t].cpu(),
+                            reward=rewards["commander_rewards"][e, t].item(),
+                            done=done[e].item(),
+                            value=self._last_cmd_val.reshape(E, env.n_teams)[e, t].item(),
+                            log_prob=self._last_cmd_logp.reshape(E, env.n_teams)[e, t].item(),
+                            privileged_value=priv_val,
+                            privileged_info=priv_info,
+                        )
+
+            # 6. Check kills/dones
+            if result["kills"].any():
+                episode_stats["kills"] += result["kills"].sum().item()
+
+            self._pulse_count += 1
+            events = result
+
+            if result["dones"].all():
+                break
+
+        elapsed = time.perf_counter() - t0
+        episode_stats["total_pulses"] = self._pulse_count
+        episode_stats["time_s"] = elapsed
+        episode_stats["pulses_per_s"] = self._pulse_count / max(elapsed, 1e-6)
+
+        return episode_stats
+
+    def eval_episode(self) -> dict:
+        """Deterministic eval rollout. No noise, no buffer writes, no reward.
+
+        Measures true policy quality by taking action_mean directly (no sampling).
+        Reports kills + min_aim_dist so we can compare against the noisy train
+        rollouts — eval_min_aim_dist < train_min_aim_dist is expected since the
+        train metric is dominated by log_std noise.
+        """
+        env = self.env
+        E, R, N = self.E, self.R, self.N
+        dev = torch.device(self.device)
+        max_pulses = self.cfg.get("league", {}).get("max_steps_per_episode", 600000)
+
+        env.reset()
+        self.cpi_buffer.reset()
+        self._spectrum = None
+        self._pulse_count = 0
+        self._beam_hit_time.zero_()
+
+        self._cached_tx = torch.zeros(E, R, N, self.S, dtype=torch.complex64, device=dev)
+        self._cached_cmd_action = torch.zeros(E, env.n_teams, 5, device=dev)
+        self._cached_veh = torch.zeros(E, R, 3, device=dev)
+
+        stats = {"kills": 0, "total_pulses": 0, "min_aim_dist": 1e9}
+        events = {"cpi_complete": False, "nn_control_step": False}
+
+        for pulse in range(max_pulses):
+            cpi_complete = events.get("cpi_complete", False)
+            if isinstance(cpi_complete, torch.Tensor):
+                cpi_complete = cpi_complete.any()
+            if cpi_complete:
+                self._process_cpi()
+
+            nn_control = events.get("nn_control_step", False)
+            if isinstance(nn_control, torch.Tensor):
+                nn_control = nn_control.any()
+            if nn_control:
+                # Deterministic NN step (no noise, no buffer writes)
+                self._eval_nn_step(events)
+
+            result = env.step(self._cached_tx, self._cached_cmd_action, self._cached_veh)
+            self.cpi_buffer.append(result["rx_iq"])
+
+            # Track aim distance on every NN step (cheap)
+            if nn_control:
+                drone = env.battlefield.drone
+                for t in range(env.n_teams):
+                    enemy_idx = env.battlefield.team_radar_indices[1 - t]
+                    enemy_pos = env.radar_pos[:, enemy_idx, :]
+                    aim = drone.laser_aim[:, t, :].unsqueeze(1)
+                    dist = (aim - enemy_pos).norm(dim=-1).min(dim=-1).values
+                    stats["min_aim_dist"] = min(stats["min_aim_dist"], dist.min().item())
+
+            if result["kills"].any():
+                stats["kills"] += result["kills"].sum().item()
+
+            self._pulse_count += 1
+            events = result
+
+            if result["dones"].all():
+                break
+
+        stats["total_pulses"] = self._pulse_count
+        return stats
+
+    def _eval_nn_step(self, events: dict):
+        """Deterministic NN decision — no noise, no buffer writes.
+
+        Forces commander fire=True during eval so laser_aim reflects the policy's
+        true aim direction. Otherwise eval_min_aim_dist measures distance from
+        origin when the policy hasn't learned to fire yet.
+        """
+        E, R, N = self.E, self.R, self.N
+        dev = torch.device(self.device)
+
+        radar_obs = self._build_radar_obs(events)
+        cmd_obs = self._build_commander_obs(events)
+
+        with torch.no_grad():
+            radar_flat = radar_obs.reshape(E * R, -1)
+            r_action, _, _, _ = self.radar_ac.get_action(radar_flat, deterministic=True)
+
+            T = self.env.n_teams
+            cmd_flat = cmd_obs.reshape(E * T, -1)
+            c_action, _, _, _ = self.commander_ac.get_action(cmd_flat, deterministic=True)
+
+        # Force fire=True during eval to measure true aim accuracy
+        c_action = c_action.clone()
+        c_action[:, 0] = 1.0  # fire
+
+        self._cached_tx = self._assemble_tx(r_action)
+        self._cached_cmd_action = c_action.reshape(E, T, 5)
+        self._cached_veh = r_action.reshape(E, R, -1)[:, :, -3:]
+
+    def _nn_step(self, events: dict):
+        """Run NN decision and cache actions."""
+        E, R, N = self.E, self.R, self.N
+        dev = torch.device(self.device)
+
+        # Build observations
+        radar_obs = self._build_radar_obs(events)  # [E, R, state_dim]
+        cmd_obs = self._build_commander_obs(events)  # [E, n_teams, 76]
+
+        # Build privileged info for commander (CTDE): [E, T, priv_dim]
+        # Contains state that's hard to derive from local obs but useful for
+        # predicting cumulative reward (beam_hit_time, distance to enemies).
+        cmd_priv_info = self._build_commander_privileged_info()  # None or [E, T, priv_dim]
+
+        with torch.no_grad():
+            # Radar: flatten to [E*R, state_dim] for the actor-critic
+            radar_flat = radar_obs.reshape(E * R, -1)
+            r_action, r_logp, r_val, _ = self.radar_ac.get_action(radar_flat)
+            self._last_radar_action = r_action  # [E*R, action_dim]
+            self._last_radar_logp = r_logp.reshape(E, R)
+            self._last_radar_val = r_val.reshape(E, R)
+            self._last_radar_obs = radar_obs
+
+            # Commander: flatten to [E*T, 76]
+            T = self.env.n_teams
+            cmd_flat = cmd_obs.reshape(E * T, -1)
+            if cmd_priv_info is not None:
+                priv_flat = cmd_priv_info.reshape(E * T, -1)
+                c_action, c_logp, c_val, c_priv_val = self.commander_ac.get_action(
+                    cmd_flat, privileged_info=priv_flat,
+                )
+                self._last_cmd_priv_val = c_priv_val.reshape(E, T)
+                self._last_cmd_priv_info = cmd_priv_info
+            else:
+                c_action, c_logp, c_val, _ = self.commander_ac.get_action(cmd_flat)
+                self._last_cmd_priv_val = None
+                self._last_cmd_priv_info = None
+            self._last_cmd_action = c_action.reshape(E, T, 5)
+            self._last_cmd_logp = c_logp.reshape(E, T)
+            self._last_cmd_val = c_val.reshape(E, T)
+            self._last_cmd_obs = cmd_obs
+
+        # Cache actions for env step
+        self._cached_tx = self._assemble_tx(r_action)
+        self._cached_cmd_action = self._last_cmd_action
+        self._cached_veh = r_action.reshape(E, R, -1)[:, :, -3:]
+
+    def _build_commander_privileged_info(self):
+        """Build privileged_info for commander CTDE critic. None if disabled.
+
+        Returns: [E, T, priv_dim] or None
+        Layout: [beam_hit_time_norm, dist_to_enemy0_norm, dist_to_enemy1_norm,
+                 enemy0_alive, enemy1_alive]
+        """
+        priv_dim = getattr(self.commander_ac, "privileged_dim", 0)
+        if priv_dim == 0:
+            return None
+
+        env = self.env
+        E = env.num_envs
+        T = env.n_teams
+        dev = torch.device(self.device)
+
+        # beam_hit_time [E, T] → normalize by t_max (illumination_time * prf)
+        t_max = max(self.t_max, 1.0)
+        bht = (self._beam_hit_time / t_max).clamp(0.0, 1.0)  # [E, T]
+
+        # Distances from laser_aim to each enemy radar
+        drone = env.battlefield.drone
+        radar_alive = env.radar_alive if hasattr(env, "radar_alive") else None
+
+        # Layout: [bht, dist0_norm, dist1_norm, alive0, alive1] = 5 dims
+        half_diag = float((env.map_size[0] ** 2 + env.map_size[1] ** 2) ** 0.5) / 2.0
+        priv = torch.zeros(E, T, 5, device=dev)
+        for t in range(T):
+            enemy_idx = env.battlefield.team_radar_indices[1 - t]
+            enemy_pos = env.radar_pos[:, enemy_idx, :]  # [E, n_enemy, 3]
+            aim = drone.laser_aim[:, t, :].unsqueeze(1)  # [E, 1, 3]
+            dists = (aim - enemy_pos).norm(dim=-1)  # [E, n_enemy]
+            priv[:, t, 0] = bht[:, t]
+            n_enemy = min(dists.shape[1], 2)
+            for i in range(n_enemy):
+                priv[:, t, 1 + i] = dists[:, i] / half_diag
+            # Alive flags (default 1.0 if not tracked)
+            if radar_alive is not None:
+                for i in range(n_enemy):
+                    priv[:, t, 3 + i] = radar_alive[:, enemy_idx[i]].float()
+            else:
+                priv[:, t, 3:5] = 1.0
+
+        return priv
+
+    def update(self, cmd_bc_weight: float = 0.0) -> dict:
+        """Run PPO update on both radar and commander buffers.
+
+        Args:
+            cmd_bc_weight: if > 0, add BC auxiliary loss on commander only.
+        """
+        radar_metrics = self._ppo_update(
+            self.radar_ac, self.radar_optimizer, self.radar_buf,
+            self.radar_clip, self.radar_entropy,
+        )
+        cmd_metrics = self._ppo_update(
+            self.commander_ac, self.commander_optimizer, self.cmd_buf,
+            self.commander_clip, self.commander_entropy,
+            bc_weight=cmd_bc_weight,
+        )
+        return {"radar": radar_metrics, "commander": cmd_metrics}
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Laser drone weapon training")
+    parser.add_argument("--config", type=str, default="configs/laser_25x25_config.yaml")
+    parser.add_argument("--episodes", type=int, default=None)
+    parser.add_argument("--device", type=str, default="cuda")
+    parser.add_argument("--rows", type=int, default=None)
+    parser.add_argument("--cols", type=int, default=None)
+    args = parser.parse_args()
+
+    cfg = load_config(args.config)
+
+    # Override for quick test
+    if args.rows and args.cols:
+        cfg["env"]["rows"] = args.rows
+        cfg["env"]["cols"] = args.rows  # square
+        cfg["sub_array_size"] = max(1, args.rows // 5)
+
+    league_cfg = cfg.get("league", {})
+    n_episodes = args.episodes or league_cfg.get("episodes_per_training", 100)
+    psro_iters = cfg.get("training", {}).get("psro_iterations", 30)
+
+    print(f"Config: {args.config}")
+    print(f"Rows×Cols: {cfg['env'].get('rows', 25)}×{cfg['env'].get('cols', 25)}")
+    print(f"Episodes per PSRO iter: {n_episodes}")
+    print(f"PSRO iterations: {psro_iters}")
+
+    # Build env
+    env = build_env(cfg)
+    E, R, N = env.num_envs, env.n_radars, env.n_elem
+    n_bins = env.n_bins
+    n_pulses = env.n_pulses
+    print(f"Env: E={E}, R={R}, N={N}, S={env.n_samples}, P={n_pulses}, bins={n_bins}")
+    print(f"VRAM: {torch.cuda.memory_allocated() / 1e9:.2f} GB")
+
+    # Build actors
+    radar_ac, commander_ac = build_actors(cfg, N, n_pulses, n_bins, args.device)
+    print(f"Radar AC params: {sum(p.numel() for p in radar_ac.parameters()):,}")
+    print(f"Commander AC params: {sum(p.numel() for p in commander_ac.parameters()):,}")
+    print(f"VRAM after models: {torch.cuda.memory_allocated() / 1e9:.2f} GB")
+
+    # Build trainer
+    trainer = LaserTrainer(env, radar_ac, commander_ac, cfg)
+
+    # Training loop
+    print(f"\n{'='*60}")
+    print(f"Starting training: {psro_iters} PSRO iters × {n_episodes} episodes")
+    print(f"Max pulses/episode: {league_cfg.get('max_steps_per_episode', 600000):,}")
+    print(f"{'='*60}\n")
+
+    # BC auxiliary loss weight (supervises commander to aim at enemy in obs).
+    # Schedule: high early, decay over iters so PPO can take over later.
+    cmd_bc_weight_init = cfg.get("training", {}).get("cmd_bc_weight_init", 1.0)
+    cmd_bc_weight_final = cfg.get("training", {}).get("cmd_bc_weight_final", 0.0)
+    cmd_bc_decay_iters = cfg.get("training", {}).get("cmd_bc_decay_iters", psro_iters)
+    print(f"BC weight: {cmd_bc_weight_init} → {cmd_bc_weight_final} over {cmd_bc_decay_iters} iters")
+
+    for psro_iter in range(psro_iters):
+        iter_t0 = time.perf_counter()
+        iter_kills = 0
+        iter_pulses = 0
+        iter_time = 0
+        n_updates = 0
+        iter_min_dist = 1e9
+        iter_total_cmd_r = 0.0
+        iter_reward_samples = 0
+
+        # BC weight schedule: linear decay
+        if cmd_bc_decay_iters > 0:
+            bc_frac = max(0.0, 1.0 - psro_iter / cmd_bc_decay_iters)
+        else:
+            bc_frac = 0.0
+        cur_bc_weight = cmd_bc_weight_final + (cmd_bc_weight_init - cmd_bc_weight_final) * bc_frac
+
+        for ep in range(n_episodes):
+            stats = trainer.train_episode()
+            iter_kills += stats["kills"]
+            iter_pulses += stats["total_pulses"]
+            iter_time += stats["time_s"]
+            iter_min_dist = min(iter_min_dist, stats.get("min_aim_dist", 1e9))
+            iter_total_cmd_r += stats.get("total_cmd_reward", 0.0)
+            iter_reward_samples += stats.get("beam_reward_samples", 0)
+
+            # PPO update when buffers fill
+            radar_ptr = trainer.radar_buf.ptr
+            cmd_ptr = trainer.cmd_buf.ptr
+            buf_size = trainer.radar_buf.buffer_size
+
+            if radar_ptr >= buf_size * 0.8 or cmd_ptr >= buf_size * 0.8:
+                metrics = trainer.update(cmd_bc_weight=cur_bc_weight)
+                n_updates += 1
+
+                if n_updates == 1:  # log first update
+                    rm = metrics.get("radar", {})
+                    cm = metrics.get("commander", {})
+                    radar_loss = rm.get("policy_loss", 0)
+                    cmd_loss = cm.get("policy_loss", 0)
+                    bc_loss = cm.get("bc_loss", 0)
+                    print(f"  [Update] radar_loss={radar_loss:.4f} cmd_loss={cmd_loss:.4f} bc_loss={bc_loss:.4f}")
+
+        # Force update at end of iteration
+        if trainer.radar_buf.ptr > 0 or trainer.cmd_buf.ptr > 0:
+            metrics = trainer.update(cmd_bc_weight=cur_bc_weight)
+            n_updates += 1
+
+        # Anneal commander exploration: decrease log_std each iteration.
+        # Defaults: -1.0 → -6.0 over iters with 0.20/iter decay (configurable).
+        # At log_std=-6, std≈2.5e-3 on [-1,1] → ~7.5m physical noise at 3km range.
+        # Kill radius=0.2m, but kill comes from t⁴ temporal reward gradient pulling
+        # aim closer, not pure exploration.
+        log_std_init = cfg.get("training", {}).get("log_std_init", -1.0)
+        log_std_floor = cfg.get("training", {}).get("log_std_floor", -6.0)
+        log_std_decay = cfg.get("training", {}).get("log_std_decay", 0.20)
+        target_log_std = max(log_std_floor, log_std_init - psro_iter * log_std_decay)
+        with torch.no_grad():
+            commander_ac.log_std.data.fill_(target_log_std)
+
+        iter_elapsed = time.perf_counter() - iter_t0
+        avg_pulses = iter_pulses / max(n_episodes, 1)
+        pulse_rate = iter_pulses / max(iter_elapsed, 1e-6)
+        kill_rate = iter_kills / max(n_episodes * env.n_teams, 1)
+        avg_cmd_r = iter_total_cmd_r / max(iter_reward_samples * env.n_teams, 1)
+
+        cur_log_std = commander_ac.log_std.data.mean().item()
+
+        print(
+            f"[PSRO {psro_iter+1}/{psro_iters}] "
+            f"kills={iter_kills} kill_rate={kill_rate:.3f} "
+            f"min_aim_dist={iter_min_dist:.0f}m "
+            f"avg_cmd_r={avg_cmd_r:.4f} "
+            f"log_std={cur_log_std:.2f} "
+            f"bc_w={cur_bc_weight:.2f} "
+            f"rate={pulse_rate:.0f}p/s "
+            f"time={iter_elapsed:.0f}s "
+            f"upd={n_updates}"
+        )
+
+        # Deterministic eval rollout every 2 iters — measures true policy quality
+        # (no log_std noise). eval_min_aim_dist should track below train_min_aim_dist.
+        if (psro_iter + 1) % 2 == 0 or psro_iter == 0:
+            eval_stats = trainer.eval_episode()
+            eval_kill_rate = eval_stats["kills"] / max(env.n_teams, 1)
+            eval_min = eval_stats["min_aim_dist"]
+            eval_min_str = f"{eval_min:.0f}m" if eval_min < 1e8 else "inf"
+            print(
+                f"[Eval @ iter {psro_iter+1}] "
+                f"eval_kills={eval_stats['kills']} "
+                f"eval_min_aim_dist={eval_min_str} "
+                f"eval_kill_rate={eval_kill_rate:.3f}"
+            )
+
+        # Save checkpoint
+        ckpt_dir = league_cfg.get("checkpoint_dir", "checkpoints/laser_train")
+        import os
+        os.makedirs(ckpt_dir, exist_ok=True)
+        torch.save({
+            "psro_iter": psro_iter,
+            "radar_ac": radar_ac.state_dict(),
+            "commander_ac": commander_ac.state_dict(),
+            "radar_optimizer": trainer.radar_optimizer.state_dict(),
+            "commander_optimizer": trainer.commander_optimizer.state_dict(),
+        }, f"{ckpt_dir}/iter_{psro_iter:03d}.pt")
+
+    print("\nTraining complete.")
+
+
+if __name__ == "__main__":
+    main()

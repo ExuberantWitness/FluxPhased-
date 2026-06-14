@@ -75,6 +75,12 @@ class CommanderActorCritic(nn.Module):
     """Commander policy: small MLP with separate action and value heads.
 
     Outputs tanh-squashed actions in [-1, 1] with learnable log-std for PPO.
+
+    CTDE (Centralized Training, Decentralized Execution):
+    - value_head: deployment critic, takes shared features only
+    - privileged_value_head: training critic, sees shared features + privileged_info
+      (beam_hit_time, etc.) — gives more accurate GAE advantages during training.
+      At deployment, only value_head is used (privileged_info unavailable).
     """
 
     def __init__(
@@ -82,10 +88,13 @@ class CommanderActorCritic(nn.Module):
         obs_dim: int = 76,
         act_dim: int = 35,
         hidden_dim: int = 256,
+        value_init: float = 2.8,
+        privileged_dim: int = 0,
     ):
         super().__init__()
         self.act_dim = act_dim
         self.obs_dim = obs_dim
+        self.privileged_dim = privileged_dim
         self.shared = nn.Sequential(
             nn.Linear(obs_dim, hidden_dim),
             nn.ReLU(),
@@ -96,6 +105,33 @@ class CommanderActorCritic(nn.Module):
         self.value_head = nn.Linear(hidden_dim, 1)
         self.log_std = nn.Parameter(torch.zeros(act_dim) - 1.0)  # init std ≈ 0.37
 
+        # Optional privileged critic (CTDE) — takes shared features + privileged info
+        if privileged_dim > 0:
+            self.privileged_value_head = nn.Sequential(
+                nn.Linear(hidden_dim + privileged_dim, hidden_dim),
+                nn.ReLU(),
+                nn.Linear(hidden_dim, 1),
+            )
+        else:
+            self.privileged_value_head = None
+
+        # Orthogonal init — PyTorch default kaiming_uniform is suboptimal for PPO
+        # (ICLR Blog Track 2022 "37 Implementation Details of PPO")
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.orthogonal_(m.weight, gain=np.sqrt(2))
+                nn.init.zeros_(m.bias)
+        # Value head: smaller gain, bias to expected return mean (skips cold-start
+        # where critic outputs ~0 while returns are ~2.8 → advantages all-positive
+        # → PPO has no useful gradient direction)
+        nn.init.orthogonal_(self.value_head.weight, gain=1.0)
+        nn.init.constant_(self.value_head.bias, value_init)
+        if self.privileged_value_head is not None:
+            # Init privileged critic's output bias to same scale
+            last_layer = self.privileged_value_head[-1]
+            nn.init.orthogonal_(last_layer.weight, gain=1.0)
+            nn.init.constant_(last_layer.bias, value_init)
+
     def forward(self, obs: torch.Tensor, privileged_info: torch.Tensor = None):
         """Deterministic forward: obs → (action, value)."""
         features = self.shared(obs)
@@ -104,6 +140,13 @@ class CommanderActorCritic(nn.Module):
         value = self.value_head(features)
         return action, value
 
+    def _compute_privileged_value(self, features: torch.Tensor, privileged_info: torch.Tensor):
+        """Compute privileged critic value. Returns regular value if no privileged head."""
+        if self.privileged_value_head is None or privileged_info is None:
+            return self.value_head(features)
+        priv_input = torch.cat([features, privileged_info], dim=-1)
+        return self.privileged_value_head(priv_input)
+
     def get_action(self, obs: torch.Tensor, deterministic: bool = False,
                    privileged_info: torch.Tensor = None):
         """Sample action, return (action, log_prob, value, privileged_value).
@@ -111,11 +154,13 @@ class CommanderActorCritic(nn.Module):
         Args:
             obs: [B, obs_dim]
             deterministic: if True, use mean (no sampling)
+            privileged_info: [B, privileged_dim] or None — used for privileged_value
+                             (training-time centralized critic).
         Returns:
             action: [B, act_dim] in [-1, 1]
             log_prob: [B]
-            value: [B, 1]
-            privileged_value: [B, 1] (same as value for base class)
+            value: [B, 1] (deployment critic)
+            privileged_value: [B, 1] (training critic; = value if no privileged head)
         """
         features = self.shared(obs)
         mean = self.action_head(features)
@@ -134,7 +179,8 @@ class CommanderActorCritic(nn.Module):
         log_prob -= torch.log(1.0 - action.pow(2) + 1e-6).sum(dim=-1)
 
         value = self.value_head(features)
-        return action, log_prob, value, value
+        privileged_value = self._compute_privileged_value(features, privileged_info)
+        return action, log_prob, value, privileged_value
 
     def evaluate_actions(self, obs: torch.Tensor, actions: torch.Tensor,
                          privileged_info: torch.Tensor = None):
@@ -143,11 +189,12 @@ class CommanderActorCritic(nn.Module):
         Args:
             obs: [B, obs_dim]
             actions: [B, act_dim] in [-1, 1]
+            privileged_info: [B, privileged_dim] or None
         Returns:
             log_prob: [B]
             entropy: [B]
-            value: [B, 1]
-            privileged_value: [B, 1] (same as value for base class)
+            value: [B, 1] (deployment critic)
+            privileged_value: [B, 1] (training critic)
         """
         features = self.shared(obs)
         mean = self.action_head(features)
@@ -161,8 +208,9 @@ class CommanderActorCritic(nn.Module):
         log_prob -= torch.log(1.0 - actions.pow(2) + 1e-6).sum(dim=-1)
         entropy = dist.entropy().sum(dim=-1)
         value = self.value_head(features)
+        privileged_value = self._compute_privileged_value(features, privileged_info)
 
-        return log_prob, entropy, value, value
+        return log_prob, entropy, value, privileged_value
 
 
 class RadarActorCritic(nn.Module):
@@ -869,12 +917,14 @@ def create_team_policy(
     device: str = "cuda",
     encoder_kwargs: dict = None,
     sub_array_size: int = 0,
+    commander_privileged_dim: int = 0,
 ) -> dict:
     """Create a full team policy (commander + shared radar).
 
     Args:
         sub_array_size: If > 0, use SubArrayRadarActorCritic with this sub-array
                        block size (e.g., 5 for 5×5 sub-array blocks in a 25×25 array).
+        commander_privileged_dim: If > 0, add CTDE privileged critic to commander.
     Returns:
         dict with "commander" and "radar" actor-critic modules.
     """
@@ -882,6 +932,7 @@ def create_team_policy(
         obs_dim=76,
         act_dim=5,
         hidden_dim=256,
+        privileged_dim=commander_privileged_dim,
     ).to(device)
 
     if sub_array_size > 0:
