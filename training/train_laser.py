@@ -234,6 +234,14 @@ class LaserTrainer:
         # becomes instrumentally valuable and the Bernoulli fire head learns it from reward.
         self.illum_reward_weight = rc.get("illum_reward_weight", 50.0)
 
+        # Residual aiming: aim = observed-enemy anchor (obs[68:70]) + policy residual × scale.
+        # Absolute tanh-Gaussian aim can't resolve 0.2m on a ±10km range (~700m floor, confirmed
+        # by pure-BC plateau). Anchoring at the obs enemy truth and outputting a small ±scale
+        # correction makes sub-meter aim reachable; the policy only learns the last-meters refine.
+        tcfg = cfg.get("training", {})
+        self.residual_aim = bool(tcfg.get("residual_aim", False))
+        self.residual_scale_m = float(tcfg.get("residual_scale_m", 100.0))
+
         # Per-team continuous beam-hit time [E, n_teams]
         self._beam_hit_time = torch.zeros(
             self.E, env.n_teams, device=torch.device(self.device),
@@ -386,7 +394,8 @@ class LaserTrainer:
         return {"radar_rewards": radar_rewards, "commander_rewards": cmd_rewards}
 
     def _ppo_update(self, ac, optimizer, buffer, clip_range, entropy_coef,
-                    bc_weight=0.0, team_critic=None, team_critic_optimizer=None):
+                    bc_weight=0.0, team_critic=None, team_critic_optimizer=None,
+                    bc_only=False):
         """Run one PPO update on the buffer.
 
         Args:
@@ -396,6 +405,11 @@ class LaserTrainer:
                          team_state from buffer and team_critic for value
                          predictions (instead of ac.value_head).
             team_critic_optimizer: required when team_critic is provided.
+            bc_only: if True, optimize ONLY the BC loss (skip policy/value/entropy
+                     and the team critic). Used for a supervised pre-training phase
+                     that locks the commander's pointing BEFORE PPO can perturb it —
+                     PPO drift was bouncing the mean aim (eval 70m↔1046m). After the
+                     pretrain phase, normal PPO (with a strong BC anchor) refines.
         """
         if buffer.ptr < self.batch_size:
             return {}
@@ -470,15 +484,25 @@ class LaserTrainer:
                     features = ac.shared(obs)
                     mean_raw = ac.action_head(features)
                     action_mean = torch.tanh(mean_raw)
-                    bc_loss = ((action_mean[:, 1:3] - enemy_xy) ** 2).mean()
+                    if self.residual_aim:
+                        # Residual semantics: pull the correction (dims 1:4) toward 0 so the
+                        # aim sits on the anchor; the reward then refines the last meters.
+                        bc_loss = (action_mean[:, 1:4] ** 2).mean()
+                    else:
+                        bc_loss = ((action_mean[:, 1:3] - enemy_xy) ** 2).mean()
                     loss = loss + bc_weight * bc_loss
                     total_bc_loss += bc_loss.item()
+
+                    # Supervised pre-training: optimize ONLY the BC loss this phase
+                    # so PPO/entropy cannot perturb the pointing before it converges.
+                    if bc_only:
+                        loss = bc_weight * bc_loss
 
                 optimizer.zero_grad()
                 if team_critic_optimizer is not None:
                     team_critic_optimizer.zero_grad()
                 loss.backward()
-                if team_critic is not None and team_critic_optimizer is not None:
+                if team_critic is not None and team_critic_optimizer is not None and not bc_only:
                     # Add value loss for team_critic and backprop separately
                     team_critic_optimizer.zero_grad()
                     value_loss.backward()
@@ -735,8 +759,27 @@ class LaserTrainer:
         # reflect the policy's own fire decision. Aim accuracy is tracked on the
         # commander's intended aim (_commander_aim), which is valid regardless of fire.
         self._cached_tx = self._assemble_tx(r_action)
-        self._cached_cmd_action = c_action.reshape(E, T, 5)
+        self._cached_cmd_action = self._to_env_cmd_action(c_action.reshape(E, T, 5), cmd_obs)
         self._cached_veh = r_action.reshape(E, R, -1)[:, :, -3:]
+
+    def _to_env_cmd_action(self, raw, cmd_obs):
+        """Map the raw commander action to the env action.
+
+        With residual_aim, the aim dims become anchor(enemy obs) + residual × scale, so the
+        policy outputs only a small correction around the known enemy position. The buffer
+        keeps the RAW action (for PPO); the env receives the transformed absolute aim.
+        raw: [E, T, 5], cmd_obs: [E, T, 76].
+        """
+        if not self.residual_aim:
+            return raw
+        env_a = raw.clone()
+        half_x = self.env.map_size[0] / 2.0
+        half_y = self.env.map_size[1] / 2.0
+        anchor = cmd_obs[..., 68:70]  # normalized enemy radar-0 position
+        env_a[..., 1] = anchor[..., 0] + raw[..., 1] * (self.residual_scale_m / half_x)
+        env_a[..., 2] = anchor[..., 1] + raw[..., 2] * (self.residual_scale_m / half_y)
+        env_a[..., 3] = raw[..., 3] * (self.residual_scale_m / 1000.0)
+        return env_a
 
     def _nn_step(self, events: dict):
         """Run NN decision and cache actions."""
@@ -790,9 +833,9 @@ class LaserTrainer:
             else:
                 self._last_team_state = None
 
-        # Cache actions for env step
+        # Cache actions for env step (buffer keeps raw _last_cmd_action; env gets transformed)
         self._cached_tx = self._assemble_tx(r_action)
-        self._cached_cmd_action = self._last_cmd_action
+        self._cached_cmd_action = self._to_env_cmd_action(self._last_cmd_action, cmd_obs)
         self._cached_veh = r_action.reshape(E, R, -1)[:, :, -3:]
 
     def _build_commander_privileged_info(self):
@@ -888,11 +931,14 @@ class LaserTrainer:
         )  # [E*T, 104]
         return team_state_flat.reshape(E, T, 104)
 
-    def update(self, cmd_bc_weight: float = 0.0) -> dict:
+    def update(self, cmd_bc_weight: float = 0.0, cmd_bc_only: bool = False) -> dict:
         """Run PPO update on both radar and commander buffers.
 
         Args:
             cmd_bc_weight: if > 0, add BC auxiliary loss on commander only.
+            cmd_bc_only: if True, commander update optimizes ONLY the BC loss
+                         (supervised pre-training phase that locks the pointing
+                         before PPO engages). Radar still trains normally.
         """
         radar_metrics = self._ppo_update(
             self.radar_ac, self.radar_optimizer, self.radar_buf,
@@ -904,6 +950,7 @@ class LaserTrainer:
             bc_weight=cmd_bc_weight,
             team_critic=self.team_critic,
             team_critic_optimizer=self.team_critic_optimizer,
+            bc_only=cmd_bc_only,
         )
         return {"radar": radar_metrics, "commander": cmd_metrics}
 
@@ -972,6 +1019,12 @@ def main():
     env.battlefield.laser.kill_radius_m = kr_init
     print(f"kill_radius curriculum: {kr_init}m → {kr_final}m (success-gated)")
 
+    # Supervised BC pre-training: lock the commander's pointing before PPO engages,
+    # so PPO drift can't bounce the mean aim (eval was 70m↔1046m without this).
+    bc_pretrain_iters = int(cfg.get("training", {}).get("bc_pretrain_iters", 0))
+    if bc_pretrain_iters > 0:
+        print(f"BC pre-training: first {bc_pretrain_iters} iters optimize commander BC only")
+
     for psro_iter in range(psro_iters):
         iter_t0 = time.perf_counter()
         iter_kills = 0
@@ -988,6 +1041,10 @@ def main():
         else:
             bc_frac = 0.0
         cur_bc_weight = cmd_bc_weight_final + (cmd_bc_weight_init - cmd_bc_weight_final) * bc_frac
+        # During the pretrain phase, force full BC weight and BC-only commander updates.
+        in_pretrain = psro_iter < bc_pretrain_iters
+        if in_pretrain:
+            cur_bc_weight = cmd_bc_weight_init
 
         for ep in range(n_episodes):
             stats = trainer.train_episode()
@@ -1004,7 +1061,7 @@ def main():
             buf_size = trainer.radar_buf.buffer_size
 
             if radar_ptr >= buf_size * 0.8 or cmd_ptr >= buf_size * 0.8:
-                metrics = trainer.update(cmd_bc_weight=cur_bc_weight)
+                metrics = trainer.update(cmd_bc_weight=cur_bc_weight, cmd_bc_only=in_pretrain)
                 n_updates += 1
 
                 if n_updates == 1:  # log first update
@@ -1017,17 +1074,19 @@ def main():
 
         # Force update at end of iteration
         if trainer.radar_buf.ptr > 0 or trainer.cmd_buf.ptr > 0:
-            metrics = trainer.update(cmd_bc_weight=cur_bc_weight)
+            metrics = trainer.update(cmd_bc_weight=cur_bc_weight, cmd_bc_only=in_pretrain)
             n_updates += 1
 
         # kill_radius curriculum step: ratchet tighter once the policy locks on well
         # inside the current tolerance; relax if it falls behind (anti-collapse valve).
-        kr = env.battlefield.laser.kill_radius_m
-        if iter_min_dist < kr * 0.5:
-            kr = max(kr_final, kr * 0.6)
-        elif iter_min_dist > kr * 2.0:
-            kr = kr * 1.3
-        env.battlefield.laser.kill_radius_m = kr
+        # Frozen during BC pretrain (let the pointing stabilize before tightening).
+        if not in_pretrain:
+            kr = env.battlefield.laser.kill_radius_m
+            if iter_min_dist < kr * 0.5:
+                kr = max(kr_final, kr * 0.6)
+            elif iter_min_dist > kr * 2.0:
+                kr = kr * 1.3
+            env.battlefield.laser.kill_radius_m = kr
 
         # Anneal commander AIM exploration: decrease log_std each iteration.
         # Defaults: -1.0 → -6.0 over iters with 0.20/iter decay (configurable).
