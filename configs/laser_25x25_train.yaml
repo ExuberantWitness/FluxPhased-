@@ -33,14 +33,21 @@ ppo:
 
 training:
   psro_iterations: 20
+  # Discrete fire trigger: model action[0] with a Bernoulli head so PPO assigns advantage
+  # to the fire decision (learned via reward gradient, never forced/hardcoded).
+  hybrid_fire: true
+  # kill_radius curriculum: start wide so illumination reward + kills are reachable,
+  # then ratchet toward env.kill_radius_m (0.2m), gated on recent aim accuracy.
+  kill_radius_init: 50.0
   # Behavior cloning auxiliary loss: supervise commander to aim at enemy in obs.
   # Decays linearly over cmd_bc_decay_iters so PPO can take over later.
   cmd_bc_weight_init: 1.0
   cmd_bc_weight_final: 0.1
   cmd_bc_decay_iters: 10
-  # Commander log_std annealing schedule
+  # Commander log_std annealing schedule (applies to the continuous AIM dims only;
+  # the fire bit is Bernoulli and explores via its own entropy term).
   log_std_init: -1.0          # std≈0.37, good exploration
-  log_std_floor: -6.0         # std≈2.5e-3, ~7.5m physical noise at 3km (kills come from t⁴ gradient)
+  log_std_floor: -6.0         # std≈2.5e-3 on [-1,1] → ~25m physical noise at 3km (half_map=10km)
   log_std_decay: 0.20         # per-iter linear decrement (reaches floor by iter ~25)
 
 reward_shaping:
@@ -53,13 +60,17 @@ reward_shaping:
   snr_threshold_db: 10.0
   team_reward_weight: 0.1
   team_kill_weight: 1.0
-  # Dense (1/r²)×t⁴ beam reward — normalized to typical engagement distance
+  # Reshaped beam reward (replaces capped (1/r²)×t⁴ that flattened to zero gradient
+  # inside ~95m — the dead zone that pinned best eval at ~151m). See LASER_ROOT_CAUSE.
+  beam_guidance_weight: 5.0      # log(r_ref/r) guidance: monotone, non-saturating to r_floor
+  illum_reward_weight: 50.0      # fire-gated dwell within current kill_radius (curriculum)
+  beam_r_ref_m: 3000.0           # guidance = 0 at/beyond ~3km team separation
+  beam_r_floor_m: 0.2            # guidance saturates at the kill scale (0.2m)
+  # --- legacy keys (unused by the reshaped reward; kept for back-compat) ---
   beam_reward_weight: 5.0
-  beam_hit_radius_m: 500.0       # accumulate t when beam within this radius
-  beam_r_ref_m: 3000.0           # spatial=1 at typical team separation (~3km)
-  beam_r_floor_m: 2.0            # prevent 1/0 explosion
-  beam_spatial_cap: 1000.0       # allow strong gradient up to spatial=1000 (r≈95m)
-  beam_temporal_epsilon: 0.05    # floor: nearby-but-not-hitting gets small reward
+  beam_hit_radius_m: 500.0
+  beam_spatial_cap: 1000.0
+  beam_temporal_epsilon: 0.05
 
 env:
   rows: 25

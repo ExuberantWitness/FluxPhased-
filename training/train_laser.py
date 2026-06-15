@@ -75,6 +75,9 @@ def build_actors(cfg: dict, n_elem: int, n_pulses: int, n_bins: int, device: str
         act_dim=5,
         hidden_dim=256,
         privileged_dim=commander_priv_dim,
+        # action[0] = fire is a discrete trigger → model it with a Bernoulli head so
+        # PPO can assign advantage to the fire decision (learned, never forced).
+        hybrid_fire=cfg.get("training", {}).get("hybrid_fire", True),
     ).to(device)
 
     return radar_ac, commander_ac
@@ -221,6 +224,16 @@ class LaserTrainer:
         self.beam_temporal_epsilon = rc.get("beam_temporal_epsilon", 0.01)
         self.t_max = env.battlefield.laser.illumination_time_s
 
+        # --- Reshaped reward (removes the spatial-cap dead zone + couples reward to fire) ---
+        # Guidance: log-distance potential on the commander's INTENDED aim. Monotone and
+        # non-saturating from r_ref → r_floor, so the policy keeps refining aim all the way
+        # into kill range — no 95m plateau where (1/r²) used to flatten under the cap.
+        self.beam_guidance_weight = rc.get("beam_guidance_weight", self.beam_reward_weight)
+        # Illumination: fire-gated dwell within the CURRENT kill_radius (shrunk by curriculum).
+        # Paid only when the commander actually fires AND is locked on, so the fire trigger
+        # becomes instrumentally valuable and the Bernoulli fire head learns it from reward.
+        self.illum_reward_weight = rc.get("illum_reward_weight", 50.0)
+
         # Per-team continuous beam-hit time [E, n_teams]
         self._beam_hit_time = torch.zeros(
             self.E, env.n_teams, device=torch.device(self.device),
@@ -331,32 +344,34 @@ class LaserTrainer:
                 continue
 
             enemy_pos = radar_pos[:, enemy_idx, :]  # [E, R/2, 3]
-            aim = drone.laser_aim[:, t, :].unsqueeze(1)  # [E, 1, 3]
+            # Use the commander's INTENDED aim (set every step regardless of fire) so the
+            # guidance gradient exists even before the policy learns to fire. laser_aim only
+            # updates on fire (vec_drone.update_aim), which would hide the aim signal pre-fire.
+            aim = drone._commander_aim[:, t, :].unsqueeze(1)  # [E, 1, 3]
             dist_all = (aim - enemy_pos).norm(dim=-1)  # [E, R/2]
 
             # Mask dead enemies with large distance
             dist_all = dist_all + (~enemy_alive).float() * 1e6
             min_dist = dist_all.min(dim=-1).values  # [E]
 
-            # Accumulate beam-hit time when within hit radius
-            hitting = min_dist < self.beam_hit_radius_m
+            # (A) Guidance: log-distance potential, monotone & non-saturating to r_floor.
+            r_eff = min_dist.clamp(min=self.beam_r_floor_m)
+            guidance = torch.log(self.beam_r_ref_m / r_eff).clamp(min=0.0)
+            beam_reward = guidance * self.beam_guidance_weight
+
+            # (C) Fire-gated illumination: continuous dwell within the CURRENT kill_radius,
+            # only credited when the commander fires. Resets if it drifts out or stops firing.
+            kill_radius = float(self.env.battlefield.laser.kill_radius_m)  # live (curriculum)
+            fire_on = drone._commander_fire[:, t]  # [E] bool — commander's own decision
+            locked = (min_dist < kill_radius) & fire_on
             self._beam_hit_time[:, t] = torch.where(
-                hitting,
+                locked,
                 self._beam_hit_time[:, t] + dt,
                 torch.zeros_like(self._beam_hit_time[:, t]),
             )
-
-            # Spatial factor: (r_ref / max(r, r_floor))²
-            r_eff = min_dist.clamp(min=self.beam_r_floor_m)
-            spatial = (self.beam_r_ref_m / r_eff) ** 2
-            spatial = spatial.clamp(max=self.beam_spatial_cap)
-
-            # Temporal factor: ε + (t/t_max)⁴
             t_norm = (self._beam_hit_time[:, t] / self.t_max).clamp(0.0, 1.0)
-            temporal = self.beam_temporal_epsilon + t_norm ** 4
+            beam_reward = beam_reward + locked.float() * (t_norm ** 2) * self.illum_reward_weight
 
-            # Dense beam reward
-            beam_reward = spatial * temporal * self.beam_reward_weight
             cmd_rewards[:, t] += beam_reward
 
             # Share a fraction of beam reward with own radars (team reward)
@@ -677,7 +692,9 @@ class LaserTrainer:
                 for t in range(env.n_teams):
                     enemy_idx = env.battlefield.team_radar_indices[1 - t]
                     enemy_pos = env.radar_pos[:, enemy_idx, :]
-                    aim = drone.laser_aim[:, t, :].unsqueeze(1)
+                    # Measure the commander's intended aim (valid even when not firing),
+                    # so the eval aim metric is honest without forcing fire.
+                    aim = drone._commander_aim[:, t, :].unsqueeze(1)
                     dist = (aim - enemy_pos).norm(dim=-1).min(dim=-1).values
                     stats["min_aim_dist"] = min(stats["min_aim_dist"], dist.min().item())
 
@@ -714,10 +731,9 @@ class LaserTrainer:
             cmd_flat = cmd_obs.reshape(E * T, -1)
             c_action, _, _, _ = self.commander_ac.get_action(cmd_flat, deterministic=True)
 
-        # Force fire=True during eval to measure true aim accuracy
-        c_action = c_action.clone()
-        c_action[:, 0] = 1.0  # fire
-
+        # No forced fire: the Bernoulli fire head is a learned trigger, so eval must
+        # reflect the policy's own fire decision. Aim accuracy is tracked on the
+        # commander's intended aim (_commander_aim), which is valid regardless of fire.
         self._cached_tx = self._assemble_tx(r_action)
         self._cached_cmd_action = c_action.reshape(E, T, 5)
         self._cached_veh = r_action.reshape(E, R, -1)[:, :, -3:]
@@ -948,6 +964,14 @@ def main():
     cmd_bc_decay_iters = cfg.get("training", {}).get("cmd_bc_decay_iters", psro_iters)
     print(f"BC weight: {cmd_bc_weight_init} → {cmd_bc_weight_final} over {cmd_bc_decay_iters} iters")
 
+    # kill_radius curriculum: start wide so illumination/kills are reachable, then ratchet
+    # toward the env's true kill_radius, gated on recent aim accuracy (never shrink below
+    # what the policy can currently hit). See LASER_ROOT_CAUSE_ANALYSIS.md §7 P0-3.
+    kr_init = float(cfg.get("training", {}).get("kill_radius_init", 50.0))
+    kr_final = float(cfg.get("env", {}).get("kill_radius_m", 0.2))
+    env.battlefield.laser.kill_radius_m = kr_init
+    print(f"kill_radius curriculum: {kr_init}m → {kr_final}m (success-gated)")
+
     for psro_iter in range(psro_iters):
         iter_t0 = time.perf_counter()
         iter_kills = 0
@@ -996,11 +1020,20 @@ def main():
             metrics = trainer.update(cmd_bc_weight=cur_bc_weight)
             n_updates += 1
 
-        # Anneal commander exploration: decrease log_std each iteration.
+        # kill_radius curriculum step: ratchet tighter once the policy locks on well
+        # inside the current tolerance; relax if it falls behind (anti-collapse valve).
+        kr = env.battlefield.laser.kill_radius_m
+        if iter_min_dist < kr * 0.5:
+            kr = max(kr_final, kr * 0.6)
+        elif iter_min_dist > kr * 2.0:
+            kr = kr * 1.3
+        env.battlefield.laser.kill_radius_m = kr
+
+        # Anneal commander AIM exploration: decrease log_std each iteration.
         # Defaults: -1.0 → -6.0 over iters with 0.20/iter decay (configurable).
-        # At log_std=-6, std≈2.5e-3 on [-1,1] → ~7.5m physical noise at 3km range.
-        # Kill radius=0.2m, but kill comes from t⁴ temporal reward gradient pulling
-        # aim closer, not pure exploration.
+        # At log_std=-6, std≈2.5e-3 on [-1,1] → ~25m physical noise at 3km (half_map=10km).
+        # Only affects training-time sampling of the continuous aim dims (eval is
+        # deterministic; the fire bit is Bernoulli with its own entropy).
         log_std_init = cfg.get("training", {}).get("log_std_init", -1.0)
         log_std_floor = cfg.get("training", {}).get("log_std_floor", -6.0)
         log_std_decay = cfg.get("training", {}).get("log_std_decay", 0.20)
@@ -1020,6 +1053,7 @@ def main():
             f"[PSRO {psro_iter+1}/{psro_iters}] "
             f"kills={iter_kills} kill_rate={kill_rate:.3f} "
             f"min_aim_dist={iter_min_dist:.0f}m "
+            f"kr={env.battlefield.laser.kill_radius_m:.2f}m "
             f"avg_cmd_r={avg_cmd_r:.4f} "
             f"log_std={cur_log_std:.2f} "
             f"bc_w={cur_bc_weight:.2f} "

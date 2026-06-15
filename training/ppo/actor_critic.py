@@ -90,11 +90,17 @@ class CommanderActorCritic(nn.Module):
         hidden_dim: int = 256,
         value_init: float = 2.8,
         privileged_dim: int = 0,
+        hybrid_fire: bool = False,
     ):
         super().__init__()
         self.act_dim = act_dim
         self.obs_dim = obs_dim
         self.privileged_dim = privileged_dim
+        # When True, action dim 0 is a discrete fire trigger modeled by a Bernoulli
+        # head (its own log-prob/entropy), while dims 1: stay continuous tanh-Gaussian.
+        # This gives the fire bit a real policy-gradient signal instead of being a
+        # threshold applied outside the distribution (which carries no log-prob).
+        self.hybrid_fire = hybrid_fire
         self.shared = nn.Sequential(
             nn.Linear(obs_dim, hidden_dim),
             nn.ReLU(),
@@ -164,19 +170,41 @@ class CommanderActorCritic(nn.Module):
         """
         features = self.shared(obs)
         mean = self.action_head(features)
-        std = torch.exp(self.log_std).expand_as(mean)
-        dist = torch.distributions.Normal(mean, std)
 
-        if deterministic:
-            raw_action = mean
+        if self.hybrid_fire:
+            fire_logit = mean[:, 0:1]
+            aim_mean = mean[:, 1:]
+            aim_std = torch.exp(self.log_std[1:]).expand_as(aim_mean)
+            aim_dist = torch.distributions.Normal(aim_mean, aim_std)
+            fire_dist = torch.distributions.Bernoulli(logits=fire_logit)
+
+            if deterministic:
+                fire = (torch.sigmoid(fire_logit) > 0.5).float()
+                aim_raw = aim_mean
+            else:
+                fire = fire_dist.sample()
+                aim_raw = aim_dist.rsample()
+
+            aim = torch.tanh(aim_raw)
+            # Map fire {0,1} → {-1,+1} so the env's (action[0] > 0.5) decode fires iff fire=1
+            action = torch.cat([fire * 2.0 - 1.0, aim], dim=-1)
+            log_prob = fire_dist.log_prob(fire).sum(dim=-1)
+            log_prob += aim_dist.log_prob(aim_raw).sum(dim=-1)
+            log_prob -= torch.log(1.0 - aim.pow(2) + 1e-6).sum(dim=-1)
         else:
-            raw_action = dist.rsample()
+            std = torch.exp(self.log_std).expand_as(mean)
+            dist = torch.distributions.Normal(mean, std)
 
-        action = torch.tanh(raw_action)
-        # Log-prob with tanh correction
-        log_prob = dist.log_prob(raw_action).sum(dim=-1)
-        # Squash correction: log(1 - tanh(x)^2)
-        log_prob -= torch.log(1.0 - action.pow(2) + 1e-6).sum(dim=-1)
+            if deterministic:
+                raw_action = mean
+            else:
+                raw_action = dist.rsample()
+
+            action = torch.tanh(raw_action)
+            # Log-prob with tanh correction
+            log_prob = dist.log_prob(raw_action).sum(dim=-1)
+            # Squash correction: log(1 - tanh(x)^2)
+            log_prob -= torch.log(1.0 - action.pow(2) + 1e-6).sum(dim=-1)
 
         value = self.value_head(features)
         privileged_value = self._compute_privileged_value(features, privileged_info)
@@ -198,15 +226,34 @@ class CommanderActorCritic(nn.Module):
         """
         features = self.shared(obs)
         mean = self.action_head(features)
-        std = torch.exp(self.log_std).expand_as(mean)
-        dist = torch.distributions.Normal(mean, std)
 
-        # Inverse tanh to get pre-squash action
-        raw_action = 0.5 * torch.log((actions + 1.0) / (1.0 - actions + 1e-6).clamp(min=1e-6))
+        if self.hybrid_fire:
+            fire_logit = mean[:, 0:1]
+            aim_mean = mean[:, 1:]
+            aim_std = torch.exp(self.log_std[1:]).expand_as(aim_mean)
+            aim_dist = torch.distributions.Normal(aim_mean, aim_std)
+            fire_dist = torch.distributions.Bernoulli(logits=fire_logit)
 
-        log_prob = dist.log_prob(raw_action).sum(dim=-1)
-        log_prob -= torch.log(1.0 - actions.pow(2) + 1e-6).sum(dim=-1)
-        entropy = dist.entropy().sum(dim=-1)
+            # Recover the Bernoulli sample from the stored action (dim 0 ∈ {-1,+1})
+            fire = (actions[:, 0:1] > 0.0).float()
+            aim = actions[:, 1:]
+            aim_raw = 0.5 * torch.log((aim + 1.0) / (1.0 - aim + 1e-6).clamp(min=1e-6))
+
+            log_prob = fire_dist.log_prob(fire).sum(dim=-1)
+            log_prob += aim_dist.log_prob(aim_raw).sum(dim=-1)
+            log_prob -= torch.log(1.0 - aim.pow(2) + 1e-6).sum(dim=-1)
+            entropy = fire_dist.entropy().sum(dim=-1) + aim_dist.entropy().sum(dim=-1)
+        else:
+            std = torch.exp(self.log_std).expand_as(mean)
+            dist = torch.distributions.Normal(mean, std)
+
+            # Inverse tanh to get pre-squash action
+            raw_action = 0.5 * torch.log((actions + 1.0) / (1.0 - actions + 1e-6).clamp(min=1e-6))
+
+            log_prob = dist.log_prob(raw_action).sum(dim=-1)
+            log_prob -= torch.log(1.0 - actions.pow(2) + 1e-6).sum(dim=-1)
+            entropy = dist.entropy().sum(dim=-1)
+
         value = self.value_head(features)
         privileged_value = self._compute_privileged_value(features, privileged_info)
 
