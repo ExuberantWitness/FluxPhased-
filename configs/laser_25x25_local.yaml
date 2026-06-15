@@ -47,9 +47,12 @@ training:
   kill_radius_init: 50.0
   # No BC pretrain needed with residual aiming (init aim already ≈ enemy via the anchor).
   bc_pretrain_iters: 0
-  # Light BC pulls the residual toward 0 (aim on the anchor); the guidance reward refines.
-  cmd_bc_weight_init: 1.0
-  cmd_bc_weight_final: 0.5
+  # STRONG BC pulls the residual toward 0 (= aim exactly on the enemy anchor). With residual
+  # aiming this is pure benefit: target 0 ⇒ tanh(0)=0 has no saturation floor, so the eval
+  # mean aim refines to sub-meter and stays AHEAD of the tightening kill_radius curriculum.
+  # (v4's light BC=1.0→0.5 converged the residual too slowly → kr overtook eval aim ~8m.)
+  cmd_bc_weight_init: 5.0
+  cmd_bc_weight_final: 2.0
   cmd_bc_decay_iters: 12
   # Commander log_std annealing schedule (applies to the continuous AIM dims only;
   # the fire bit is Bernoulli and explores via its own entropy term).
@@ -72,7 +75,9 @@ reward_shaping:
   # Reshaped beam reward (replaces capped (1/r²)×t⁴ that flattened to zero gradient
   # inside ~95m — the dead zone that pinned best eval at ~151m). See LASER_ROOT_CAUSE.
   beam_guidance_weight: 2.0      # log(r_ref/r) refinement — moderate so it doesn't out-pull BC
-  illum_reward_weight: 50.0      # fire-gated dwell within current kill_radius (curriculum)
+  illum_reward_weight: 50.0      # fire-gated sustained dwell within current kill_radius
+  fire_lock_bonus: 5.0           # immediate per-step reward for firing while locked (fire-head signal)
+  misfire_penalty: 0.5           # per-step penalty for firing while NOT locked (discourage spray)
   beam_r_ref_m: 3000.0           # guidance = 0 at/beyond ~3km team separation
   beam_r_floor_m: 0.2            # guidance saturates at the kill scale (0.2m)
   # --- legacy keys (unused by the reshaped reward; kept for back-compat) ---

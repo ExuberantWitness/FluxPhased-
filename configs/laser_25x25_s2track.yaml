@@ -8,7 +8,7 @@ league:
   population_cap: 10
   episodes_per_training: 5
   max_steps_per_episode: 500     # 500 pulses = 50ms simulation
-  checkpoint_dir: "checkpoints/laser_25x25"
+  checkpoint_dir: "/tmp/laser_run/ckpt_s2t"
 
 ppo:
   commander:
@@ -32,7 +32,7 @@ ppo:
     max_grad_norm: 0.5
 
 training:
-  psro_iterations: 20
+  psro_iterations: 18
   # Discrete fire trigger: model action[0] with a Bernoulli head so PPO assigns advantage
   # to the fire decision (learned via reward gradient, never forced/hardcoded).
   hybrid_fire: true
@@ -89,7 +89,7 @@ reward_shaping:
 env:
   rows: 25
   cols: 25
-  num_envs: 4
+  num_envs: 2
   n_radars: 4
   n_teams: 2
   pulses_per_cpi: 4
@@ -104,3 +104,10 @@ env:
   illumination_time_s: 0.002
   drone_altitude_m: 3000.0
   map_size: [20000.0, 20000.0]
+
+# §5 Stage-2-track: multi-static fusion + Kalman temporal tracking over moving radars.
+sensing_noise:
+  mode: tracked
+  range_sigma_m: 0.05
+  crossrange_factor: 0.003
+  track_q_m: 0.05

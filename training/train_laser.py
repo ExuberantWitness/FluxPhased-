@@ -233,6 +233,13 @@ class LaserTrainer:
         # Paid only when the commander actually fires AND is locked on, so the fire trigger
         # becomes instrumentally valuable and the Bernoulli fire head learns it from reward.
         self.illum_reward_weight = rc.get("illum_reward_weight", 50.0)
+        # Dense fire signal: the dwell illumination reward only pays after ~20 continuous
+        # locked pulses, too sparse for the Bernoulli fire head to learn from — so it drifts
+        # to "never fire" even with perfect aim (eval aim 2m but 0 kills). These give the
+        # fire decision an IMMEDIATE per-step signal: + for firing while locked, − for
+        # firing while not locked. Makes "fire iff aimed within kill_radius" learnable.
+        self.fire_lock_bonus = rc.get("fire_lock_bonus", 5.0)
+        self.misfire_penalty = rc.get("misfire_penalty", 0.5)
 
         # Residual aiming: aim = observed-enemy anchor (obs[68:70]) + policy residual × scale.
         # Absolute tanh-Gaussian aim can't resolve 0.2m on a ±10km range (~700m floor, confirmed
@@ -241,6 +248,31 @@ class LaserTrainer:
         tcfg = cfg.get("training", {})
         self.residual_aim = bool(tcfg.get("residual_aim", False))
         self.residual_scale_m = float(tcfg.get("residual_scale_m", 100.0))
+
+        # §5 Stage-0: anisotropic sensing noise on the enemy position the commander observes.
+        # Models the radar error ellipse — precise along range (bandwidth-limited, cm), poor
+        # across range (diffraction-limited, σ_cross = R × crossrange_factor). Weans the
+        # commander off perfect ground truth before the real radar→BPSK pipeline (S1–S3).
+        # Disabled (both 0) → exact truth (back-compat).
+        scfg = cfg.get("sensing_noise", {})
+        self.sensing_range_sigma_m = float(scfg.get("range_sigma_m", 0.0))
+        self.sensing_crossrange_factor = float(scfg.get("crossrange_factor", 0.0))
+        # mode: "single" = one radar (S0 baseline, cross-range wall);
+        #       "fused"  = multi-static range triangulation across own radars (S2). Each
+        #                  radar is range-precise/cross-range-poor from its own angle;
+        #                  information-filter fusion makes BOTH axes range-precise where
+        #                  the angular baseline is good — the integrated-sensing advantage.
+        #       "tracked"= "fused" + a Kalman filter over time. The radars MOVE (20 m/s),
+        #                  so the geometry diversifies frame-to-frame; the KF integrates the
+        #                  time-varying (geometry-dependent) measurement covariance, rotating
+        #                  & intersecting the error ellipses to collapse the bad-collinear
+        #                  (GDOP-limited) directions that floor pure spatial fusion at ~10m.
+        #                  [Nardone&Aidala 1981 observer-motion observability; Bar-Shalom KF.]
+        self.sensing_mode = scfg.get("mode", "single")
+        self.track_q_m = float(scfg.get("track_q_m", 0.05))  # per-step process-noise σ (slow target)
+        self._trk_init = False   # lazy per-episode track init
+        self._trk_x = None       # [E, T, 2 enemies, 2] track position estimate
+        self._trk_P = None       # [E, T, 2 enemies, 2, 2] track covariance
 
         # Per-team continuous beam-hit time [E, n_teams]
         self._beam_hit_time = torch.zeros(
@@ -281,9 +313,139 @@ class LaserTrainer:
         """Build commander observation from env battlefield."""
         dev = torch.device(self.device)
         radar_latents = torch.zeros(self.E, self.R, 32, device=dev)
-        return self.env.battlefield.get_commander_observation(
+        obs = self.env.battlefield.get_commander_observation(
             self.env.radar_pos, radar_latents,
         )
+        if self.sensing_range_sigma_m <= 0.0 and self.sensing_crossrange_factor <= 0.0:
+            return obs  # exact truth (back-compat)
+        if self.sensing_mode in ("fused", "tracked"):
+            return self._fused_sensing(obs, track=(self.sensing_mode == "tracked"))
+        return self._add_sensing_noise(obs)  # "single" (S0 baseline)
+
+    def _reset_tracks(self):
+        """Clear the Kalman track state at the start of each episode."""
+        self._trk_init = False
+        self._trk_x = None
+        self._trk_P = None
+
+    def _add_sensing_noise(self, obs: torch.Tensor) -> torch.Tensor:
+        """§5-S0: replace the exact enemy positions in obs[68:72] with a radar-realistic
+        anisotropic-noisy estimate (range σ small, cross-range σ = R × factor), measured
+        from the team's own radar-0. Both the policy AND the residual anchor then use this
+        noisy estimate, so the commander aims at what a real radar could know — while the
+        kill check still uses ground truth. obs: [E, T, 76].
+        """
+        if self.sensing_range_sigma_m <= 0.0 and self.sensing_crossrange_factor <= 0.0:
+            return obs
+        half_x = self.env.map_size[0] / 2.0
+        half_y = self.env.map_size[1] / 2.0
+        ox = obs[..., 0] * half_x  # own radar-0 (the sensor) position, metres
+        oy = obs[..., 1] * half_y
+        for k in range(2):  # two enemy radars at obs[68:70] and [70:72]
+            off = 68 + 2 * k
+            ex = obs[..., off] * half_x
+            ey = obs[..., off + 1] * half_y
+            dx, dy = ex - ox, ey - oy
+            R = torch.sqrt(dx * dx + dy * dy).clamp(min=1.0)
+            rx, ry = dx / R, dy / R          # unit vector along range
+            cx, cy = -ry, rx                 # unit vector across range
+            nr = torch.randn_like(R) * self.sensing_range_sigma_m
+            nc = torch.randn_like(R) * (R * self.sensing_crossrange_factor)
+            obs[..., off] = (ex + nr * rx + nc * cx) / half_x
+            obs[..., off + 1] = (ey + nr * ry + nc * cy) / half_y
+        return obs
+
+    def _fused_sensing(self, obs: torch.Tensor, track: bool = False) -> torch.Tensor:
+        """§5-S2: multi-static range triangulation (+ optional Kalman tracking).
+
+        Each own-team radar measures the enemy with an anisotropic error ellipse (range σ_r,
+        cross-range σ_c = R × factor) from ITS own angle. An information filter fuses them
+        (Σ_fused⁻¹ = ΣΣ_k⁻¹) so both axes are ~range-precise where the angular baseline is
+        good — one radar's cross-range blind spot is covered by the other's precise range.
+        When track=True, a Kalman filter integrates the geometry-dependent fused measurement
+        over time; since the radars move, the geometry diversifies and the KF collapses the
+        bad-collinear (GDOP) directions that floor pure spatial fusion. obs: [E, T, 76].
+        """
+        half_x = self.env.map_size[0] / 2.0
+        half_y = self.env.map_size[1] / 2.0
+        sr2 = self.sensing_range_sigma_m ** 2
+        own = [(obs[..., 0] * half_x, obs[..., 1] * half_y),    # own radar-0 (sensor A)
+               (obs[..., 2] * half_x, obs[..., 3] * half_y)]    # own radar-1 (sensor B)
+        if track and not self._trk_init:
+            E, T = obs.shape[0], obs.shape[1]
+            self._trk_x = torch.zeros(E, T, 2, 2, device=obs.device)
+            self._trk_P = torch.zeros(E, T, 2, 2, 2, device=obs.device)
+        for e in range(2):  # two enemy radars
+            off = 68 + 2 * e
+            ex = obs[..., off] * half_x      # true enemy position (m) [E, T]
+            ey = obs[..., off + 1] * half_y
+            # Accumulate information Λ (2×2) and η = Λ·meas across the two sensors.
+            L00 = torch.zeros_like(ex); L01 = torch.zeros_like(ex); L11 = torch.zeros_like(ex)
+            e0 = torch.zeros_like(ex);  e1 = torch.zeros_like(ex)
+            for (ox, oy) in own:
+                dx, dy = ex - ox, ey - oy
+                R = torch.sqrt(dx * dx + dy * dy).clamp(min=1.0)
+                rx, ry = dx / R, dy / R          # along-range unit
+                cx, cy = -ry, rx                 # cross-range unit
+                sc2 = (R * self.sensing_crossrange_factor) ** 2 + 1e-6
+                nr = torch.randn_like(R) * self.sensing_range_sigma_m
+                nc = torch.randn_like(R) * (R * self.sensing_crossrange_factor)
+                mx = ex + nr * rx + nc * cx
+                my = ey + nr * ry + nc * cy
+                a, b = 1.0 / sr2, 1.0 / sc2
+                i00 = a * rx * rx + b * cx * cx
+                i01 = a * rx * ry + b * cx * cy
+                i11 = a * ry * ry + b * cy * cy
+                L00 += i00; L01 += i01; L11 += i11
+                e0 += i00 * mx + i01 * my
+                e1 += i01 * mx + i11 * my
+            # fused mean z = Λ⁻¹ η and fused covariance Σ = Λ⁻¹ (2×2 closed form)
+            det = (L00 * L11 - L01 * L01).clamp(min=1e-9)
+            zx = (L11 * e0 - L01 * e1) / det
+            zy = (-L01 * e0 + L00 * e1) / det
+            if not track:
+                obs[..., off] = zx / half_x
+                obs[..., off + 1] = zy / half_y
+                continue
+            # measurement covariance R = Λ⁻¹
+            R00 = L11 / det; R01 = -L01 / det; R11 = L00 / det
+            if not self._trk_init:
+                # initialise track with the first fused measurement
+                self._trk_x[..., e, 0] = zx
+                self._trk_x[..., e, 1] = zy
+                self._trk_P[..., e, 0, 0] = R00
+                self._trk_P[..., e, 0, 1] = R01
+                self._trk_P[..., e, 1, 0] = R01
+                self._trk_P[..., e, 1, 1] = R11
+            else:
+                x0 = self._trk_x[..., e, 0]; x1 = self._trk_x[..., e, 1]
+                # predict (random walk): P += Q·I
+                q = self.track_q_m ** 2
+                P00 = self._trk_P[..., e, 0, 0] + q
+                P01 = self._trk_P[..., e, 0, 1]
+                P11 = self._trk_P[..., e, 1, 1] + q
+                # innovation cov S = P + R; K = P·S⁻¹
+                S00 = P00 + R00; S01 = P01 + R01; S11 = P11 + R11
+                sdet = (S00 * S11 - S01 * S01).clamp(min=1e-9)
+                Si00 = S11 / sdet; Si01 = -S01 / sdet; Si11 = S00 / sdet
+                K00 = P00 * Si00 + P01 * Si01; K01 = P00 * Si01 + P01 * Si11
+                K10 = P01 * Si00 + P11 * Si01; K11 = P01 * Si01 + P11 * Si11
+                yx = zx - x0; yy = zy - x1
+                self._trk_x[..., e, 0] = x0 + K00 * yx + K01 * yy
+                self._trk_x[..., e, 1] = x1 + K10 * yx + K11 * yy
+                # P = (I-K)·P
+                nP00 = (1 - K00) * P00 - K01 * P01
+                nP01 = (1 - K00) * P01 - K01 * P11
+                nP11 = -K10 * P01 + (1 - K11) * P11
+                self._trk_P[..., e, 0, 0] = nP00
+                self._trk_P[..., e, 0, 1] = nP01
+                self._trk_P[..., e, 1, 0] = nP01
+                self._trk_P[..., e, 1, 1] = nP11
+            obs[..., off] = self._trk_x[..., e, 0] / half_x
+            obs[..., off + 1] = self._trk_x[..., e, 1] / half_y
+        if track:
+            self._trk_init = True
+        return obs
 
     def _assemble_tx(self, radar_actions: torch.Tensor) -> torch.Tensor:
         """Convert flat radar actions [E*R, action_dim] → TX signal [E, R, N, S]."""
@@ -372,6 +534,12 @@ class LaserTrainer:
             kill_radius = float(self.env.battlefield.laser.kill_radius_m)  # live (curriculum)
             fire_on = drone._commander_fire[:, t]  # [E] bool — commander's own decision
             locked = (min_dist < kill_radius) & fire_on
+            # (C1) Immediate dense reward for firing while locked (teaches the fire trigger).
+            beam_reward = beam_reward + locked.float() * self.fire_lock_bonus
+            # (C2) Small penalty for firing while NOT locked (discourage spray-firing).
+            misfire = fire_on & (min_dist >= kill_radius)
+            beam_reward = beam_reward - misfire.float() * self.misfire_penalty
+            # (C3) Sustained-dwell illumination — the actual kill mechanic (20 continuous pulses).
             self._beam_hit_time[:, t] = torch.where(
                 locked,
                 self._beam_hit_time[:, t] + dt,
@@ -537,6 +705,7 @@ class LaserTrainer:
 
         env.reset()
         self.cpi_buffer.reset()
+        self._reset_tracks()
         self._spectrum = None
         self._pulse_count = 0
         self._beam_hit_time.zero_()
@@ -682,6 +851,7 @@ class LaserTrainer:
 
         env.reset()
         self.cpi_buffer.reset()
+        self._reset_tracks()
         self._spectrum = None
         self._pulse_count = 0
         self._beam_hit_time.zero_()
@@ -1077,16 +1247,9 @@ def main():
             metrics = trainer.update(cmd_bc_weight=cur_bc_weight, cmd_bc_only=in_pretrain)
             n_updates += 1
 
-        # kill_radius curriculum step: ratchet tighter once the policy locks on well
-        # inside the current tolerance; relax if it falls behind (anti-collapse valve).
-        # Frozen during BC pretrain (let the pointing stabilize before tightening).
-        if not in_pretrain:
-            kr = env.battlefield.laser.kill_radius_m
-            if iter_min_dist < kr * 0.5:
-                kr = max(kr_final, kr * 0.6)
-            elif iter_min_dist > kr * 2.0:
-                kr = kr * 1.3
-            env.battlefield.laser.kill_radius_m = kr
+        # (kill_radius curriculum moved below — it is gated on the EVAL kill rate, not the
+        #  optimistic noisy train min, so kr only tightens when the deterministic policy is
+        #  actually killing at the current tolerance.)
 
         # Anneal commander AIM exploration: decrease log_std each iteration.
         # Defaults: -1.0 → -6.0 over iters with 0.20/iter decay (configurable).
@@ -1121,19 +1284,31 @@ def main():
             f"upd={n_updates}"
         )
 
-        # Deterministic eval rollout every 2 iters — measures true policy quality
-        # (no log_std noise). eval_min_aim_dist should track below train_min_aim_dist.
-        if (psro_iter + 1) % 2 == 0 or psro_iter == 0:
-            eval_stats = trainer.eval_episode()
-            eval_kill_rate = eval_stats["kills"] / max(env.n_teams, 1)
-            eval_min = eval_stats["min_aim_dist"]
-            eval_min_str = f"{eval_min:.0f}m" if eval_min < 1e8 else "inf"
-            print(
-                f"[Eval @ iter {psro_iter+1}] "
-                f"eval_kills={eval_stats['kills']} "
-                f"eval_min_aim_dist={eval_min_str} "
-                f"eval_kill_rate={eval_kill_rate:.3f}"
-            )
+        # Deterministic eval rollout EVERY iter — measures true policy quality (no log_std
+        # noise) and drives the curriculum.
+        eval_stats = trainer.eval_episode()
+        eval_kill_rate = eval_stats["kills"] / max(env.n_teams * env.num_envs, 1)
+        eval_min = eval_stats["min_aim_dist"]
+        eval_min_str = f"{eval_min:.0f}m" if eval_min < 1e8 else "inf"
+
+        # kill_radius curriculum, gated on the EVAL kill rate (success-gated, GOID-style):
+        # only tighten when the deterministic policy actually kills at the current tolerance;
+        # relax if it can't (anti-collapse). Frozen during BC pretrain.
+        if not in_pretrain:
+            kr = env.battlefield.laser.kill_radius_m
+            if eval_kill_rate >= 0.5:
+                kr = max(kr_final, kr * 0.7)      # killing reliably → tighten toward 0.2m
+            elif eval_kill_rate <= 1e-6:
+                kr = min(kr_init, kr * 1.2)       # can't kill at this kr → give room back
+            env.battlefield.laser.kill_radius_m = kr
+
+        print(
+            f"[Eval @ iter {psro_iter+1}] "
+            f"eval_kills={eval_stats['kills']} "
+            f"eval_min_aim_dist={eval_min_str} "
+            f"eval_kill_rate={eval_kill_rate:.3f} "
+            f"kr_next={env.battlefield.laser.kill_radius_m:.2f}m"
+        )
 
         # Save checkpoint
         ckpt_dir = league_cfg.get("checkpoint_dir", "checkpoints/laser_train")
