@@ -67,6 +67,10 @@ training:
   # jam=0 vs jam=1 into the tight-kr regime where jamming finally gates kills. std≈0.37
   # on [-1,1] → after the (x+1)/2 map, sampled jam spreads broadly across [0,1].
   jam_log_std: -1.0
+  # Jam curriculum: jamming stays OFF until the bootstrap tightens kr to this threshold,
+  # so the precise-kill skill + kr curriculum reach 0.2m cleanly (no jam perturbing the
+  # fire head's shared trunk during bootstrap). Then Phase B turns jamming on at tight kr.
+  jam_kr_threshold_m: 0.5
 
 reward_shaping:
   detect_snr_weight: 0.1

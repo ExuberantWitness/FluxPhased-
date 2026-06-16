@@ -1325,6 +1325,18 @@ def main():
     n_episodes = args.episodes or league_cfg.get("episodes_per_training", 100)
     psro_iters = cfg.get("training", {}).get("psro_iterations", 30)
 
+    # Integrated-EW jam curriculum: Phase A (iter < jam_warmup) bootstraps the precise-kill
+    # skill + kr curriculum with jamming OFF (clean, reproduces the proven self-play run);
+    # Phase B (iter ≥ jam_warmup) switches jamming ON and holds the jam dim exploring, so
+    # jamming emerges as the strategic counter at the now-tight kill_radius. Decoupling the
+    # two also avoids high-variance jam exploration perturbing the fire head's shared trunk
+    # during the fragile bootstrap (which froze kr at 50m when jam ran from iter 0).
+    jam_gain_full = trainer.jam_gain   # captured from config; gated on kr below
+    # Switch jamming ON once the bootstrap has tightened kr to this threshold (adapts to
+    # however many iters that takes, rather than a fixed iter). At kr≤0.5m the precise-kill
+    # skill is established and jamming (degrades localisation to ~0.3-0.6m) becomes decisive.
+    jam_kr_threshold = cfg.get("training", {}).get("jam_kr_threshold_m", 0.5)
+
     print(f"Config: {args.config}")
     print(f"Rows×Cols: {cfg['env'].get('rows', 25)}×{cfg['env'].get('cols', 25)}")
     print(f"Episodes per PSRO iter: {n_episodes}")
@@ -1381,7 +1393,15 @@ def main():
         trainer._snapshot_to_pool()
         print(f"League ON: red=training vs blue=opponent pool (snapshot every {league_snapshot_every} iters)")
 
+    jam_on_announced = False
     for psro_iter in range(psro_iters):
+        # Jam curriculum: OFF during bootstrap (Phase A), ON once kr is tight (Phase B).
+        cur_kr = float(env.battlefield.laser.kill_radius_m)
+        trainer.jam_gain = jam_gain_full if cur_kr <= jam_kr_threshold else 0.0
+        if trainer.jam_gain > 0.0 and not jam_on_announced and jam_gain_full > 0.0:
+            print(f"\n>>> JAMMING ON (iter {psro_iter+1}, kr={cur_kr:.2f}m ≤ {jam_kr_threshold}m): "
+                  f"Phase B — jam_gain={jam_gain_full}, jam dim now exploring. Watch jam=… emerge.\n")
+            jam_on_announced = True
         # League: sample a (PFSP-weighted) opponent for this iteration's red-vs-blue games.
         if trainer.league:
             trainer._sample_opponent()
