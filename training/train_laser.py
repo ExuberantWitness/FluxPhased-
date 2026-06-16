@@ -1331,7 +1331,7 @@ def main():
     # jamming emerges as the strategic counter at the now-tight kill_radius. Decoupling the
     # two also avoids high-variance jam exploration perturbing the fire head's shared trunk
     # during the fragile bootstrap (which froze kr at 50m when jam ran from iter 0).
-    jam_gain_full = trainer.jam_gain   # captured from config; gated on kr below
+    jam_gain_full = cfg.get("reward_shaping", {}).get("jam_gain", 0.0)  # gated on kr below
     # Switch jamming ON once the bootstrap has tightened kr to this threshold (adapts to
     # however many iters that takes, rather than a fixed iter). At kr≤0.5m the precise-kill
     # skill is established and jamming (degrades localisation to ~0.3-0.6m) becomes decisive.
