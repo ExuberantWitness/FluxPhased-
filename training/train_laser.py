@@ -271,6 +271,11 @@ class LaserTrainer:
         self.sensing_mode = scfg.get("mode", "single")
         self.track_q_m = float(scfg.get("track_q_m", 0.05))  # per-step process-noise σ (slow target)
         self.track_burnin = int(scfg.get("track_burnin", 30))  # per-episode warm-start updates
+        # Acquisition maneuver: during warm-start the radars sweep perpendicular to their LOS
+        # (opposite senses) to actively widen the angular baseline → geometry diversity that
+        # collapses bad-collinear GDOP (Nardone&Aidala observer-motion observability). Models
+        # the pre-engagement track-while-maneuver phase. 0 → static acquisition.
+        self.acq_baseline_m = float(scfg.get("acq_baseline_m", 0.0))
         self._trk_init = False   # lazy per-episode track init
         self._trk_x = None       # [E, T, 2 enemies, 2] track position estimate
         self._trk_P = None       # [E, T, 2 enemies, 2, 2] track covariance
@@ -436,10 +441,23 @@ class LaserTrainer:
                 obs[..., off + 1] = zy / half_y
                 continue
             if not self._trk_init:
-                # warm-start: pre-converge with track_burnin extra fused measurements
+                # warm-start: pre-converge with track_burnin fused measurements. If
+                # acq_baseline_m>0, the radars sweep perpendicular to their LOS (opposite
+                # senses) to actively widen the angular baseline — geometry diversity that
+                # collapses bad-collinear GDOP, not just √K noise averaging.
                 x0, x1, P00, P01, P11 = zx, zy, R00, R01, R11
-                for _ in range(self.track_burnin):
-                    bzx, bzy, BR00, BR01, BR11 = self._fuse_one(ex, ey, own, sr2)
+                K = max(self.track_burnin, 1)
+                for k in range(self.track_burnin):
+                    own_k = own
+                    if self.acq_baseline_m > 0.0:
+                        d = self.acq_baseline_m * ((k + 1) / K - 0.5)  # sweep ±½ baseline
+                        own_k = []
+                        for ri, (ox, oy) in enumerate(own):
+                            dxr, dyr = ex - ox, ey - oy
+                            Rr = torch.sqrt(dxr * dxr + dyr * dyr).clamp(min=1.0)
+                            sgn = 1.0 if ri == 0 else -1.0   # opposite senses → widen baseline
+                            own_k.append((ox - sgn * d * dyr / Rr, oy + sgn * d * dxr / Rr))
+                    bzx, bzy, BR00, BR01, BR11 = self._fuse_one(ex, ey, own_k, sr2)
                     bzx = bzx.clamp(-half_x, half_x); bzy = bzy.clamp(-half_y, half_y)
                     x0, x1, P00, P01, P11 = self._kalman_step(
                         x0, x1, P00, P01, P11, bzx, bzy, BR00, BR01, BR11, q)
