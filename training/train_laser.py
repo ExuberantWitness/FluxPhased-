@@ -276,6 +276,13 @@ class LaserTrainer:
         # collapses bad-collinear GDOP (Nardone&Aidala observer-motion observability). Models
         # the pre-engagement track-while-maneuver phase. 0 → static acquisition.
         self.acq_baseline_m = float(scfg.get("acq_baseline_m", 0.0))
+        # 方案1: enforce a minimum deployment baseline between each team's two radars at reset.
+        # Two widely-separated radars triangulate the target's precise (cm) RANGE from
+        # different angles → sub-0.2m fused position with NO tracking, even for a static
+        # target. Random placement sometimes lands the two radars near-collinear (tiny
+        # crossing angle → poor fusion); guaranteeing ≥ baseline removes those bad geometries,
+        # mirroring how a real SAM battery deliberately spreads its radar vehicles.
+        self.min_radar_baseline_m = float(cfg.get("env", {}).get("min_radar_baseline_m", 0.0))
         self._trk_init = False   # lazy per-episode track init
         self._trk_x = None       # [E, T, 2 enemies, 2] track position estimate
         self._trk_P = None       # [E, T, 2 enemies, 2, 2] track covariance
@@ -334,6 +341,28 @@ class LaserTrainer:
         self._trk_init = False
         self._trk_x = None
         self._trk_P = None
+
+    def _enforce_radar_baseline(self):
+        """方案1: push each team's two radars apart to at least min_radar_baseline_m,
+        keeping their midpoint. Guarantees a good triangulation crossing angle so the
+        cm-range fusion localises the target to sub-0.2m without tracking."""
+        if self.min_radar_baseline_m <= 0.0:
+            return
+        rp = self.env.radar_pos  # [E, R, 3]
+        for t in range(self.env.n_teams):
+            idx = self.env.battlefield.team_radar_indices[t]
+            if len(idx) < 2:
+                continue
+            a, b = int(idx[0]), int(idx[1])
+            pa = rp[:, a, :2]
+            pb = rp[:, b, :2]
+            mid = 0.5 * (pa + pb)
+            d = pb - pa
+            dist = d.norm(dim=-1, keepdim=True).clamp(min=1.0)
+            unit = d / dist
+            half = 0.5 * dist.clamp(min=self.min_radar_baseline_m)  # ≥ baseline
+            rp[:, a, :2] = mid - unit * half
+            rp[:, b, :2] = mid + unit * half
 
     def _add_sensing_noise(self, obs: torch.Tensor) -> torch.Tensor:
         """§5-S0: replace the exact enemy positions in obs[68:72] with a radar-realistic
@@ -736,6 +765,7 @@ class LaserTrainer:
         env.reset()
         self.cpi_buffer.reset()
         self._reset_tracks()
+        self._enforce_radar_baseline()
         self._spectrum = None
         self._pulse_count = 0
         self._beam_hit_time.zero_()
@@ -882,6 +912,7 @@ class LaserTrainer:
         env.reset()
         self.cpi_buffer.reset()
         self._reset_tracks()
+        self._enforce_radar_baseline()
         self._spectrum = None
         self._pulse_count = 0
         self._beam_hit_time.zero_()

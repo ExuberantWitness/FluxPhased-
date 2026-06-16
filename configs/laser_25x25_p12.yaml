@@ -1,0 +1,115 @@
+# FluxPhased- Laser Drone Training Config — 25×25 Array
+# Practical training: shorter episodes (200 pulses = 20ms) for faster iteration
+# Laser kill requires 2ms = 20 pulses continuous illumination
+
+sub_array_size: 5
+
+league:
+  population_cap: 10
+  episodes_per_training: 5
+  max_steps_per_episode: 500     # 500 pulses = 50ms simulation
+  checkpoint_dir: "/tmp/laser_run/ckpt_p12"
+
+ppo:
+  commander:
+    lr: 3.0e-4
+    clip_range: 0.2
+    entropy_coef: 0.01
+  radar:
+    lr: 1.0e-4
+    clip_range: 0.1
+    entropy_coef: 0.02
+  shared:
+    gamma: 0.999
+    gae_lambda: 0.99
+    n_epochs: 3
+    batch_size: 128
+    buffer_size: 512
+    buffer_size_commander: 512
+    buffer_size_radar: 512
+    value_coef: 1.0           # raised from 0.5 — critic was lagging badly (v8 value_loss=8.38)
+    vf_clip_range: 10.0       # scalar clamp on value pred to prevent spikes destabilizing shared trunk
+    max_grad_norm: 0.5
+
+training:
+  psro_iterations: 15
+  # Discrete fire trigger: model action[0] with a Bernoulli head so PPO assigns advantage
+  # to the fire decision (learned via reward gradient, never forced/hardcoded).
+  hybrid_fire: true
+  # Residual aiming: aim = obs-enemy anchor + policy residual × residual_scale_m. Absolute
+  # tanh aim can't resolve 0.2m on ±10km (~700m floor); the residual only needs ±100m so
+  # sub-meter is reachable, and log_std noise now maps to a sensible metre scale
+  # (std −1→−6 ⇒ 37m→0.25m residual noise). With the anchor, init aim ≈ enemy already.
+  residual_aim: true
+  residual_scale_m: 12.0
+  # kill_radius curriculum: start wide so illumination reward + kills are reachable,
+  # then ratchet toward env.kill_radius_m (0.2m), gated on recent aim accuracy.
+  kill_radius_init: 50.0
+  # No BC pretrain needed with residual aiming (init aim already ≈ enemy via the anchor).
+  bc_pretrain_iters: 0
+  # STRONG BC pulls the residual toward 0 (= aim exactly on the enemy anchor). With residual
+  # aiming this is pure benefit: target 0 ⇒ tanh(0)=0 has no saturation floor, so the eval
+  # mean aim refines to sub-meter and stays AHEAD of the tightening kill_radius curriculum.
+  # (v4's light BC=1.0→0.5 converged the residual too slowly → kr overtook eval aim ~8m.)
+  cmd_bc_weight_init: 5.0
+  cmd_bc_weight_final: 2.0
+  cmd_bc_decay_iters: 12
+  # Commander log_std annealing schedule (applies to the continuous AIM dims only;
+  # the fire bit is Bernoulli and explores via its own entropy term).
+  # Faster decay so the sampled aim ≈ mean sooner → the guidance reward rewards the
+  # MEAN's accuracy and aligns with BC instead of being driven by lucky noisy samples.
+  log_std_init: -1.0          # std≈0.37, good exploration
+  log_std_floor: -6.0         # std≈2.5e-3 on [-1,1] → ~25m physical noise at 3km (half_map=10km)
+  log_std_decay: 0.40         # per-iter linear decrement (reaches floor by iter ~12)
+
+reward_shaping:
+  detect_snr_weight: 0.1
+  beam_accuracy_weight: 5.0
+  illumination_progress_weight: 1.0
+  kill_bonus: 100.0
+  death_penalty: -10.0
+  emission_cost: -0.001
+  snr_threshold_db: 10.0
+  team_reward_weight: 0.1
+  team_kill_weight: 1.0
+  # Reshaped beam reward (replaces capped (1/r²)×t⁴ that flattened to zero gradient
+  # inside ~95m — the dead zone that pinned best eval at ~151m). See LASER_ROOT_CAUSE.
+  beam_guidance_weight: 2.0      # log(r_ref/r) refinement — moderate so it doesn't out-pull BC
+  illum_reward_weight: 50.0      # fire-gated sustained dwell within current kill_radius
+  fire_lock_bonus: 5.0           # immediate per-step reward for firing while locked (fire-head signal)
+  misfire_penalty: 0.5           # per-step penalty for firing while NOT locked (discourage spray)
+  beam_r_ref_m: 3000.0           # guidance = 0 at/beyond ~3km team separation
+  beam_r_floor_m: 0.2            # guidance saturates at the kill scale (0.2m)
+  # --- legacy keys (unused by the reshaped reward; kept for back-compat) ---
+  beam_reward_weight: 5.0
+  beam_hit_radius_m: 500.0
+  beam_spatial_cap: 1000.0
+  beam_temporal_epsilon: 0.05
+
+env:
+  min_radar_baseline_m: 5000.0   # 方案1: force ≥5km deployment baseline between own radars
+  rows: 25
+  cols: 25
+  num_envs: 2
+  n_radars: 4
+  n_teams: 2
+  pulses_per_cpi: 4
+  fft_size: 64
+  device: "cuda"
+  tx_power_w: 1.0
+  prf: 10000.0
+  pulses_per_control: 5
+  bandwidth: 200000000.0
+  vehicle_speed_ms: 20.0
+  kill_radius_m: 0.2
+  illumination_time_s: 0.002
+  drone_altitude_m: 3000.0
+  map_size: [20000.0, 20000.0]
+
+# 方案2: realistic S-300/S-400 engagement-radar angular precision (1.6m aperture, 40dB
+# illumination dwell) → crossrange σ = R × 7.4e-5 (vs toy 0.375m@20dB's 0.003). mode=fused
+# (no tracking — static-target robust): two radars triangulate the cm RANGE.
+sensing_noise:
+  mode: fused
+  range_sigma_m: 0.05
+  crossrange_factor: 7.4e-5
