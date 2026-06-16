@@ -78,6 +78,9 @@ def build_actors(cfg: dict, n_elem: int, n_pulses: int, n_bins: int, device: str
         # action[0] = fire is a discrete trigger → model it with a Bernoulli head so
         # PPO can assign advantage to the fire decision (learned, never forced).
         hybrid_fire=cfg.get("training", {}).get("hybrid_fire", True),
+        # decouple the value trunk so value-loss gradient stops churning the policy trunk
+        # → the residual aim head can converge its mean to ~0 (sub-meter), not ~1-2m.
+        decouple_value=cfg.get("training", {}).get("decouple_value", True),
     ).to(device)
 
     return radar_ac, commander_ac

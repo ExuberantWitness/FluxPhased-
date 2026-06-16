@@ -91,6 +91,7 @@ class CommanderActorCritic(nn.Module):
         value_init: float = 2.8,
         privileged_dim: int = 0,
         hybrid_fire: bool = False,
+        decouple_value: bool = False,
     ):
         super().__init__()
         self.act_dim = act_dim
@@ -101,12 +102,23 @@ class CommanderActorCritic(nn.Module):
         # This gives the fire bit a real policy-gradient signal instead of being a
         # threshold applied outside the distribution (which carries no log-prob).
         self.hybrid_fire = hybrid_fire
+        # When True, the value head gets its OWN trunk (value_shared) so the value-loss
+        # gradient no longer churns the policy trunk — the aim/residual head can then
+        # converge its mean to ~0 (sub-meter aim) instead of being perturbed to ~1-2m.
+        self.decouple_value = decouple_value
         self.shared = nn.Sequential(
             nn.Linear(obs_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
         )
+        if decouple_value:
+            self.value_shared = nn.Sequential(
+                nn.Linear(obs_dim, hidden_dim),
+                nn.ReLU(),
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.ReLU(),
+            )
         self.action_head = nn.Linear(hidden_dim, act_dim)
         self.value_head = nn.Linear(hidden_dim, 1)
         self.log_std = nn.Parameter(torch.zeros(act_dim) - 1.0)  # init std ≈ 0.37
@@ -137,13 +149,24 @@ class CommanderActorCritic(nn.Module):
             last_layer = self.privileged_value_head[-1]
             nn.init.orthogonal_(last_layer.weight, gain=1.0)
             nn.init.constant_(last_layer.bias, value_init)
+        # Zero-init the AIM output (dims 1:) for residual aiming: the policy starts with
+        # residual ≈ 0 (aim exactly on the sensing anchor) and only learns tiny corrections.
+        if self.hybrid_fire:
+            with torch.no_grad():
+                self.action_head.weight[1:].mul_(0.01)
+                self.action_head.bias[1:].zero_()
+
+    def _vfeat(self, obs, features):
+        """Features for the value head: a decoupled trunk if enabled (so value-loss
+        gradient doesn't churn the policy trunk), else the shared policy features."""
+        return self.value_shared(obs) if self.decouple_value else features
 
     def forward(self, obs: torch.Tensor, privileged_info: torch.Tensor = None):
         """Deterministic forward: obs → (action, value)."""
         features = self.shared(obs)
         mean = self.action_head(features)
         action = torch.tanh(mean)
-        value = self.value_head(features)
+        value = self.value_head(self._vfeat(obs, features))
         return action, value
 
     def _compute_privileged_value(self, features: torch.Tensor, privileged_info: torch.Tensor):
@@ -206,8 +229,9 @@ class CommanderActorCritic(nn.Module):
             # Squash correction: log(1 - tanh(x)^2)
             log_prob -= torch.log(1.0 - action.pow(2) + 1e-6).sum(dim=-1)
 
-        value = self.value_head(features)
-        privileged_value = self._compute_privileged_value(features, privileged_info)
+        vfeat = self._vfeat(obs, features)
+        value = self.value_head(vfeat)
+        privileged_value = self._compute_privileged_value(vfeat, privileged_info)
         return action, log_prob, value, privileged_value
 
     def evaluate_actions(self, obs: torch.Tensor, actions: torch.Tensor,
@@ -254,8 +278,9 @@ class CommanderActorCritic(nn.Module):
             log_prob -= torch.log(1.0 - actions.pow(2) + 1e-6).sum(dim=-1)
             entropy = dist.entropy().sum(dim=-1)
 
-        value = self.value_head(features)
-        privileged_value = self._compute_privileged_value(features, privileged_info)
+        vfeat = self._vfeat(obs, features)
+        value = self.value_head(vfeat)
+        privileged_value = self._compute_privileged_value(vfeat, privileged_info)
 
         return log_prob, entropy, value, privileged_value
 
