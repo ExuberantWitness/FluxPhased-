@@ -107,6 +107,23 @@ class LaserTrainer:
         self.device = cfg.get("env", {}).get("device", "cuda")
         dev = torch.device(self.device)
 
+        # --- PSRO-lite league ---------------------------------------------------------
+        # When enabled, team 0 (red) is the TRAINING policy (transitions collected, PPO'd);
+        # team 1 (blue) is a FROZEN opponent sampled from a pool of past snapshots. This
+        # tests adversarial robustness against a population instead of plain self-play.
+        import copy as _copy
+        self.league = bool(cfg.get("training", {}).get("league", False))
+        if self.league:
+            self.radar_opp = _copy.deepcopy(radar_ac).to(dev)
+            self.commander_opp = _copy.deepcopy(commander_ac).to(dev)
+            for p in self.radar_opp.parameters(): p.requires_grad_(False)
+            for p in self.commander_opp.parameters(): p.requires_grad_(False)
+            self.pool = []          # list of (radar_state, commander_state) snapshots
+            self.pool_winrate = []  # PFSP: opponent i's win-rate vs current policy (lower = harder)
+        else:
+            self.radar_opp = self.commander_opp = None
+            self.pool = []
+
         E = env.num_envs
         R = env.n_radars
         N = env.n_elem
@@ -366,6 +383,27 @@ class LaserTrainer:
             half = 0.5 * dist.clamp(min=self.min_radar_baseline_m)  # ≥ baseline
             rp[:, a, :2] = mid - unit * half
             rp[:, b, :2] = mid + unit * half
+
+    # --- PSRO-lite league helpers ----------------------------------------------------
+    def _snapshot_to_pool(self):
+        """Freeze the current training policy as a new opponent in the pool."""
+        import copy
+        self.pool.append((copy.deepcopy(self.radar_ac.state_dict()),
+                          copy.deepcopy(self.commander_ac.state_dict())))
+        self.pool_winrate.append(0.5)  # opp i's win-rate vs us (PFSP weight)
+
+    def _sample_opponent(self):
+        """PFSP: load an opponent from the pool, weighted toward HARD ones (those that
+        beat the current policy), so training prioritises its weaknesses."""
+        if not self.pool:
+            return
+        import numpy as np
+        w = np.array(self.pool_winrate) + 0.1  # opp win-rate vs us; +0.1 keeps all sampleable
+        w = w / w.sum()
+        self._opp_idx = int(np.random.choice(len(self.pool), p=w))
+        rs, cs = self.pool[self._opp_idx]
+        self.radar_opp.load_state_dict(rs)
+        self.commander_opp.load_state_dict(cs)
 
     def _add_sensing_noise(self, obs: torch.Tensor) -> torch.Tensor:
         """§5-S0: replace the exact enemy positions in obs[68:72] with a radar-realistic
@@ -839,8 +877,10 @@ class LaserTrainer:
                     episode_stats["min_aim_dist"] = min(episode_stats["min_aim_dist"], dist.min().item())
                 episode_stats["beam_reward_samples"] += 1
 
-                # Radar transitions: flatten [E, R] → per-radar entries
-                for r in range(R):
+                # Radar transitions: only team-0 (training) radars in league mode.
+                radar_idxs = ([int(i) for i in env.battlefield.team_radar_indices[0]]
+                              if self.league else range(R))
+                for r in radar_idxs:
                     for e in range(E):
                         if self.radar_buf.ptr >= self.radar_buf.buffer_size:
                             break
@@ -853,8 +893,9 @@ class LaserTrainer:
                             log_prob=self._last_radar_logp.reshape(E, R)[e, r].item(),
                         )
 
-                # Commander transitions: flatten [E, T] → per-team entries
-                for t in range(env.n_teams):
+                # Commander transitions: only team-0 (training) in league mode.
+                team_idxs = [0] if self.league else range(env.n_teams)
+                for t in team_idxs:
                     for e in range(E):
                         if self.cmd_buf.ptr >= self.cmd_buf.buffer_size:
                             break
@@ -981,20 +1022,29 @@ class LaserTrainer:
         radar_obs = self._build_radar_obs(events)
         cmd_obs = self._build_commander_obs(events)
 
+        T = self.env.n_teams
         with torch.no_grad():
             radar_flat = radar_obs.reshape(E * R, -1)
             r_action, _, _, _ = self.radar_ac.get_action(radar_flat, deterministic=True)
-
-            T = self.env.n_teams
             cmd_flat = cmd_obs.reshape(E * T, -1)
             c_action, _, _, _ = self.commander_ac.get_action(cmd_flat, deterministic=True)
 
-        # No forced fire: the Bernoulli fire head is a learned trigger, so eval must
-        # reflect the policy's own fire decision. Aim accuracy is tracked on the
-        # commander's intended aim (_commander_aim), which is valid regardless of fire.
-        self._cached_tx = self._assemble_tx(r_action)
-        self._cached_cmd_action = self._to_env_cmd_action(c_action.reshape(E, T, 5), cmd_obs)
-        self._cached_veh = r_action.reshape(E, R, -1)[:, :, -3:]
+        r_exec = r_action.reshape(E, R, -1)
+        c_exec = c_action.reshape(E, T, 5)
+        if self.league and self.commander_opp is not None:
+            # eval = training team 0 (deterministic) vs the sampled frozen opponent (team 1)
+            with torch.no_grad():
+                r_o, _, _, _ = self.radar_opp.get_action(radar_flat, deterministic=True)
+                c_o, _, _, _ = self.commander_opp.get_action(cmd_flat, deterministic=True)
+            r_exec = r_exec.clone(); c_exec = c_exec.clone()
+            r_o = r_o.reshape(E, R, -1); c_o = c_o.reshape(E, T, 5)
+            for ri in self.env.battlefield.team_radar_indices[1]:
+                r_exec[:, int(ri)] = r_o[:, int(ri)]
+            c_exec[:, 1] = c_o[:, 1]
+
+        self._cached_tx = self._assemble_tx(r_exec.reshape(E * R, -1))
+        self._cached_cmd_action = self._to_env_cmd_action(c_exec, cmd_obs)
+        self._cached_veh = r_exec[:, :, -3:]
 
     def _to_env_cmd_action(self, raw, cmd_obs):
         """Map the raw commander action to the env action.
@@ -1067,10 +1117,26 @@ class LaserTrainer:
             else:
                 self._last_team_state = None
 
-        # Cache actions for env step (buffer keeps raw _last_cmd_action; env gets transformed)
-        self._cached_tx = self._assemble_tx(r_action)
-        self._cached_cmd_action = self._to_env_cmd_action(self._last_cmd_action, cmd_obs)
-        self._cached_veh = r_action.reshape(E, R, -1)[:, :, -3:]
+        # Cache actions for env step (buffer keeps raw _last_cmd_action for team 0).
+        if self.league and self.commander_opp is not None:
+            # League: team 1 (blue) acts with the frozen opponent; team 0 (red) is training.
+            with torch.no_grad():
+                r_opp, _, _, _ = self.radar_opp.get_action(radar_flat)
+                c_opp, _, _, _ = self.commander_opp.get_action(cmd_flat)
+            r_exec = r_action.reshape(E, R, -1).clone()
+            c_exec = self._last_cmd_action.clone()
+            r_opp = r_opp.reshape(E, R, -1)
+            c_opp = c_opp.reshape(E, self.env.n_teams, 5)
+            for ri in self.env.battlefield.team_radar_indices[1]:
+                r_exec[:, int(ri)] = r_opp[:, int(ri)]
+            c_exec[:, 1] = c_opp[:, 1]
+            self._cached_tx = self._assemble_tx(r_exec.reshape(E * R, -1))
+            self._cached_cmd_action = self._to_env_cmd_action(c_exec, cmd_obs)
+            self._cached_veh = r_exec[:, :, -3:]
+        else:
+            self._cached_tx = self._assemble_tx(r_action)
+            self._cached_cmd_action = self._to_env_cmd_action(self._last_cmd_action, cmd_obs)
+            self._cached_veh = r_action.reshape(E, R, -1)[:, :, -3:]
 
     def _build_commander_privileged_info(self):
         """Build privileged_info for commander CTDE critic. None if disabled.
@@ -1259,7 +1325,16 @@ def main():
     if bc_pretrain_iters > 0:
         print(f"BC pre-training: first {bc_pretrain_iters} iters optimize commander BC only")
 
+    # PSRO-lite league: seed the pool with the initial policy, then snapshot every N iters.
+    league_snapshot_every = int(cfg.get("training", {}).get("league_snapshot_every", 3))
+    if trainer.league:
+        trainer._snapshot_to_pool()
+        print(f"League ON: red=training vs blue=opponent pool (snapshot every {league_snapshot_every} iters)")
+
     for psro_iter in range(psro_iters):
+        # League: sample a (PFSP-weighted) opponent for this iteration's red-vs-blue games.
+        if trainer.league:
+            trainer._sample_opponent()
         iter_t0 = time.perf_counter()
         iter_kills = 0
         iter_pulses = 0
@@ -1366,13 +1441,18 @@ def main():
                 kr = min(kr_init, kr * 1.2)       # can't kill at this kr → give room back
             env.battlefield.laser.kill_radius_m = kr
 
+        league_str = f" pool={len(trainer.pool)} opp={getattr(trainer,'_opp_idx',-1)}" if trainer.league else ""
         print(
             f"[Eval @ iter {psro_iter+1}] "
             f"eval_kills={eval_stats['kills']} "
             f"eval_min_aim_dist={eval_min_str} "
             f"eval_kill_rate={eval_kill_rate:.3f} "
-            f"kr_next={env.battlefield.laser.kill_radius_m:.2f}m"
+            f"kr_next={env.battlefield.laser.kill_radius_m:.2f}m{league_str}"
         )
+
+        # League: freeze the improved policy into the opponent pool every N iters.
+        if trainer.league and (psro_iter + 1) % league_snapshot_every == 0:
+            trainer._snapshot_to_pool()
 
         # Save checkpoint
         ckpt_dir = league_cfg.get("checkpoint_dir", "checkpoints/laser_train")
