@@ -230,6 +230,16 @@ class LaserTrainer:
         self.illumination_weight = rc.get("illumination_progress_weight", 1.0)
         self.emission_cost = rc.get("emission_cost", -0.001)
 
+        # --- Integrated-EW race: kill the enemy FAST while surviving, via jamming -------
+        # The 0.2m kill_radius is a forcing constraint (precise targeting needs good sensing);
+        # the GAME is to destroy an enemy radar before they destroy yours, using jamming to
+        # degrade their localisation. Commander action[4] (was reserved) = JAM level ∈ [0,1].
+        self.race_time_cost = rc.get("race_time_cost", 0.0)       # per-step penalty → 尽快
+        self.race_death_penalty = rc.get("race_death_penalty", 0.0)  # extra penalty if own radar dies → 保存自己
+        self.jam_gain = rc.get("jam_gain", 0.0)   # enemy jam ×(1+gain·jam) on MY range+crossrange σ (SNR↓)
+        self.jam_cost = rc.get("jam_cost", 0.0)   # per-step cost of jamming (emission) → not free
+        self._jam_level = torch.zeros(self.E, env.n_teams, device=torch.device(self.device))
+
         # Dense (1/r²)×t⁴ reward: guides commander toward sustained close illumination
         # r = distance from laser aim to nearest enemy (meters)
         # t = continuous beam-hit time (seconds), accumulates within beam_hit_radius
@@ -432,9 +442,13 @@ class LaserTrainer:
             obs[..., off + 1] = (ey + nr * ry + nc * cy) / half_y
         return obs
 
-    def _fuse_one(self, ex, ey, own, sr2):
+    def _fuse_one(self, ex, ey, own, sr2, jam_mul=1.0):
         """One information-filter-fused measurement of (ex,ey) from the own radars, with fresh
-        anisotropic noise. Returns (zx, zy, R00, R01, R11) = fused mean + 2×2 covariance."""
+        anisotropic noise. jam_mul (scalar or [E,T]) is the noise-floor multiplier from enemy
+        jamming — it raises BOTH range and cross-range σ (a noise jammer lowers effective SNR),
+        so even good-baseline range-triangulation degrades. Returns mean + 2×2 covariance."""
+        sr = self.sensing_range_sigma_m * jam_mul   # jamming raises range noise too (SNR↓)
+        cf = self.sensing_crossrange_factor * jam_mul
         L00 = torch.zeros_like(ex); L01 = torch.zeros_like(ex); L11 = torch.zeros_like(ex)
         e0 = torch.zeros_like(ex);  e1 = torch.zeros_like(ex)
         for (ox, oy) in own:
@@ -442,12 +456,13 @@ class LaserTrainer:
             R = torch.sqrt(dx * dx + dy * dy).clamp(min=1.0)
             rx, ry = dx / R, dy / R          # along-range unit
             cx, cy = -ry, rx                 # cross-range unit
-            sc2 = (R * self.sensing_crossrange_factor) ** 2 + 1e-6
-            nr = torch.randn_like(R) * self.sensing_range_sigma_m
-            nc = torch.randn_like(R) * (R * self.sensing_crossrange_factor)
+            sc2 = (R * cf) ** 2 + 1e-6
+            sr2_eff = sr ** 2 + 1e-9   # jammed range variance (matches the noise added below)
+            nr = torch.randn_like(R) * sr
+            nc = torch.randn_like(R) * (R * cf)
             mx = ex + nr * rx + nc * cx
             my = ey + nr * ry + nc * cy
-            a, b = 1.0 / sr2, 1.0 / sc2
+            a, b = 1.0 / sr2_eff, 1.0 / sc2
             i00 = a * rx * rx + b * cx * cx
             i01 = a * rx * ry + b * cx * cy
             i11 = a * ry * ry + b * cy * cy
@@ -493,6 +508,13 @@ class LaserTrainer:
         q = self.track_q_m ** 2
         own = [(obs[..., 0] * half_x, obs[..., 1] * half_y),    # own radar-0 (sensor A)
                (obs[..., 2] * half_x, obs[..., 3] * half_y)]    # own radar-1 (sensor B)
+        # Jamming: the ENEMY team's jam level multiplies MY sensing noise floor (range AND
+        # cross-range) → degrades my localisation → I can't reach 0.2m → the jammer wins the
+        # kill-race. jam_mul [E,T] = 1 + gain · enemy_jam (flip swaps team↔enemy).
+        if self.jam_gain > 0.0:
+            jam_mul = 1.0 + self.jam_gain * self._jam_level.flip(-1)
+        else:
+            jam_mul = 1.0
         if track and not self._trk_init:
             E, T = obs.shape[0], obs.shape[1]
             self._trk_x = torch.zeros(E, T, 2, 2, device=obs.device)
@@ -501,7 +523,7 @@ class LaserTrainer:
             off = 68 + 2 * e
             ex = obs[..., off] * half_x      # true enemy position (m) [E, T]
             ey = obs[..., off + 1] * half_y
-            zx, zy, R00, R01, R11 = self._fuse_one(ex, ey, own, sr2)
+            zx, zy, R00, R01, R11 = self._fuse_one(ex, ey, own, sr2, cf=eff_cf)
             # Near-collinear geometry makes the fused info matrix near-singular; clamp the
             # estimate to the map so a degenerate frame yields a bounded (wrong) anchor
             # rather than a huge/Inf value that would NaN the network.
@@ -527,7 +549,7 @@ class LaserTrainer:
                             Rr = torch.sqrt(dxr * dxr + dyr * dyr).clamp(min=1.0)
                             sgn = 1.0 if ri == 0 else -1.0   # opposite senses → widen baseline
                             own_k.append((ox - sgn * d * dyr / Rr, oy + sgn * d * dxr / Rr))
-                    bzx, bzy, BR00, BR01, BR11 = self._fuse_one(ex, ey, own_k, sr2)
+                    bzx, bzy, BR00, BR01, BR11 = self._fuse_one(ex, ey, own_k, sr2, cf=eff_cf)
                     bzx = bzx.clamp(-half_x, half_x); bzy = bzy.clamp(-half_y, half_y)
                     x0, x1, P00, P01, P11 = self._kalman_step(
                         x0, x1, P00, P01, P11, bzx, bzy, BR00, BR01, BR11, q)
@@ -658,6 +680,18 @@ class LaserTrainer:
         # Kill bonus / death penalty (from env rewards, already included)
         # Emission cost
         radar_rewards += self.emission_cost
+
+        # --- Integrated-EW race terms (kill fast, survive, jamming isn't free) ----------
+        bf = self.env.battlefield
+        for t in range(self.env.n_teams):
+            # 尽快: per-step time cost while the game is undecided → reward fast kills.
+            cmd_rewards[:, t] -= self.race_time_cost * (~bf.dones).float()
+            # 保存自己: extra penalty the step MY radar is destroyed.
+            own_idx = bf.team_radar_indices[t]
+            own_dead = (~bf.alive[:, own_idx]).any(dim=-1).float()
+            cmd_rewards[:, t] -= self.race_death_penalty * own_dead
+            # jamming costs emission (and exposes you) → not free.
+            cmd_rewards[:, t] -= self.jam_cost * self._jam_level[:, t]
 
         return {"radar_rewards": radar_rewards, "commander_rewards": cmd_rewards}
 
@@ -967,6 +1001,7 @@ class LaserTrainer:
 
         stats = {"kills": 0, "total_pulses": 0, "min_aim_dist": 1e9}
         events = {"cpi_complete": False, "nn_control_step": False}
+        jam_sum = 0.0; jam_n = 0   # track mean jam level to see if jamming emerges
 
         for pulse in range(max_pulses):
             cpi_complete = events.get("cpi_complete", False)
@@ -996,6 +1031,8 @@ class LaserTrainer:
                     aim = drone._commander_aim[:, t, :].unsqueeze(1)
                     dist = (aim - enemy_pos).norm(dim=-1).min(dim=-1).values
                     stats["min_aim_dist"] = min(stats["min_aim_dist"], dist.min().item())
+                if self.jam_gain > 0.0:
+                    jam_sum += self._jam_level.mean().item(); jam_n += 1
 
             if result["kills"].any():
                 stats["kills"] += result["kills"].sum().item()
@@ -1013,6 +1050,7 @@ class LaserTrainer:
         stats["draws"] = int((w == -1).sum().item())
         stats["n_games"] = int(env.num_envs)
         stats["total_pulses"] = self._pulse_count
+        stats["jam_mean"] = jam_sum / max(jam_n, 1)
         return stats
 
     def _eval_nn_step(self, events: dict):
@@ -1051,6 +1089,7 @@ class LaserTrainer:
         self._cached_tx = self._assemble_tx(r_exec.reshape(E * R, -1))
         self._cached_cmd_action = self._to_env_cmd_action(c_exec, cmd_obs)
         self._cached_veh = r_exec[:, :, -3:]
+        self._jam_level = ((c_exec[..., 4] + 1.0) * 0.5).clamp(0.0, 1.0)  # [E, T] jam per team
 
     def _to_env_cmd_action(self, raw, cmd_obs):
         """Map the raw commander action to the env action.
@@ -1139,10 +1178,14 @@ class LaserTrainer:
             self._cached_tx = self._assemble_tx(r_exec.reshape(E * R, -1))
             self._cached_cmd_action = self._to_env_cmd_action(c_exec, cmd_obs)
             self._cached_veh = r_exec[:, :, -3:]
+            exec_cmd = c_exec
         else:
             self._cached_tx = self._assemble_tx(r_action)
             self._cached_cmd_action = self._to_env_cmd_action(self._last_cmd_action, cmd_obs)
             self._cached_veh = r_action.reshape(E, R, -1)[:, :, -3:]
+            exec_cmd = self._last_cmd_action
+        # Jam level per team from the executed commander action[4] ∈ [-1,1] → [0,1].
+        self._jam_level = ((exec_cmd[..., 4] + 1.0) * 0.5).clamp(0.0, 1.0)  # [E, T]
 
     def _build_commander_privileged_info(self):
         """Build privileged_info for commander CTDE critic. None if disabled.
@@ -1455,7 +1498,8 @@ def main():
             tot = max(cum_red + cum_blue + cum_draw, 1)
             league_str = (f" pool={len(trainer.pool)} opp={getattr(trainer,'_opp_idx',-1)}"
                           f" | this:R{eval_stats.get('red_wins',0)}/B{eval_stats.get('blue_wins',0)}/D{eval_stats.get('draws',0)}"
-                          f" | cum red={cum_red/tot:.2f} blue={cum_blue/tot:.2f} draw={cum_draw/tot:.2f} (n={tot})")
+                          f" | cum red={cum_red/tot:.2f} blue={cum_blue/tot:.2f} draw={cum_draw/tot:.2f} (n={tot})"
+                          f" | jam={eval_stats.get('jam_mean',0.0):.2f}")
         else:
             league_str = ""
         print(
