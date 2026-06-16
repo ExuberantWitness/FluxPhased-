@@ -1006,6 +1006,12 @@ class LaserTrainer:
             if result["dones"].all():
                 break
 
+        # True per-team outcome: winners[e] = 0 (red/team0), 1 (blue/team1), -1 (draw/timeout)
+        w = env.battlefield.winners
+        stats["red_wins"] = int((w == 0).sum().item())
+        stats["blue_wins"] = int((w == 1).sum().item())
+        stats["draws"] = int((w == -1).sum().item())
+        stats["n_games"] = int(env.num_envs)
         stats["total_pulses"] = self._pulse_count
         return stats
 
@@ -1327,6 +1333,7 @@ def main():
 
     # PSRO-lite league: seed the pool with the initial policy, then snapshot every N iters.
     league_snapshot_every = int(cfg.get("training", {}).get("league_snapshot_every", 3))
+    cum_red = cum_blue = cum_draw = 0  # cumulative league outcomes over all eval games
     if trainer.league:
         trainer._snapshot_to_pool()
         print(f"League ON: red=training vs blue=opponent pool (snapshot every {league_snapshot_every} iters)")
@@ -1441,7 +1448,16 @@ def main():
                 kr = min(kr_init, kr * 1.2)       # can't kill at this kr → give room back
             env.battlefield.laser.kill_radius_m = kr
 
-        league_str = f" pool={len(trainer.pool)} opp={getattr(trainer,'_opp_idx',-1)}" if trainer.league else ""
+        if trainer.league:
+            cum_red += eval_stats.get("red_wins", 0)
+            cum_blue += eval_stats.get("blue_wins", 0)
+            cum_draw += eval_stats.get("draws", 0)
+            tot = max(cum_red + cum_blue + cum_draw, 1)
+            league_str = (f" pool={len(trainer.pool)} opp={getattr(trainer,'_opp_idx',-1)}"
+                          f" | this:R{eval_stats.get('red_wins',0)}/B{eval_stats.get('blue_wins',0)}/D{eval_stats.get('draws',0)}"
+                          f" | cum red={cum_red/tot:.2f} blue={cum_blue/tot:.2f} draw={cum_draw/tot:.2f} (n={tot})")
+        else:
+            league_str = ""
         print(
             f"[Eval @ iter {psro_iter+1}] "
             f"eval_kills={eval_stats['kills']} "
