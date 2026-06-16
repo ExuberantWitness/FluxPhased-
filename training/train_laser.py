@@ -270,6 +270,7 @@ class LaserTrainer:
         #                  [Nardone&Aidala 1981 observer-motion observability; Bar-Shalom KF.]
         self.sensing_mode = scfg.get("mode", "single")
         self.track_q_m = float(scfg.get("track_q_m", 0.05))  # per-step process-noise σ (slow target)
+        self.track_burnin = int(scfg.get("track_burnin", 30))  # per-episode warm-start updates
         self._trk_init = False   # lazy per-episode track init
         self._trk_x = None       # [E, T, 2 enemies, 2] track position estimate
         self._trk_P = None       # [E, T, 2 enemies, 2, 2] track covariance
@@ -319,7 +320,8 @@ class LaserTrainer:
         if self.sensing_range_sigma_m <= 0.0 and self.sensing_crossrange_factor <= 0.0:
             return obs  # exact truth (back-compat)
         if self.sensing_mode in ("fused", "tracked"):
-            return self._fused_sensing(obs, track=(self.sensing_mode == "tracked"))
+            obs = self._fused_sensing(obs, track=(self.sensing_mode == "tracked"))
+            return torch.nan_to_num(obs, nan=0.0, posinf=1.0, neginf=-1.0)  # belt-and-suspenders
         return self._add_sensing_noise(obs)  # "single" (S0 baseline)
 
     def _reset_tracks(self):
@@ -355,20 +357,65 @@ class LaserTrainer:
             obs[..., off + 1] = (ey + nr * ry + nc * cy) / half_y
         return obs
 
+    def _fuse_one(self, ex, ey, own, sr2):
+        """One information-filter-fused measurement of (ex,ey) from the own radars, with fresh
+        anisotropic noise. Returns (zx, zy, R00, R01, R11) = fused mean + 2×2 covariance."""
+        L00 = torch.zeros_like(ex); L01 = torch.zeros_like(ex); L11 = torch.zeros_like(ex)
+        e0 = torch.zeros_like(ex);  e1 = torch.zeros_like(ex)
+        for (ox, oy) in own:
+            dx, dy = ex - ox, ey - oy
+            R = torch.sqrt(dx * dx + dy * dy).clamp(min=1.0)
+            rx, ry = dx / R, dy / R          # along-range unit
+            cx, cy = -ry, rx                 # cross-range unit
+            sc2 = (R * self.sensing_crossrange_factor) ** 2 + 1e-6
+            nr = torch.randn_like(R) * self.sensing_range_sigma_m
+            nc = torch.randn_like(R) * (R * self.sensing_crossrange_factor)
+            mx = ex + nr * rx + nc * cx
+            my = ey + nr * ry + nc * cy
+            a, b = 1.0 / sr2, 1.0 / sc2
+            i00 = a * rx * rx + b * cx * cx
+            i01 = a * rx * ry + b * cx * cy
+            i11 = a * ry * ry + b * cy * cy
+            L00 += i00; L01 += i01; L11 += i11
+            e0 += i00 * mx + i01 * my
+            e1 += i01 * mx + i11 * my
+        det = (L00 * L11 - L01 * L01).clamp(min=1e-9)
+        zx = (L11 * e0 - L01 * e1) / det
+        zy = (-L01 * e0 + L00 * e1) / det
+        return zx, zy, L11 / det, -L01 / det, L00 / det
+
+    @staticmethod
+    def _kalman_step(x0, x1, P00, P01, P11, zx, zy, R00, R01, R11, q):
+        """One Kalman predict (random walk, +q) + update with measurement (z, R). 2×2 closed form."""
+        P00 = P00 + q; P11 = P11 + q
+        S00 = P00 + R00; S01 = P01 + R01; S11 = P11 + R11
+        sdet = (S00 * S11 - S01 * S01).clamp(min=1e-9)
+        Si00 = S11 / sdet; Si01 = -S01 / sdet; Si11 = S00 / sdet
+        K00 = P00 * Si00 + P01 * Si01; K01 = P00 * Si01 + P01 * Si11
+        K10 = P01 * Si00 + P11 * Si01; K11 = P01 * Si01 + P11 * Si11
+        yx = zx - x0; yy = zy - x1
+        nx0 = x0 + K00 * yx + K01 * yy
+        nx1 = x1 + K10 * yx + K11 * yy
+        nP00 = (1 - K00) * P00 - K01 * P01
+        nP01 = (1 - K00) * P01 - K01 * P11
+        nP11 = -K10 * P01 + (1 - K11) * P11
+        return nx0, nx1, nP00, nP01, nP11
+
     def _fused_sensing(self, obs: torch.Tensor, track: bool = False) -> torch.Tensor:
         """§5-S2: multi-static range triangulation (+ optional Kalman tracking).
 
-        Each own-team radar measures the enemy with an anisotropic error ellipse (range σ_r,
-        cross-range σ_c = R × factor) from ITS own angle. An information filter fuses them
-        (Σ_fused⁻¹ = ΣΣ_k⁻¹) so both axes are ~range-precise where the angular baseline is
-        good — one radar's cross-range blind spot is covered by the other's precise range.
-        When track=True, a Kalman filter integrates the geometry-dependent fused measurement
-        over time; since the radars move, the geometry diversifies and the KF collapses the
-        bad-collinear (GDOP) directions that floor pure spatial fusion. obs: [E, T, 76].
+        Information-filter fusion of the own radars' anisotropic measurements (range-precise,
+        cross-range-poor) makes both axes ~range-precise where the angular baseline is good.
+        track=True adds a Kalman filter over time; the moving radars diversify the geometry so
+        the KF collapses the bad-collinear (GDOP) directions that floor pure fusion at ~10m.
+        Each episode the track is WARM-STARTED with track_burnin pre-convergence updates so the
+        anchor is already tight at step 0 — otherwise the within-episode convergence makes the
+        commander's observation non-stationary and destabilises PPO. obs: [E, T, 76].
         """
         half_x = self.env.map_size[0] / 2.0
         half_y = self.env.map_size[1] / 2.0
         sr2 = self.sensing_range_sigma_m ** 2
+        q = self.track_q_m ** 2
         own = [(obs[..., 0] * half_x, obs[..., 1] * half_y),    # own radar-0 (sensor A)
                (obs[..., 2] * half_x, obs[..., 3] * half_y)]    # own radar-1 (sensor B)
         if track and not self._trk_init:
@@ -379,70 +426,35 @@ class LaserTrainer:
             off = 68 + 2 * e
             ex = obs[..., off] * half_x      # true enemy position (m) [E, T]
             ey = obs[..., off + 1] * half_y
-            # Accumulate information Λ (2×2) and η = Λ·meas across the two sensors.
-            L00 = torch.zeros_like(ex); L01 = torch.zeros_like(ex); L11 = torch.zeros_like(ex)
-            e0 = torch.zeros_like(ex);  e1 = torch.zeros_like(ex)
-            for (ox, oy) in own:
-                dx, dy = ex - ox, ey - oy
-                R = torch.sqrt(dx * dx + dy * dy).clamp(min=1.0)
-                rx, ry = dx / R, dy / R          # along-range unit
-                cx, cy = -ry, rx                 # cross-range unit
-                sc2 = (R * self.sensing_crossrange_factor) ** 2 + 1e-6
-                nr = torch.randn_like(R) * self.sensing_range_sigma_m
-                nc = torch.randn_like(R) * (R * self.sensing_crossrange_factor)
-                mx = ex + nr * rx + nc * cx
-                my = ey + nr * ry + nc * cy
-                a, b = 1.0 / sr2, 1.0 / sc2
-                i00 = a * rx * rx + b * cx * cx
-                i01 = a * rx * ry + b * cx * cy
-                i11 = a * ry * ry + b * cy * cy
-                L00 += i00; L01 += i01; L11 += i11
-                e0 += i00 * mx + i01 * my
-                e1 += i01 * mx + i11 * my
-            # fused mean z = Λ⁻¹ η and fused covariance Σ = Λ⁻¹ (2×2 closed form)
-            det = (L00 * L11 - L01 * L01).clamp(min=1e-9)
-            zx = (L11 * e0 - L01 * e1) / det
-            zy = (-L01 * e0 + L00 * e1) / det
+            zx, zy, R00, R01, R11 = self._fuse_one(ex, ey, own, sr2)
+            # Near-collinear geometry makes the fused info matrix near-singular; clamp the
+            # estimate to the map so a degenerate frame yields a bounded (wrong) anchor
+            # rather than a huge/Inf value that would NaN the network.
+            zx = zx.clamp(-half_x, half_x); zy = zy.clamp(-half_y, half_y)
             if not track:
                 obs[..., off] = zx / half_x
                 obs[..., off + 1] = zy / half_y
                 continue
-            # measurement covariance R = Λ⁻¹
-            R00 = L11 / det; R01 = -L01 / det; R11 = L00 / det
             if not self._trk_init:
-                # initialise track with the first fused measurement
-                self._trk_x[..., e, 0] = zx
-                self._trk_x[..., e, 1] = zy
-                self._trk_P[..., e, 0, 0] = R00
-                self._trk_P[..., e, 0, 1] = R01
-                self._trk_P[..., e, 1, 0] = R01
-                self._trk_P[..., e, 1, 1] = R11
+                # warm-start: pre-converge with track_burnin extra fused measurements
+                x0, x1, P00, P01, P11 = zx, zy, R00, R01, R11
+                for _ in range(self.track_burnin):
+                    bzx, bzy, BR00, BR01, BR11 = self._fuse_one(ex, ey, own, sr2)
+                    bzx = bzx.clamp(-half_x, half_x); bzy = bzy.clamp(-half_y, half_y)
+                    x0, x1, P00, P01, P11 = self._kalman_step(
+                        x0, x1, P00, P01, P11, bzx, bzy, BR00, BR01, BR11, q)
             else:
                 x0 = self._trk_x[..., e, 0]; x1 = self._trk_x[..., e, 1]
-                # predict (random walk): P += Q·I
-                q = self.track_q_m ** 2
-                P00 = self._trk_P[..., e, 0, 0] + q
-                P01 = self._trk_P[..., e, 0, 1]
-                P11 = self._trk_P[..., e, 1, 1] + q
-                # innovation cov S = P + R; K = P·S⁻¹
-                S00 = P00 + R00; S01 = P01 + R01; S11 = P11 + R11
-                sdet = (S00 * S11 - S01 * S01).clamp(min=1e-9)
-                Si00 = S11 / sdet; Si01 = -S01 / sdet; Si11 = S00 / sdet
-                K00 = P00 * Si00 + P01 * Si01; K01 = P00 * Si01 + P01 * Si11
-                K10 = P01 * Si00 + P11 * Si01; K11 = P01 * Si01 + P11 * Si11
-                yx = zx - x0; yy = zy - x1
-                self._trk_x[..., e, 0] = x0 + K00 * yx + K01 * yy
-                self._trk_x[..., e, 1] = x1 + K10 * yx + K11 * yy
-                # P = (I-K)·P
-                nP00 = (1 - K00) * P00 - K01 * P01
-                nP01 = (1 - K00) * P01 - K01 * P11
-                nP11 = -K10 * P01 + (1 - K11) * P11
-                self._trk_P[..., e, 0, 0] = nP00
-                self._trk_P[..., e, 0, 1] = nP01
-                self._trk_P[..., e, 1, 0] = nP01
-                self._trk_P[..., e, 1, 1] = nP11
-            obs[..., off] = self._trk_x[..., e, 0] / half_x
-            obs[..., off + 1] = self._trk_x[..., e, 1] / half_y
+                P00 = self._trk_P[..., e, 0, 0]; P01 = self._trk_P[..., e, 0, 1]
+                P11 = self._trk_P[..., e, 1, 1]
+                x0, x1, P00, P01, P11 = self._kalman_step(
+                    x0, x1, P00, P01, P11, zx, zy, R00, R01, R11, q)
+            x0 = x0.clamp(-half_x, half_x); x1 = x1.clamp(-half_y, half_y)  # keep track in-map
+            self._trk_x[..., e, 0] = x0; self._trk_x[..., e, 1] = x1
+            self._trk_P[..., e, 0, 0] = P00; self._trk_P[..., e, 0, 1] = P01
+            self._trk_P[..., e, 1, 0] = P01; self._trk_P[..., e, 1, 1] = P11
+            obs[..., off] = x0 / half_x
+            obs[..., off + 1] = x1 / half_y
         if track:
             self._trk_init = True
         return obs

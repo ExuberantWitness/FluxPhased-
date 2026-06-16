@@ -111,3 +111,4 @@ sensing_noise:
   range_sigma_m: 0.05
   crossrange_factor: 0.003
   track_q_m: 0.05
+  track_burnin: 60
