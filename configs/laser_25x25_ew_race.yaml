@@ -32,7 +32,7 @@ ppo:
     max_grad_norm: 0.5
 
 training:
-  psro_iterations: 20
+  psro_iterations: 30   # kr reaches 0.2m by ~iter17; extra iters let jam emergence/equilibrium form
   league: true
   league_snapshot_every: 3
   # Discrete fire trigger: model action[0] with a Bernoulli head so PPO assigns advantage
@@ -60,9 +60,13 @@ training:
   # the fire bit is Bernoulli and explores via its own entropy term).
   # Faster decay so the sampled aim ≈ mean sooner → the guidance reward rewards the
   # MEAN's accuracy and aligns with BC instead of being driven by lucky noisy samples.
-  log_std_init: -1.0          # std≈0.37, good exploration
+  log_std_init: -1.0          # std≈0.37, good exploration (AIM dims)
   log_std_floor: -6.0         # std≈2.5e-3 on [-1,1] → ~25m physical noise at 3km (half_map=10km)
   log_std_decay: 0.40         # per-iter linear decrement (reaches floor by iter ~12)
+  # The JAM dim (action[4]) is NOT annealed — held at this std so it keeps exploring
+  # jam=0 vs jam=1 into the tight-kr regime where jamming finally gates kills. std≈0.37
+  # on [-1,1] → after the (x+1)/2 map, sampled jam spreads broadly across [0,1].
+  jam_log_std: -1.0
 
 reward_shaping:
   detect_snr_weight: 0.1

@@ -523,7 +523,7 @@ class LaserTrainer:
             off = 68 + 2 * e
             ex = obs[..., off] * half_x      # true enemy position (m) [E, T]
             ey = obs[..., off + 1] * half_y
-            zx, zy, R00, R01, R11 = self._fuse_one(ex, ey, own, sr2, cf=eff_cf)
+            zx, zy, R00, R01, R11 = self._fuse_one(ex, ey, own, sr2, jam_mul=jam_mul)
             # Near-collinear geometry makes the fused info matrix near-singular; clamp the
             # estimate to the map so a degenerate frame yields a bounded (wrong) anchor
             # rather than a huge/Inf value that would NaN the network.
@@ -549,7 +549,7 @@ class LaserTrainer:
                             Rr = torch.sqrt(dxr * dxr + dyr * dyr).clamp(min=1.0)
                             sgn = 1.0 if ri == 0 else -1.0   # opposite senses → widen baseline
                             own_k.append((ox - sgn * d * dyr / Rr, oy + sgn * d * dxr / Rr))
-                    bzx, bzy, BR00, BR01, BR11 = self._fuse_one(ex, ey, own_k, sr2, cf=eff_cf)
+                    bzx, bzy, BR00, BR01, BR11 = self._fuse_one(ex, ey, own_k, sr2, jam_mul=jam_mul)
                     bzx = bzx.clamp(-half_x, half_x); bzy = bzy.clamp(-half_y, half_y)
                     x0, x1, P00, P01, P11 = self._kalman_step(
                         x0, x1, P00, P01, P11, bzx, bzy, BR00, BR01, BR11, q)
@@ -1451,6 +1451,14 @@ def main():
         target_log_std = max(log_std_floor, log_std_init - psro_iter * log_std_decay)
         with torch.no_grad():
             commander_ac.log_std.data.fill_(target_log_std)
+            # Keep the JAM dim (action[4]) exploring throughout. Jamming only pays off once
+            # the kill_radius curriculum tightens to ≈ the jammed localisation error (<0.5m,
+            # late iters); if jam shared the aim anneal it would freeze at its 0.50 baseline
+            # before it ever mattered → never discovered. A sustained jam_log_std lets the
+            # policy keep sampling jam=0 vs jam=1 so the gradient can find it when it counts.
+            if trainer.jam_gain > 0.0:
+                jam_log_std = cfg.get("training", {}).get("jam_log_std", -1.0)
+                commander_ac.log_std.data[4] = jam_log_std
 
         iter_elapsed = time.perf_counter() - iter_t0
         avg_pulses = iter_pulses / max(n_episodes, 1)
@@ -1458,7 +1466,7 @@ def main():
         kill_rate = iter_kills / max(n_episodes * env.n_teams, 1)
         avg_cmd_r = iter_total_cmd_r / max(iter_reward_samples * env.n_teams, 1)
 
-        cur_log_std = commander_ac.log_std.data.mean().item()
+        cur_log_std = commander_ac.log_std.data[1:4].mean().item()  # aim dims only (jam held high)
 
         print(
             f"[PSRO {psro_iter+1}/{psro_iters}] "
