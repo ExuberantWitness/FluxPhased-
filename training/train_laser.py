@@ -239,6 +239,13 @@ class LaserTrainer:
         self.jam_gain = rc.get("jam_gain", 0.0)   # enemy jam ×(1+gain·jam) on MY range+crossrange σ (SNR↓)
         self.jam_gain_ref = rc.get("jam_gain", 0.0)  # immutable full gain (self.jam_gain gets kr-gated in the loop)
         self.jam_cost = rc.get("jam_cost", 0.0)   # per-step cost of jamming (emission) → not free
+        # ③ Emission-exposure: my jamming is an active emission the ENEMY can passively home on
+        # (home-on-jam / ESM). It adds an isotropic "beacon" info term ∝ exposure_gain·my_jam to
+        # the enemy's localisation of me. So my jam DENIES their active radar (protective) but
+        # FEEDS their passive beacon (exposing) → "enemy's error of me" is an inverted-U in my
+        # jam: cranking to 1.0 makes me a beacon. Optimal jam is intermediate → timed, not max.
+        self.exposure_gain = rc.get("exposure_gain", 0.0)
+        self.exposure_gain_ref = rc.get("exposure_gain", 0.0)  # immutable (gated like jam_gain in the loop)
         self._jam_level = torch.zeros(self.E, env.n_teams, device=torch.device(self.device))
 
         # Dense (1/r²)×t⁴ reward: guides commander toward sustained close illumination
@@ -443,11 +450,14 @@ class LaserTrainer:
             obs[..., off + 1] = (ey + nr * ry + nc * cy) / half_y
         return obs
 
-    def _fuse_one(self, ex, ey, own, sr2, jam_mul=1.0):
+    def _fuse_one(self, ex, ey, own, sr2, jam_mul=1.0, emission=None):
         """One information-filter-fused measurement of (ex,ey) from the own radars, with fresh
         anisotropic noise. jam_mul (scalar or [E,T]) is the noise-floor multiplier from enemy
         jamming — it raises BOTH range and cross-range σ (a noise jammer lowers effective SNR),
-        so even good-baseline range-triangulation degrades. Returns mean + 2×2 covariance."""
+        so even good-baseline range-triangulation degrades.
+        emission [E,T] (= the TARGET's own jam level) adds a home-on-jam/ESM passive beacon:
+        an isotropic info term ∝ exposure_gain·emission, so a loud jammer localises ITSELF.
+        Returns mean + 2×2 covariance."""
         sr = self.sensing_range_sigma_m * jam_mul   # jamming raises range noise too (SNR↓)
         cf = self.sensing_crossrange_factor * jam_mul
         L00 = torch.zeros_like(ex); L01 = torch.zeros_like(ex); L11 = torch.zeros_like(ex)
@@ -470,6 +480,19 @@ class LaserTrainer:
             L00 += i00; L01 += i01; L11 += i11
             e0 += i00 * mx + i01 * my
             e1 += i01 * mx + i11 * my
+        # ③ Home-on-jam / ESM beacon: the target's own emission feeds an isotropic info term.
+        # info ∝ exposure_gain·emission² (received jammer power → ESM bearing SNR is super-linear),
+        # measurement noise = 1/√info. Exposure concentrates at HIGH jam, so a narrow jam
+        # sweet-spot stays safe while too-little (no denial) and too-much (loud beacon) both get
+        # you localised and killed → the policy must learn an intermediate, timed jam.
+        if emission is not None and self.exposure_gain > 0.0:
+            binfo = (self.exposure_gain * emission * emission).clamp(min=0.0) + 1e-9  # [E,T]
+            bstd = 1.0 / torch.sqrt(binfo)
+            bx = ex + torch.randn_like(ex) * bstd
+            by = ey + torch.randn_like(ey) * bstd
+            L00 = L00 + binfo; L11 = L11 + binfo      # isotropic: i00=i11=binfo, i01=0
+            e0 = e0 + binfo * bx
+            e1 = e1 + binfo * by
         det = (L00 * L11 - L01 * L01).clamp(min=1e-9)
         zx = (L11 * e0 - L01 * e1) / det
         zy = (-L01 * e0 + L00 * e1) / det
@@ -512,10 +535,15 @@ class LaserTrainer:
         # Jamming: the ENEMY team's jam level multiplies MY sensing noise floor (range AND
         # cross-range) → degrades my localisation → I can't reach 0.2m → the jammer wins the
         # kill-race. jam_mul [E,T] = 1 + gain · enemy_jam (flip swaps team↔enemy).
+        # enemy_jam[E,T] = the jam level of team t's enemy (flip swaps team↔enemy). It both
+        # degrades my active fusion (jam_mul) AND, via ③, feeds a beacon that localises the
+        # enemy for me (emission). Same quantity, opposite-signed effects → the EW tradeoff.
+        enemy_jam = self._jam_level.flip(-1)
         if self.jam_gain > 0.0:
-            jam_mul = 1.0 + self.jam_gain * self._jam_level.flip(-1)
+            jam_mul = 1.0 + self.jam_gain * enemy_jam
         else:
             jam_mul = 1.0
+        emission = enemy_jam if self.exposure_gain > 0.0 else None
         if track and not self._trk_init:
             E, T = obs.shape[0], obs.shape[1]
             self._trk_x = torch.zeros(E, T, 2, 2, device=obs.device)
@@ -524,7 +552,7 @@ class LaserTrainer:
             off = 68 + 2 * e
             ex = obs[..., off] * half_x      # true enemy position (m) [E, T]
             ey = obs[..., off + 1] * half_y
-            zx, zy, R00, R01, R11 = self._fuse_one(ex, ey, own, sr2, jam_mul=jam_mul)
+            zx, zy, R00, R01, R11 = self._fuse_one(ex, ey, own, sr2, jam_mul=jam_mul, emission=emission)
             # Near-collinear geometry makes the fused info matrix near-singular; clamp the
             # estimate to the map so a degenerate frame yields a bounded (wrong) anchor
             # rather than a huge/Inf value that would NaN the network.
@@ -550,7 +578,7 @@ class LaserTrainer:
                             Rr = torch.sqrt(dxr * dxr + dyr * dyr).clamp(min=1.0)
                             sgn = 1.0 if ri == 0 else -1.0   # opposite senses → widen baseline
                             own_k.append((ox - sgn * d * dyr / Rr, oy + sgn * d * dxr / Rr))
-                    bzx, bzy, BR00, BR01, BR11 = self._fuse_one(ex, ey, own_k, sr2, jam_mul=jam_mul)
+                    bzx, bzy, BR00, BR01, BR11 = self._fuse_one(ex, ey, own_k, sr2, jam_mul=jam_mul, emission=emission)
                     bzx = bzx.clamp(-half_x, half_x); bzy = bzy.clamp(-half_y, half_y)
                     x0, x1, P00, P01, P11 = self._kalman_step(
                         x0, x1, P00, P01, P11, bzx, bzy, BR00, BR01, BR11, q)
@@ -1192,19 +1220,22 @@ class LaserTrainer:
         """Build privileged_info for commander CTDE critic. None if disabled.
 
         Returns: [E, T, priv_dim] or None
-        Layout (priv_dim=9, CTDE jamming-aware critic):
+        Layout (priv_dim=10, CTDE jamming/exposure-aware critic):
           [0] beam_hit_time_norm
           [1] dist_to_enemy0_norm   [2] dist_to_enemy1_norm
           [3] enemy0_alive          [4] enemy1_alive
           [5] my_jam                [6] enemy_jam
-          [7] enemy_blindness_to_me  = (1+gain·my_jam)/(1+gain_ref) — HIGH ⇒ enemy can't
-              localise me ⇒ I'm SAFE. Monotone in MY jam → this is the credit channel that
-              lets the centralized critic attribute my survival to my jamming (the
-              opponent-mediated signal PPO's own-reward advantage couldn't reach).
-          [8] my_blindness_to_enemy  = (1+gain·enemy_jam)/(1+gain_ref) — HIGH ⇒ I can't
-              localise them ⇒ my kill is denied.
+          [7] my_denial   = (1+gain·my_jam)/(1+gain_ref) — PROTECTIVE edge of my jam:
+              degrades the enemy's active radar on me. Monotone↑ in my jam.
+          [8] my_exposure = exposure_gain·my_jam² / (exposure_gain_ref+1) — EXPOSING edge of
+              my jam (③ home-on-jam beacon): a loud jammer localises ITSELF. Monotone↑.
+              Together [7]&[8] are the two opposite-signed edges of my jam → the critic learns
+              the inverted-U "enemy's error of me" and credits the OPTIMAL intermediate jam,
+              not max (over-jamming = beacon = death).
+          [9] my_blindness_to_enemy = (1+gain·enemy_jam)/(1+gain_ref) — HIGH ⇒ I can't
+              localise them ⇒ my kill is denied (offense capability).
         With decouple_value the privileged head uses its own value trunk, so this richer
-        critic does NOT perturb the actor trunk. In Phase A (jam_gain=0) dims 5-8 are
+        critic does NOT perturb the actor trunk. In Phase A (jam_gain=0) dims 5-9 are
         ~constant → reduces to the proven decoupled value head.
         """
         priv_dim = getattr(self.commander_ac, "privileged_dim", 0)
@@ -1248,10 +1279,15 @@ class LaserTrainer:
             if priv_dim >= 9:
                 my_jam = jl[:, t]
                 enemy_jam = jl[:, 1 - t]
+                enorm = self.exposure_gain_ref + 1.0
                 priv[:, t, 5] = my_jam
                 priv[:, t, 6] = enemy_jam
-                priv[:, t, 7] = (1.0 + gain * my_jam) / gnorm     # enemy blindness to me (HIGH=safe)
-                priv[:, t, 8] = (1.0 + gain * enemy_jam) / gnorm  # my blindness to enemy
+                priv[:, t, 7] = (1.0 + gain * my_jam) / gnorm           # denial (protective, ↑)
+                if priv_dim >= 10:
+                    priv[:, t, 8] = (self.exposure_gain * my_jam * my_jam) / enorm  # exposure (↑)
+                    priv[:, t, 9] = (1.0 + gain * enemy_jam) / gnorm    # my blindness to enemy
+                else:
+                    priv[:, t, 8] = (1.0 + gain * enemy_jam) / gnorm    # (9-dim fallback)
 
         return priv
 
@@ -1355,6 +1391,7 @@ def main():
     # two also avoids high-variance jam exploration perturbing the fire head's shared trunk
     # during the fragile bootstrap (which froze kr at 50m when jam ran from iter 0).
     jam_gain_full = cfg.get("reward_shaping", {}).get("jam_gain", 0.0)  # gated on kr below
+    exposure_gain_full = cfg.get("reward_shaping", {}).get("exposure_gain", 0.0)  # gated with jam
     # Switch jamming ON once the bootstrap has tightened kr to this threshold (adapts to
     # however many iters that takes, rather than a fixed iter). At kr≤0.5m the precise-kill
     # skill is established and jamming (degrades localisation to ~0.3-0.6m) becomes decisive.
@@ -1420,7 +1457,9 @@ def main():
     for psro_iter in range(psro_iters):
         # Jam curriculum: OFF during bootstrap (Phase A), ON once kr is tight (Phase B).
         cur_kr = float(env.battlefield.laser.kill_radius_m)
-        trainer.jam_gain = jam_gain_full if cur_kr <= jam_kr_threshold else 0.0
+        jam_on = cur_kr <= jam_kr_threshold
+        trainer.jam_gain = jam_gain_full if jam_on else 0.0
+        trainer.exposure_gain = exposure_gain_full if jam_on else 0.0  # ③ exposure on with jam
         if trainer.jam_gain > 0.0 and not jam_on_announced and jam_gain_full > 0.0:
             print(f"\n>>> JAMMING ON (iter {psro_iter+1}, kr={cur_kr:.2f}m ≤ {jam_kr_threshold}m): "
                   f"Phase B — jam_gain={jam_gain_full}, jam dim now exploring. Watch jam=… emerge.\n")
