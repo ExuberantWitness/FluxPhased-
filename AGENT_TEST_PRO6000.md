@@ -84,11 +84,21 @@ More envs = more parallel samples = better gradients (reduces the 0.20/0.24m end
 3. Episodes are short (500 pulses) by design — fast iteration, reaches 0.2m. The
    full 60s missile-combat scale is `configs/laser_25x25_config.yaml` (max_steps=600000).
 
-## 6. Next: EW escalation (after baseline PASSes)
+## 6. Next: EW frontier (after baseline PASSes)
 
-Same trainer, escalating one variable at a time (each adds jamming/EW dynamics).
-**Before running, change their `checkpoint_dir` off `/tmp` to `checkpoints/<name>`:**
-- `configs/laser_25x25_ew_race.yaml` — jamming degrades enemy localization + fast-kill/survive race (30 iters).
-- `configs/laser_25x25_ew_exposure.yaml` — emission-exposure tradeoff (home-on-jam beacon → timed jamming). The frontier; this is the run that previously crashed on the /tmp disk-full bug.
+**`configs/laser_25x25_pro6000_ew.yaml`** — integrated-EW frontier, already scaled
+for 98GB with a persistent `checkpoint_dir` (no /tmp). Smoke-validated; run like the baseline:
+```bash
+python -m training.train_laser --config configs/laser_25x25_pro6000_ew.yaml 2>&1 | tee logs/pro6000_ew.log
+```
+Adds: jamming degrades enemy localization (`jam_gain`), a kill-fast/survive race, and
+the emission-exposure tradeoff (home-on-jam beacon → jamming must be **timed, not max**).
+Expect `kr → ~0.2m` by ~iter17, then `jam>0` emerges in the tight-kr regime. 30 iters.
+⚠️ **Frontier — not yet verified to convergence** (this is the run that previously crashed
+on the /tmp disk-full bug, now with safe checkpointing).
+
+> The original `laser_25x25_ew_race.yaml` / `laser_25x25_ew_exposure.yaml` still point
+> their `checkpoint_dir` at `/tmp/laser_run/...` — prefer the ready-made `pro6000_ew`
+> config above, or override their dir off /tmp first.
 
 Report back: the full `[Eval]` trajectory + final `kr` + `cum red/blue/draw` + peak VRAM.
