@@ -1,0 +1,76 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA GeForce RTX 4090 D
+[gpu] VRAM: 25.2 GB
+Config: configs/laser_baseline_safe.yaml
+Rows×Cols: 25×25
+Episodes per PSRO iter: 5
+PSRO iterations: 15
+Warp 1.14.0 initialized:
+   CUDA Toolkit 12.9, Driver 13.0
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA GeForce RTX 4090 D" (24 GiB, sm_89, mempool enabled)
+   Kernel cache:
+     /home/exuber/.cache/warp/1.14.0
+Env: E=2, R=4, N=625, S=20000, P=4, bins=64
+VRAM: 3.20 GB
+Radar AC params: 1,489,504
+Commander AC params: 172,555
+VRAM after models: 3.21 GB
+
+============================================================
+Starting training: 15 PSRO iters × 5 episodes
+Max pulses/episode: 500
+============================================================
+
+BC weight: 5.0 → 2.0 over 12 iters
+kill_radius curriculum: 50.0m → 0.2m (success-gated)
+Module radar_sim.gpu.vec_channel 9afeee1 load on device 'cuda:0' took 1.26 ms  (cached)
+Module radar_sim.gpu.vec_array bad089c load on device 'cuda:0' took 1.92 ms  (cached)
+  [Update] radar_loss=0.0283 cmd_loss=-0.0002 bc_loss=0.0001
+[PSRO 1/15] kills=5 kill_rate=0.500 min_aim_dist=7m kr=50.00m avg_cmd_r=16.9203 log_std=-1.00 bc_w=5.00 rate=10p/s time=229s upd=5
+[Eval @ iter 1] eval_kills=2 eval_min_aim_dist=1m eval_kill_rate=0.500 kr_next=35.00m
+  [Update] radar_loss=0.0027 cmd_loss=-0.0048 bc_loss=0.0005
+[PSRO 2/15] kills=0 kill_rate=0.000 min_aim_dist=6m kr=35.00m avg_cmd_r=16.9140 log_std=-1.40 bc_w=4.75 rate=10p/s time=252s upd=5
+[Eval @ iter 2] eval_kills=4 eval_min_aim_dist=1m eval_kill_rate=1.000 kr_next=24.50m
+  [Update] radar_loss=-0.0024 cmd_loss=-0.0056 bc_loss=0.0006
+[PSRO 3/15] kills=0 kill_rate=0.000 min_aim_dist=2m kr=24.50m avg_cmd_r=18.4835 log_std=-1.80 bc_w=4.50 rate=10p/s time=249s upd=5
+[Eval @ iter 3] eval_kills=4 eval_min_aim_dist=3m eval_kill_rate=1.000 kr_next=17.15m
+  [Update] radar_loss=0.0280 cmd_loss=0.0021 bc_loss=0.0022
+[PSRO 4/15] kills=0 kill_rate=0.000 min_aim_dist=2m kr=17.15m avg_cmd_r=20.0010 log_std=-2.20 bc_w=4.25 rate=10p/s time=252s upd=5
+[Eval @ iter 4] eval_kills=4 eval_min_aim_dist=2m eval_kill_rate=1.000 kr_next=12.00m
+  [Update] radar_loss=0.0017 cmd_loss=-0.0098 bc_loss=0.0012
+[PSRO 5/15] kills=0 kill_rate=0.000 min_aim_dist=1m kr=12.00m avg_cmd_r=21.7235 log_std=-2.60 bc_w=4.00 rate=10p/s time=249s upd=5
+[Eval @ iter 5] eval_kills=3 eval_min_aim_dist=3m eval_kill_rate=0.750 kr_next=8.40m
+  [Update] radar_loss=0.0010 cmd_loss=0.0095 bc_loss=0.0020
+[PSRO 6/15] kills=0 kill_rate=0.000 min_aim_dist=2m kr=8.40m avg_cmd_r=22.4396 log_std=-3.00 bc_w=3.75 rate=10p/s time=248s upd=5
+[Eval @ iter 6] eval_kills=0 eval_min_aim_dist=7m eval_kill_rate=0.000 kr_next=10.08m
+  [Update] radar_loss=0.0045 cmd_loss=0.0088 bc_loss=0.0032
+[PSRO 7/15] kills=0 kill_rate=0.000 min_aim_dist=1m kr=10.08m avg_cmd_r=23.8413 log_std=-3.40 bc_w=3.50 rate=10p/s time=250s upd=5
+[Eval @ iter 7] eval_kills=2 eval_min_aim_dist=9m eval_kill_rate=0.500 kr_next=7.06m
+  [Update] radar_loss=0.1722 cmd_loss=0.0517 bc_loss=0.0053
+[PSRO 8/15] kills=0 kill_rate=0.000 min_aim_dist=1m kr=7.06m avg_cmd_r=22.7297 log_std=-3.80 bc_w=3.25 rate=10p/s time=251s upd=5
+[Eval @ iter 8] eval_kills=2 eval_min_aim_dist=4m eval_kill_rate=0.500 kr_next=4.94m
+  [Update] radar_loss=-0.0017 cmd_loss=0.0063 bc_loss=0.0043
+[PSRO 9/15] kills=0 kill_rate=0.000 min_aim_dist=0m kr=4.94m avg_cmd_r=21.7785 log_std=-4.20 bc_w=3.00 rate=10p/s time=250s upd=5
+[Eval @ iter 9] eval_kills=0 eval_min_aim_dist=5m eval_kill_rate=0.000 kr_next=5.93m
+  [Update] radar_loss=-0.0006 cmd_loss=0.0482 bc_loss=0.0041
+[PSRO 10/15] kills=0 kill_rate=0.000 min_aim_dist=3m kr=5.93m avg_cmd_r=21.9715 log_std=-4.60 bc_w=2.75 rate=10p/s time=250s upd=5
+[Eval @ iter 10] eval_kills=0 eval_min_aim_dist=5m eval_kill_rate=0.000 kr_next=7.12m
+  [Update] radar_loss=-0.0001 cmd_loss=0.0499 bc_loss=0.0038
+[PSRO 11/15] kills=0 kill_rate=0.000 min_aim_dist=3m kr=7.12m avg_cmd_r=22.8657 log_std=-5.00 bc_w=2.50 rate=10p/s time=252s upd=5
+[Eval @ iter 11] eval_kills=1 eval_min_aim_dist=4m eval_kill_rate=0.250 kr_next=7.12m
+  [Update] radar_loss=-0.0006 cmd_loss=0.0011 bc_loss=0.0038
+[PSRO 12/15] kills=1 kill_rate=0.100 min_aim_dist=3m kr=7.12m avg_cmd_r=22.1631 log_std=-5.40 bc_w=2.25 rate=10p/s time=251s upd=5
+[Eval @ iter 12] eval_kills=0 eval_min_aim_dist=6m eval_kill_rate=0.000 kr_next=8.54m
+  [Update] radar_loss=0.0001 cmd_loss=0.0002 bc_loss=0.0043
+[PSRO 13/15] kills=6 kill_rate=0.600 min_aim_dist=5m kr=8.54m avg_cmd_r=20.8380 log_std=-5.80 bc_w=2.00 rate=10p/s time=212s upd=4
+[Eval @ iter 13] eval_kills=0 eval_min_aim_dist=6m eval_kill_rate=0.000 kr_next=10.25m
+  [Update] radar_loss=-0.0011 cmd_loss=0.3256 bc_loss=0.0059
+[PSRO 14/15] kills=7 kill_rate=0.700 min_aim_dist=5m kr=10.25m avg_cmd_r=19.5525 log_std=-6.00 bc_w=2.00 rate=10p/s time=212s upd=4
+[Eval @ iter 14] eval_kills=1 eval_min_aim_dist=7m eval_kill_rate=0.250 kr_next=10.25m
+  [Update] radar_loss=0.0021 cmd_loss=0.2230 bc_loss=0.0091
+[PSRO 15/15] kills=6 kill_rate=0.600 min_aim_dist=4m kr=10.25m avg_cmd_r=19.7500 log_std=-6.00 bc_w=2.00 rate=10p/s time=174s upd=3
+[Eval @ iter 15] eval_kills=0 eval_min_aim_dist=6m eval_kill_rate=0.000 kr_next=12.30m
+
+Training complete.
