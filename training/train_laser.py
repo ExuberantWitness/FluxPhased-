@@ -237,6 +237,7 @@ class LaserTrainer:
         self.race_time_cost = rc.get("race_time_cost", 0.0)       # per-step penalty → 尽快
         self.race_death_penalty = rc.get("race_death_penalty", 0.0)  # extra penalty if own radar dies → 保存自己
         self.jam_gain = rc.get("jam_gain", 0.0)   # enemy jam ×(1+gain·jam) on MY range+crossrange σ (SNR↓)
+        self.jam_gain_ref = rc.get("jam_gain", 0.0)  # immutable full gain (self.jam_gain gets kr-gated in the loop)
         self.jam_cost = rc.get("jam_cost", 0.0)   # per-step cost of jamming (emission) → not free
         self._jam_level = torch.zeros(self.E, env.n_teams, device=torch.device(self.device))
 
@@ -1191,8 +1192,20 @@ class LaserTrainer:
         """Build privileged_info for commander CTDE critic. None if disabled.
 
         Returns: [E, T, priv_dim] or None
-        Layout: [beam_hit_time_norm, dist_to_enemy0_norm, dist_to_enemy1_norm,
-                 enemy0_alive, enemy1_alive]
+        Layout (priv_dim=9, CTDE jamming-aware critic):
+          [0] beam_hit_time_norm
+          [1] dist_to_enemy0_norm   [2] dist_to_enemy1_norm
+          [3] enemy0_alive          [4] enemy1_alive
+          [5] my_jam                [6] enemy_jam
+          [7] enemy_blindness_to_me  = (1+gain·my_jam)/(1+gain_ref) — HIGH ⇒ enemy can't
+              localise me ⇒ I'm SAFE. Monotone in MY jam → this is the credit channel that
+              lets the centralized critic attribute my survival to my jamming (the
+              opponent-mediated signal PPO's own-reward advantage couldn't reach).
+          [8] my_blindness_to_enemy  = (1+gain·enemy_jam)/(1+gain_ref) — HIGH ⇒ I can't
+              localise them ⇒ my kill is denied.
+        With decouple_value the privileged head uses its own value trunk, so this richer
+        critic does NOT perturb the actor trunk. In Phase A (jam_gain=0) dims 5-8 are
+        ~constant → reduces to the proven decoupled value head.
         """
         priv_dim = getattr(self.commander_ac, "privileged_dim", 0)
         if priv_dim == 0:
@@ -1211,9 +1224,12 @@ class LaserTrainer:
         drone = env.battlefield.drone
         radar_alive = env.radar_alive if hasattr(env, "radar_alive") else None
 
-        # Layout: [bht, dist0_norm, dist1_norm, alive0, alive1] = 5 dims
+        # Layout: 5 base dims + 4 jamming dims = 9 (see docstring). priv_dim<9 truncates.
         half_diag = float((env.map_size[0] ** 2 + env.map_size[1] ** 2) ** 0.5) / 2.0
-        priv = torch.zeros(E, T, 5, device=dev)
+        priv = torch.zeros(E, T, priv_dim, device=dev)
+        gain = self.jam_gain                      # active gain (0 in Phase A)
+        gnorm = 1.0 + self.jam_gain_ref + 1e-6    # stable normaliser (full gain)
+        jl = self._jam_level                      # [E, T] in [0,1]
         for t in range(T):
             enemy_idx = env.battlefield.team_radar_indices[1 - t]
             enemy_pos = env.radar_pos[:, enemy_idx, :]  # [E, n_enemy, 3]
@@ -1229,6 +1245,13 @@ class LaserTrainer:
                     priv[:, t, 3 + i] = radar_alive[:, enemy_idx[i]].float()
             else:
                 priv[:, t, 3:5] = 1.0
+            if priv_dim >= 9:
+                my_jam = jl[:, t]
+                enemy_jam = jl[:, 1 - t]
+                priv[:, t, 5] = my_jam
+                priv[:, t, 6] = enemy_jam
+                priv[:, t, 7] = (1.0 + gain * my_jam) / gnorm     # enemy blindness to me (HIGH=safe)
+                priv[:, t, 8] = (1.0 + gain * enemy_jam) / gnorm  # my blindness to enemy
 
         return priv
 
