@@ -149,6 +149,13 @@ def create_league(config: dict, env_params: dict) -> FluxLeague:
             "reward_shaping": config.get("reward_shaping", {}),
             "hybrid_fire": config.get("training", {}).get("hybrid_fire", False),
             "decouple_value": config.get("training", {}).get("decouple_value", False),
+            # Critical: without residual_aim=True, aim is not anchored to enemy
+            # obs → hybrid_fire's zero-init aim-head is meaningless. Without
+            # min_radar_baseline_m, enforce_radar_baseline is a no-op → near-collinear
+            # radar geometry → info-matrix singular → fused estimate explodes →
+            # clamped to map corner → kill_radius never met → progress=0 → 0.5.
+            "residual_aim": config.get("training", {}).get("residual_aim", False),
+            "min_radar_baseline_m": config.get("env", {}).get("min_radar_baseline_m", 0.0),
         },
         sensing_cfg=config.get("sensing_noise", {}),
     )

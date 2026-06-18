@@ -1,115 +1,115 @@
 # Status: FluxLeague Laser Task — win_rate=0.50 持续问题
 
-**Date:** 2026-06-18
+**Date:** 2026-06-18 (corrected)
 **Branch:** `evo/laser-fix`
 **Related docs:** [DIAG_WIN_RATE_ZERO.md](DIAG_WIN_RATE_ZERO.md), [LASER_ROOT_CAUSE_ANALYSIS.md](LASER_ROOT_CAUSE_ANALYSIS.md)
 
 ---
 
+## ⚠️ Correction Notice (2026-06-18 late)
+
+Earlier version of this doc claimed 0.5 win rate was caused by "3 fixed bugs + 1 unknown fused_sensing saturation bug". **That was wrong**. The truth is simpler and worse:
+
+- The `training/laser/` package (sensing/reward/episode) was referenced by 6 import sites in committed code but **never committed** — anyone pulling `17fcb77` hits ImportError at first laser call.
+- The "saturation bug" was **not pre-existing** — it was a regression introduced by incomplete config threading in `train.py`'s `laser_cfg` dict.
+
+See §5 below for the corrected root cause.
+
+---
+
 ## 1. 问题陈述
 
-FluxLeague 激光精确击杀任务在 PSRO 评估中，**全部 36 个 cross-team 对局胜率 = 0.50**（red 主政策 vs blue 主政策、exploiter 对主政策、所有方向都一样）。
+FluxLeague 激光精确击杀任务在 PSRO 评估中，**全部 36 个 cross-team 对局胜率 = 0.50**。
 
 这导致 league 学习信号完全失效：
 - Nash meta-solver 收到均匀矩阵 → sigma 退化到 `[1, 0, 0]`
 - PFSP 失效（没有胜负区分）
 - Elo 不更新
-- TC-DAMS 拿不到指纹差异
 
 ---
 
-## 2. 已识别的 3 个独立 bug
+## 2. 真实 root cause：laser_cfg 配置透传缺失
 
-经 3 个并行 Explore agent 调查，确认 root cause 是 3 个 bug 叠加：
+[training/train.py](training/train.py) `laser_cfg` 字典漏传 4 个关键字段（Phase B 阶段只补了 2 个）：
 
-| # | Bug | 位置 | 严重性 |
+| 字段 | 配置位置 | 默认值 | 缺失后果 |
 |---|---|---|---|
-| PRIMARY | `create_team_policy` 没透传 `hybrid_fire`/`decouple_value` 给 `CommanderActorCritic` | [actor_critic.py:983-1008](training/ppo/actor_critic.py#L983-L1008) | 致命 |
-| SECONDARY | `PayoffMatrix.evaluate_pair` 在 timeout 时硬编码 `red_wins += 0.5` | [payoff_matrix.py:144-149](training/self_play/payoff_matrix.py#L144-L149) | 信号丢失 |
-| TERTIARY | `laser_cfg` 没读 `training.hybrid_fire`/`training.decouple_value` | [train.py:143-151](training/train.py#L143-L151) | 参数缺失 |
+| `hybrid_fire` | `training:` | `False` | aim-head 随机初始化（Phase B 已修） |
+| `decouple_value` | `training:` | `False` | value head 不解耦（Phase B 已修） |
+| **`residual_aim`** | `training:` (line 70 = `true`) | `False` | aim 不锚定敌位 → hybrid_fire 零初始化无效 |
+| **`min_radar_baseline_m`** | `env:` (line 101 = `5000.0`) | `0.0` | `enforce_radar_baseline` 是 no-op → 几何退化 |
 
-**对照基线**：[train_laser.py:1075-1083](training/train_laser.py#L1075-L1083) 直接构造 `CommanderActorCritic(hybrid_fire=True, decouple_value=True)`，所以 baseline `red=0.85` 工作正常；FluxLeague 走 `create_team_policy` 把 flag 丢了。
+### 因果链（修正版）
+
+```
+laser_cfg.min_radar_baseline_m = 0  (未透传)
+  ↓
+enforce_radar_baseline(env, 0) → 立即 return（no-op）
+  ↓
+雷达随机部署，可能近共线
+  ↓
+_fuse_one 的信息矩阵 L 接近奇异: det(L) → 0
+  ↓
+zx = (L11·e0 − L01·e1) / det → 爆炸到 ±Inf
+  ↓
+zx.clamp(±half_x) → 饱和到 ±1.0（地图边界）
+  ↓
+cmd_obs[68:70] = ±1.0 → residual_aim 把 anchor ±1 当真值
+  ↓
+aim = (±1) × half_map + residual × scale = ±10000m（地图角）
+  ↓
+kill_radius_m=50m 永远不满足 → illumination_progress=0
+  ↓
+tiebreaker 退化到 0.5
+```
+
+### 为什么 train_laser.py 不出问题
+
+[training/train_laser.py:323](training/train_laser.py#L323) 直接读 `cfg["env"]["min_radar_baseline_m"]`，不走 `laser_cfg` 字典中转；[train_laser.py:287](training/train_laser.py#L287) 直接读 `tcfg["residual_aim"]`。两个字段都正确赋值，所以 baseline 雷达几何被强制 5km，融合矩阵良态，估计收敛到 0.2m。
 
 ---
 
-## 3. 已实施的 3 阶段修复
+## 3. 已实施的修复（4 阶段）
 
-### Phase A — `create_team_policy` 加新参数（5 LOC）
+### Phase A — `create_team_policy` 加 `hybrid_fire`/`decouple_value` 参数
 
-[training/ppo/actor_critic.py](training/ppo/actor_critic.py) `create_team_policy` 签名扩展：
+[training/ppo/actor_critic.py](training/ppo/actor_critic.py) ~10 LOC。
 
-```python
-def create_team_policy(
-    ...
-    hybrid_fire: bool = False,        # NEW
-    decouple_value: bool = False,     # NEW
-) -> dict:
-```
+### Phase B — `laser_cfg` 透传 `hybrid_fire`/`decouple_value`
 
-透传到 `CommanderActorCritic` 构造。默认 `False` 保持向后兼容（通用导弹任务、smoke_tcdams_25 等不破坏）。
+[train.py](training/train.py) + [flux_league.py](training/flux_league.py) ~15 LOC。
 
-### Phase B — `laser_cfg` 透传 + 3 处调用点更新（~15 LOC）
+### Phase C — PayoffMatrix timeout tiebreaker（illumination_progress）
 
-[train.py:143-153](training/train.py#L143-L153) `laser_cfg` 加 2 字段：
+[training/self_play/payoff_matrix.py](training/self_play/payoff_matrix.py) ~20 LOC。
+
+### Phase D — `laser_cfg` 透传 `residual_aim`/`min_radar_baseline_m`（**真正解决 0.5**）
+
+[train.py](training/train.py) laser_cfg 加：
 
 ```python
-laser_cfg={
-    ...
-    "hybrid_fire": config.get("training", {}).get("hybrid_fire", False),
-    "decouple_value": config.get("training", {}).get("decouple_value", False),
-},
+"residual_aim": config.get("training", {}).get("residual_aim", False),
+"min_radar_baseline_m": config.get("env", {}).get("min_radar_baseline_m", 0.0),
 ```
 
-[flux_league.py](training/flux_league.py) `__init__` 末尾存储：
+### Phase E — 提交 `training/laser/` 包（修复破损 build）
 
-```python
-self.hybrid_fire = (laser_cfg or {}).get("hybrid_fire", False)
-self.decouple_value = (laser_cfg or {}).get("decouple_value", False)
-```
+之前 commit `17fcb77` 引用了 `training.laser.{episode,reward,sensing}` 但没把包提交。本 commit 补上：
 
-3 处 `create_team_policy` 调用全部加 kwargs：主初始化、mutant 生成、mutant_trainer 重建。
-
-### Phase C — PayoffMatrix timeout tiebreaker（~20 LOC）
-
-[training/self_play/payoff_matrix.py](training/self_play/payoff_matrix.py)：
-
-1. `__init__` 加 `self._last_step_progress = None`
-2. step loop 缓存 `illumination_progress [E, n_teams]`
-3. 替换硬编码 `+= 0.5`：
-   ```python
-   if last_progress is not None and self.task_type == "laser":
-       p0, p1 = float(last_progress[e, 0]), float(last_progress[e, 1])
-       if p0 - p1 > 0.01:      red_wins += 1.0
-       elif p1 - p0 > 0.01:    red_wins += 0.0
-       else:                   red_wins += 0.5
-   else:
-       red_wins += 0.5
-   ```
-
-**总改动量**：~45 LOC，全为参数透传 + 1 个 tiebreaker 替换。
+- [training/laser/__init__.py](training/laser/__init__.py)
+- [training/laser/sensing.py](training/laser/sensing.py) — `fused_sensing` / `KalmanTracker` / `enforce_radar_baseline` / `add_sensing_noise`
+- [training/laser/reward.py](training/laser/reward.py) — `LaserRewardShaper`
+- [training/laser/episode.py](training/laser/episode.py) — `LaserEpisodeRunner`
 
 ---
 
-## 4. 验证结果
+## 4. 验证（pending — Phase D/E commit 后重跑）
 
-### 4.1 静态测试 ✅ PASS
+### 4.1 静态（已通过）
+- training.laser 4 个 import 全部 OK
+- `laser_cfg.get("min_radar_baseline_m", 0.0)` 现在返回 5000.0（来自 env.min_radar_baseline_m）
 
-```bash
-python -c "
-from training.ppo.actor_critic import create_team_policy
-p1 = create_team_policy(team=0, hybrid_fire=True, decouple_value=True)
-p2 = create_team_policy(team=0, hybrid_fire=False, decouple_value=False)
-w1 = p1['commander'].action_head.weight[1:].abs().mean().item()
-w2 = p2['commander'].action_head.weight[1:].abs().mean().item()
-print(f'hybrid_fire=True:  {w1:.6f}')
-print(f'hybrid_fire=False: {w2:.6f}')
-print(f'ratio: {w2/w1:.1f}x')
-"
-```
-
-输出：`hybrid_fire=True: 0.0007` vs `hybrid_fire=False: 0.07`，**100× 比率确认零初始化生效**。
-
-### 4.2 有效小批量训练 ✅ PASS
+### 4.2 待重跑：有效小批量训练
 
 ```bash
 python -m training.train \
@@ -121,98 +121,62 @@ python -m training.train \
   --override league.n_eval_games=4
 ```
 
-- **PPO 真在更新**：54+ 次 `[PPO]` 日志行，cmd/rad 的 pl/vl/ent 都有数值
-- **Reward 在涨**：p0000 episode reward 18.54 → 25.02 → 27.03（4× 高于修前 4-7）
-- **hybrid_fire 真生效**：随机 commander 的 aim-head weight ≈ 0.0007
-
-### 4.3 症状持续 ❌ FAIL
-
-iter 1 评估：全部 36 个 cross-team win_rate **仍然 = 0.50**。
-
-诊断（直接读 env result）：
-```
-team0 illumination_progress = 0.0000
-team1 illumination_progress = 0.0000
-laser_aim = (10000, 10000, 0)  # 地图角落，完全饱和
-```
+**PASS 标准**：
+1. iter 0 eval 后任一 commander 的 `laser_aim` **不在地图角**（|x|, |y| < half_map × 0.9）
+2. illumination_progress > 0（至少一队）
+3. payoff matrix 出现非 0.5 值
 
 ---
 
-## 5. 为什么修复没有真正解决 0.5
+## 5. 之前错误诊断的反思
 
-Phase C 的 tiebreaker **只在至少一队有 progress > 0 时才能区分胜负**。当前两队 progress 都 = 0，所以 tiebreaker 走 `else: red_wins += 0.5` 分支——**和修前完全一样**。
+### 错误 1：把 0.5 归因于"未知 fused_sensing 饱和 bug"
 
-**根因链**（独立于上述 3 bug）：
+实际上 fused_sensing 代码本身没问题（line 556-559 的 clamp 是退化几何的兜底）。问题是上游 `enforce_radar_baseline` 因 `min_radar_baseline_m=0` 没被触发，导致几何本身退化。
 
-```
-fused_sensing 把 anchor (cmd_obs[68:70]) 饱和到 ±1.0
-  ↓
-hybrid_fire 公式: aim = anchor + residual × (scale_m / half_map_m)
-  当 anchor=±1 时, residual 的影响 << anchor 的影响
-  ↓
-aim 落到 ±10000m（地图角落）
-  ↓
-kill_radius_m=50m 永远不满足 → illumination_progress=0
-  ↓
-两队 progress 都 = 0 → tiebreaker 退化到 0.5
-```
+### 错误 2：Phase C 的 tiebreaker 不能解决 0.5
 
-**关键认识**：Phase C 修复了"如何记录 0.5"的机制，但没有修复"为什么会产生 0.5"的根因。当前 tiebreaker 形式上正确，实践上无效。
+tiebreaker 只在两队 progress 至少一个 > 0 时才能区分胜负。两队都 0 时退化到 0.5。Phase D 修好 sensing 后，progress 才会 > 0，tiebreaker 才有意义。Phase C 不是没用，但它依赖 Phase D 先修好 sensing。
+
+### 错误 3：未提交 training/laser/ 包
+
+最严重的错误。让 commit `17fcb77` 处于不可构建状态。Phase E 修复。
 
 ---
 
-## 6. 为什么 train_laser.py 工作但 FluxLeague 不工作
+## 6. 战略建议（来自用户）
 
-| 维度 | train_laser.py (baseline) | FluxLeague (evo/laser-fix) |
+| 路径 | 状态 | 建议 |
 |---|---|---|
-| Agent 数 | 单 agent（1 commander） | 多 agent CTDE（每队 1 cmd + N radars） |
-| Sensing 路径 | 直接读 env state | `fused_sensing` 多雷达融合 + KalmanTracker |
-| CommanderActorCritic 构造 | 直接传 `hybrid_fire=True` | 走 `create_team_policy`（修前丢 flag） |
-| red 胜率 | **0.85** | **0.50**（卡死） |
+| `python -m training.train_laser` (train_laser.py) | ✅ 工作（4090 上验证 red=0.88, kr→0.2m） | **PRO 6000 立即用这条**，配置 [configs/laser_25x25_pro6000.yaml](configs/laser_25x25_pro6000.yaml) |
+| `python -m training.train` (FluxLeague) | ❌ 之前坏，Phase D/E 后待验证 | 需要全套元博弈（Nash/exploiter/TC-DAMS）时才用 |
 
-train_laser.py 的 sensing 路径不经过 `fused_sensing`，所以没有 anchor 饱和问题。FluxLeague 的多 agent Kalman 融合产生饱和的 anchor，使 `hybrid_fire` 的"零初始化 aim-head"机制失效。
+如果只需要多智能体效果，train_laser.py 内置的 PSRO-lite 联赛已达成目标。FluxLeague 那条路径的价值在于 alpha-star 风格的 3-role exploiter，目前还没验证修好后能否跑出比 train_laser 更好的样本效率。
 
 ---
 
-## 7. 未完成的工作
+## 7. 修改文件清单
 
-要真正让 win_rate ≠ 0.50，必须解决 sensing 饱和。三个候选方向：
-
-| 方向 | 预期成本 | 风险 | 是否根治 |
-|---|---|---|---|
-| A. 诊断 `fused_sensing` anchor 饱和 | 1-2 小时 | 低 | ✅ 根治 |
-| B. 临时放宽 `kill_radius_init` 50m → 1000m | 5 分钟 | 中（curriculum 退火后又复发） | ❌ 治标 |
-| C. 扩展训练到 24 iter（baseline 配置） | ~2 小时 | 高（policy 可能学不到规避饱和） | ❌ 赌博 |
-
-**推荐方向 A**：诊断 [training/laser/sensing.py](training/laser/sensing.py) 的 `KalmanTracker` 和 anchor 计算路径。
-
----
-
-## 8. 修改的文件清单
-
-| 文件 | 改动量 | 内容 |
+| 文件 | Phase | 改动 |
 |---|---|---|
-| [training/ppo/actor_critic.py](training/ppo/actor_critic.py) | +10 | Phase A: `create_team_policy` 加 2 个 flag 参数 + 透传 |
-| [training/flux_league.py](training/flux_league.py) | ~250 行（含迁移） | Phase B: `__init__` 存 2 字段 + 3 处调用透传（其余为先前 laser 迁移） |
-| [training/train.py](training/train.py) | +26 | Phase B: `laser_cfg` 加 2 字段 |
-| [training/self_play/payoff_matrix.py](training/self_play/payoff_matrix.py) | ~128 行 | Phase C: tiebreaker + progress 缓存（含先前 laser 集成） |
-| [training/ppo/ppo_trainer.py](training/ppo/ppo_trainer.py) | ~236 行 | 先前 laser 迁移：LaserRewardShaper/KalmanTracker/residual_aim 钩子 |
+| [training/ppo/actor_critic.py](training/ppo/actor_critic.py) | A | `create_team_policy` 加 `hybrid_fire`/`decouple_value` |
+| [training/flux_league.py](training/flux_league.py) | B | `__init__` 存 2 字段 + 3 处调用透传 |
+| [training/train.py](training/train.py) | B + D | `laser_cfg` 加 4 字段（hybrid_fire, decouple_value, residual_aim, min_radar_baseline_m） |
+| [training/self_play/payoff_matrix.py](training/self_play/payoff_matrix.py) | C | timeout tiebreaker + progress 缓存 |
+| [training/laser/__init__.py](training/laser/__init__.py) | E | NEW: 包初始化 |
+| [training/laser/sensing.py](training/laser/sensing.py) | E | NEW: 270 LOC KF/融合/基线 |
+| [training/laser/reward.py](training/laser/reward.py) | E | NEW: LaserRewardShaper |
+| [training/laser/episode.py](training/laser/episode.py) | E | NEW: LaserEpisodeRunner |
+| [training/ppo/ppo_trainer.py](training/ppo/ppo_trainer.py) | (prior migration) | laser 钩子集成 |
 
 ---
 
-## 9. 回退方案
+## 8. 结论
 
-- Phase A 默认 `hybrid_fire=False`，对通用任务零影响
-- Phase B `laser_cfg.get(..., False)` 兜底，老 config 不破坏
-- Phase C 阈值 0.01 太紧可放宽到 0.05；如果 sensing 修后 progress 仍全 0，退回 `+= 0.5` 也无害
-- 每个 Phase 独立 commit，可单独 revert
+**真正的 root cause**：`train.py` 的 `laser_cfg` 字典漏传 `residual_aim` 和 `min_radar_baseline_m`，让 train_laser.py 工作良好的 sensing 逻辑在 FluxLeague 路径下被静默禁用。
 
----
+**之前 3 阶段修复（A/B/C）**：是真实小问题但不是 0.5 的根因。
 
-## 10. 结论
+**真正解决 0.5**：Phase D（透传 residual_aim + min_radar_baseline_m）+ Phase E（提交 training/laser/ 包让 build 不坏）。
 
-**当前状态**：3 个 bug 的修复在代码层面正确完成，静态测试和小批量训练证明修复生效（PPO 在更新、reward 在涨、aim-head 零初始化生效）。
-
-**未解决的问题**：0.50 症状持续，因为存在**第 4 个独立 bug**（fused_sensing anchor 饱和），不在本次修复范围内。
-
-**下一步**：需要单独诊断 sensing 路径，或者放宽 kill_radius_init 作为临时绕过。
+**待验证**：Phase D/E push 后重跑小批量训练，确认 aim 不再饱和到地图角、progress > 0、win_rate 出现非 0.5 值。
