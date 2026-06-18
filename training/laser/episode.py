@@ -90,6 +90,17 @@ class LaserEpisodeRunner:
     def reset(self, env_ids=None, red_trainer=None, blue_trainer=None):
         """Reset env + CPI buffer + clear cached actions + per-episode trainer state."""
         self.env.reset(env_ids)
+        # FIX(win_rate=0.5): enforce the radar baseline AT RESET — before the first
+        # commander_obs is built and before the Kalman warm-start. Mirrors
+        # train_laser._enforce_radar_baseline (applied at reset). Without this the
+        # warm-start locks the tracker onto the un-spread near-collinear geometry →
+        # degenerate fused anchor → aim at map centre → progress=0 → win_rate=0.5.
+        from training.laser.sensing import enforce_radar_baseline
+        for _trainer in (red_trainer, blue_trainer):
+            _base = float(getattr(_trainer, "min_radar_baseline_m", 0.0)) if _trainer else 0.0
+            if _base > 0.0:
+                enforce_radar_baseline(self.env, _base)  # spreads ALL teams in one call
+                break
         self.cpi_buffer.reset()
         self._cached_tx = None
         self._cached_cmd = None

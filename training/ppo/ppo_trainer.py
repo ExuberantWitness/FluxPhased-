@@ -469,16 +469,19 @@ class TeamPPOTrainer:
         r_start = team * r_per_team
         r_end = r_start + r_per_team
 
-        state, commander_obs = self._get_observations(env, spectrum, events)
-
-        # Build privileged info for asymmetric critic (only during training)
-        privileged_info = self._build_privileged_info(env, team)
-
-        # Laser task: attach env to reward shaper + enforce radar baseline (one-time per episode)
+        # Laser task: attach env to reward shaper + enforce radar baseline
+        # BEFORE _get_observations so the first commander_obs sees spread radars.
+        # (The reset-time enforce in LaserEpisodeRunner.reset() covers episode start;
+        # this per-step call keeps radars spread as they move at 20 m/s through the ep.)
         if self.task_type == "laser":
             self._attach_laser_env(env)
             from training.laser.sensing import enforce_radar_baseline
             enforce_radar_baseline(env, self.min_radar_baseline_m)
+
+        state, commander_obs = self._get_observations(env, spectrum, events)
+
+        # Build privileged info for asymmetric critic (only during training)
+        privileged_info = self._build_privileged_info(env, team)
 
         with torch.no_grad():
             # Laser task: replace exact enemy_xy with Kalman-fused estimate.
