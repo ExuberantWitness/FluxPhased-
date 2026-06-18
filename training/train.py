@@ -37,7 +37,7 @@ def load_config(path: str) -> dict:
 def create_env(config: dict) -> MFARVecEnv:
     """Create MFARVecEnv from config."""
     env_cfg = config.get("env", {})
-    return MFARVecEnv(
+    kwargs = dict(
         num_envs=env_cfg.get("num_envs", 4),
         n_radars=env_cfg.get("n_radars", 4),
         rows=env_cfg.get("rows", DEFAULT_ROWS),
@@ -46,9 +46,16 @@ def create_env(config: dict) -> MFARVecEnv:
         fft_size=env_cfg.get("fft_size", 64),
         device=env_cfg.get("device", "cuda"),
         tx_power_w=env_cfg.get("tx_power_w", 1.0),
-        cpi_preallocate=env_cfg.get("cpi_preallocate", True),
-        speed_ms=env_cfg.get("speed_ms", 244.4),
+        n_teams=env_cfg.get("n_teams", 2),
+        bandwidth=env_cfg.get("bandwidth", 200e6),
+        prf=env_cfg.get("prf", 10e3),
+        vehicle_speed_ms=env_cfg.get("vehicle_speed_ms", 244.4),
     )
+    # Laser task extra args (only pass if config explicitly provides them)
+    for k in ("kill_radius_m", "illumination_time_s", "drone_altitude_m", "map_size"):
+        if k in env_cfg:
+            kwargs[k] = env_cfg[k]
+    return MFARVecEnv(**kwargs)
 
 
 def compute_env_params(config: dict) -> dict:
@@ -131,6 +138,19 @@ def create_league(config: dict, env_params: dict) -> FluxLeague:
         elo_band_final=league_cfg.get("elo_band_final", 100.0),
         elo_anneal_iters=league_cfg.get("elo_anneal_iters", 15),
         mutation_config=league_cfg.get("mutation", {}),
+        task_type=config.get("task_type", "generic"),
+        pulses_per_control=config.get("env", {}).get("pulses_per_control", 5),
+        laser_cfg={
+            "kill_radius_init": config.get("training", {}).get("kill_radius_init", 50.0),
+            "kill_radius_final": config["env"].get("kill_radius_m", 0.2),
+            "kill_rate_threshold": config.get("training", {}).get("kill_rate_threshold", 0.5),
+            "kill_radius_decay": config.get("training", {}).get("kill_radius_decay", 0.5),
+            "residual_scale_m": config.get("training", {}).get("residual_scale_m", 6.0),
+            "reward_shaping": config.get("reward_shaping", {}),
+            "hybrid_fire": config.get("training", {}).get("hybrid_fire", False),
+            "decouple_value": config.get("training", {}).get("decouple_value", False),
+        },
+        sensing_cfg=config.get("sensing_noise", {}),
     )
     # ── TeamCritic toggle (Config C disables for ablation) ──
     league.team_critic_enabled = league_cfg.get("team_critic_enabled", True)

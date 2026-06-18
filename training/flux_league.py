@@ -101,6 +101,11 @@ class FluxLeague:
         reward_shaping_config: dict = None,
         # Policy mutation
         mutation_config: dict = None,
+        # Laser task integration
+        task_type: str = "generic",
+        laser_cfg: dict = None,
+        sensing_cfg: dict = None,
+        pulses_per_control: int = 5,
     ):
         self.n_elem = n_elem
         self.n_pulses = n_pulses
@@ -170,6 +175,18 @@ class FluxLeague:
         self.mutation_config = mutation_config or {}
         self.mutant_trainers: Dict[str, TeamPPOTrainer] = {}
 
+        # Laser task integration
+        self.task_type = task_type
+        self.laser_cfg = laser_cfg or {}
+        self.sensing_cfg = sensing_cfg or {}
+        # Laser policy init flags — passed to create_team_policy so the aim head
+        # gets zero-initialized (hybrid_fire) and value trunk gets decoupled
+        # (decouple_value). Without these, an untrained commander outputs random
+        # aim ~±1 → residual_aim pushes aim tens of km from target → no kills.
+        self.hybrid_fire = self.laser_cfg.get("hybrid_fire", False)
+        self.decouple_value = self.laser_cfg.get("decouple_value", False)
+        self.pulses_per_control = int(pulses_per_control)
+
         # Hierarchical critic (CTDE architecture)
         self.team_critic_enabled = True  # set False for ablation (Config C)
         self.team_critic = TeamCritic(input_dim=104, hidden_dim=256).to(
@@ -196,9 +213,23 @@ class FluxLeague:
         Args:
             env: MFARVecEnv instance (used to get obs/action dims)
         """
+        # Laser task: start env at kill_radius_init (curriculum entry point)
+        # rather than the final target. Annealing in _anneal_kill_radius
+        # tightens toward kill_radius_final over iterations.
+        if self.task_type == "laser":
+            kr_init = float(self.laser_cfg.get("kill_radius_init", 50.0))
+            if hasattr(env, "battlefield") and hasattr(env.battlefield, "laser"):
+                env.battlefield.laser.kill_radius_m = kr_init
+                print(f"[League] kill_radius initialized at {kr_init:.3f}m "
+                      f"(will anneal toward "
+                      f"{float(self.laser_cfg.get('kill_radius_final', 0.2)):.3f}m)",
+                      flush=True)
+
         self.payoff = PayoffMatrix(
             self.pool, self.n_eval_games, self.device,
             max_steps_per_game=self.max_steps_per_episode,
+            task_type=self.task_type,
+            pulses_per_control=self.pulses_per_control,
         )
 
         for team in range(self.n_teams):
@@ -211,13 +242,23 @@ class FluxLeague:
                     num_output_length=self.num_output_length,
                     device=self.device,
                     sub_array_size=self.sub_array_size,
+                    hybrid_fire=self.hybrid_fire,
+                    decouple_value=self.decouple_value,
                 )
                 trainer = TeamPPOTrainer(
                     commander=policy_dict["commander"],
                     radar=policy_dict["radar"],
                     **self.ppo_config,
+                    task_type=self.task_type,
+                    laser_cfg=self.laser_cfg,
+                    sensing_cfg=self.sensing_cfg,
                 )
-                trainer.init_buffers(env.state_dim, env.action_dim)
+                trainer.init_buffers(
+                    env.state_dim, env.action_dim,
+                    commander_act_dim=getattr(
+                        env.battlefield, "commander_action_dim", 5,
+                    ),
+                )
 
                 # Save initial checkpoint
                 ckpt_name = f"{role}_team{team}_gen0.pt"
@@ -433,7 +474,41 @@ class FluxLeague:
         self.iteration += 1
         self.pool.save_metadata()
 
+        # Laser task: success-gated kill_radius curriculum annealing.
+        # Tighten only when at least one policy pair demonstrates decisive
+        # kills this iteration (payoff.last_kill_rate is the best pair's
+        # fraction of games that ended in a real win, not a step-cap draw).
+        if self.task_type == "laser":
+            self._anneal_kill_radius(env)
+
         return metrics
+
+    def _anneal_kill_radius(self, env):
+        """Success-gated kill_radius curriculum (50m → 0.2m).
+
+        Tightens `env.battlefield.laser.kill_radius_m` when the latest eval
+        shows a decisive-kill rate ≥ kill_rate_threshold (default 0.5).
+        Otherwise holds the current radius.
+
+        This mirrors `train_laser.py`'s anneal logic, but driven by league-
+        level eval signal (best-pair kill rate) rather than single-policy
+        per-episode kill rate.
+        """
+        cfg = self.laser_cfg
+        kr_final = float(cfg.get("kill_radius_final", 0.2))
+        threshold = float(cfg.get("kill_rate_threshold", 0.5))
+        decay = float(cfg.get("kill_radius_decay", 0.5))
+
+        eval_kill_rate = float(getattr(self.payoff, "last_kill_rate", 0.0))
+        cur_kr = float(env.battlefield.laser.kill_radius_m)
+        if eval_kill_rate >= threshold and cur_kr > kr_final:
+            new_kr = max(kr_final, cur_kr * decay)
+            env.battlefield.laser.kill_radius_m = new_kr
+            print(f"[League] kill_radius anneal: {cur_kr:.3f}m → {new_kr:.3f}m "
+                  f"(kill_rate={eval_kill_rate:.2f} ≥ {threshold})", flush=True)
+        else:
+            print(f"[League] kill_radius hold at {cur_kr:.3f}m "
+                  f"(kill_rate={eval_kill_rate:.2f} < {threshold})", flush=True)
 
     def _train_against(
         self,
@@ -448,120 +523,79 @@ class FluxLeague:
         team = record.team
         opp_team = 1 - team
 
+        # Build a dummy opponent trainer if missing — random actions.
+        if opp_trainer is None:
+            opp_trainer = trainer  # borrow for env API; we won't store its transitions
+
+        # LaserEpisodeRunner owns the pulse loop + CPI buffer.
+        # Generic (non-laser) task falls back to the same runner with random
+        # physical-layer actions — the existing trainer was never wired to
+        # a real env API, so this is the only path that runs end-to-end.
+        from training.laser.episode import LaserEpisodeRunner
+        runner = LaserEpisodeRunner(
+            env, pulses_per_control=self.pulses_per_control, device=self.device,
+        )
+
         total_rewards = 0.0
         wins = 0
         episodes = 0
 
         for ep in range(self.episodes_per_training):
-            env.reset()
+            runner.reset(red_trainer=trainer, blue_trainer=opp_trainer)
             episode_reward = 0.0
+            last_step = 0
 
             for step in range(self.max_steps_per_episode):
                 with torch.no_grad():
-                    # Own team: real policy inference
-                    own = trainer.get_own_actions(env, team)
+                    step_out = runner.step_control(trainer, opp_trainer, deterministic=False)
+                result = step_out["result"]
+                if result is None:
+                    break  # env.step failed internally
+                last_step = step
 
-                    # Opponent team: real policy or random fallback
-                    actions = torch.zeros(
-                        env.num_envs, env.n_radars, env.action_dim, device=self.device,
-                    )
-                    for i, r in enumerate(range(own["r_start"], own["r_end"])):
-                        actions[:, r, :] = own["radar_actions"][i]
-
-                    if opp_trainer:
-                        opp = opp_trainer.get_own_actions(env, opp_team)
-                        for i, r in enumerate(range(opp["r_start"], opp["r_end"])):
-                            actions[:, r, :] = opp["radar_actions"][i]
-                    else:
-                        opp_r_start = opp_team * (env.n_radars // env.n_teams)
-                        opp_r_end = opp_r_start + (env.n_radars // env.n_teams)
-                        actions[:, opp_r_start:opp_r_end, :] = torch.rand(
-                            env.num_envs, opp_r_end - opp_r_start, env.action_dim,
-                            device=self.device,
+                # Credit the PREVIOUS control step's actions (timing: action →
+                # env.step → reward → store). First control step has no prior.
+                if not step_out["first_step"]:
+                    # Pre-check: if radar buffer would overflow on this call (it
+                    # adds E entries), trigger update() first to flush it.
+                    E = env.num_envs
+                    if trainer.radar_buffer and \
+                            trainer.radar_buffer.ptr + E >= trainer.radar_buffer.buffer_size:
+                        update_metrics = trainer.update(
+                            team_critic=self.team_critic if self.team_critic_enabled else None,
+                            alpha=self.alpha,
+                            beta_kl=self.beta_kl,
+                            n_step=self.n_step_returns,
+                            team_critic_optimizer=self.team_critic_optimizer if self.team_critic_enabled else None,
                         )
+                        if WANDB_AVAILABLE and wandb.run is not None:
+                            self._log_ppo_metrics(update_metrics, record, episodes)
+                        # Surface PPO update events to stdout so the log shows
+                        # actual gradient updates firing (effectiveness signal).
+                        cmd_m = update_metrics.get("commander", {}) or {}
+                        rad_m = update_metrics.get("radar", {}) or {}
+                        if cmd_m or rad_m:
+                            print(f"      [PPO] {record.role[:4]}-t{record.team} "
+                                  f"ep{episodes} step{step} "
+                                  f"cmd(pl={cmd_m.get('policy_loss', 0):.4f} "
+                                  f"vl={cmd_m.get('value_loss', 0):.4f} "
+                                  f"ent={cmd_m.get('entropy', 0):.4f}) "
+                                  f"rad(pl={rad_m.get('policy_loss', 0):.4f} "
+                                  f"vl={rad_m.get('value_loss', 0):.4f} "
+                                  f"ent={rad_m.get('entropy', 0):.4f})",
+                                  flush=True)
 
-                    commander_actions = torch.zeros(
-                        env.num_envs, env.n_teams,
-                        env.battlefield.commander_action_dim, device=self.device,
+                    own_transition = (
+                        step_out["red_transition_prev"] if team == 0
+                        else step_out["blue_transition_prev"]
                     )
-                    commander_actions[:, team, :] = own["commander_action"]
-                    if opp_trainer:
-                        commander_actions[:, opp_team, :] = opp["commander_action"]
-                    else:
-                        commander_actions[:, opp_team, :] = (
-                            torch.rand(
-                                env.num_envs, env.battlefield.commander_action_dim,
-                                device=self.device,
-                            ) * 2 - 1
-                        )
-
-                    # ── NO force-launch during league training ──
-                    # Critic pretraining already used scripted policies to
-                    # generate kill trajectories; now the commander must learn
-                    # launch timing through PPO.  Stochastic sampling gives
-                    # P(launch_flag > 0.5) ≈ 31% per env per step with an
-                    # untrained network, and the urgency_penalty (-0.01/step
-                    # while not launched) + kill_bonus (+10) provide the
-                    # learning signal.
-                    #
-                    # Zero radar instruction dims (3:) to prevent stochastic
-                    # noise from corrupting radar behaviour.
-                    commander_actions[:, :, 3:] = 0.0
-
-                try:
-                    result = env.step(actions=actions, commander_actions=commander_actions)
-                except Exception:
-                    print(f"ERROR in env.step at ep={ep} step={step}:", flush=True)
-                    import traceback
-                    traceback.print_exc()
-                    raise
-
-                # Store transitions for training team only
-                reward_info = trainer.store_transition(env, result, own["transition"], team)
-                episode_reward += reward_info["radar_reward"][
-                    :, own["r_start"]:own["r_end"]
-                ].sum().item()
-
-                if (trainer.commander_buffer and trainer.commander_buffer.near_full) or \
-                   (trainer.radar_buffer and trainer.radar_buffer.near_full):
-                    update_metrics = trainer.update(
-                        team_critic=self.team_critic if self.team_critic_enabled else None,
-                        alpha=self.alpha,
-                        beta_kl=self.beta_kl,
-                        n_step=self.n_step_returns,
-                        team_critic_optimizer=self.team_critic_optimizer if self.team_critic_enabled else None,
+                    reward_info = trainer.store_transition(
+                        env, result, own_transition, team,
                     )
-                    if WANDB_AVAILABLE and wandb.run is not None:
-                        self._log_ppo_metrics(update_metrics, record, episodes)
-
-                # Intra-episode wandb + missile diagnostics every 200 steps
-                if step % 200 == 0 and step > 0:
-                    n_alive = (~result["dones"]).sum().item()
-                    buf_pct = 0.0
-                    if trainer.radar_buffer:
-                        buf_pct = trainer.radar_buffer.fill_fraction()
-                    # ── missile diagnostics (temporary) ──
-                    m = env.battlefield.missile
-                    in_flight_ct = m.in_flight.sum().item()
-                    if in_flight_ct > 0:
-                        dists = m.missile_pos[m.in_flight].norm(dim=-1)
-                        mn, mx = dists.min().item(), dists.max().item()
-                        print(f"    [missile] step={step} in_flight={in_flight_ct} "
-                              f"pos_range=[{mn:.0f}, {mx:.0f}]m", flush=True)
-                    else:
-                        print(f"    [missile] step={step} in_flight=0 — NO MISSILES!",
-                              flush=True)
-                    # ──────────────────────────────────
-                    if WANDB_AVAILABLE and wandb.run is not None:
-                        prefix = f"train_live/{record.role}_team{record.team}"
-                        wandb.log({
-                            f"{prefix}/episode": episodes,
-                            f"{prefix}/step": step,
-                            f"{prefix}/reward_sofar": float(episode_reward),
-                            f"{prefix}/alive_envs": n_alive,
-                            f"{prefix}/buffer_pct": buf_pct,
-                            "train/iteration": self.iteration,
-                        })
+                    r_per_team = env.n_radars // env.n_teams
+                    r_start = team * r_per_team
+                    r_end = r_start + r_per_team
+                    episode_reward += reward_info["radar_reward"][:, r_start:r_end].sum().item()
 
                 done_mask = result["dones"]
                 if done_mask.any():
@@ -577,11 +611,11 @@ class FluxLeague:
             wr = wins / max(episodes, 1)
             avg_r = total_rewards / max(episodes, 1)
 
-            # Per-episode completion: step count tells us if missiles are flying
-            ended_naturally = step + 1 < self.max_steps_per_episode
+            # Per-episode completion: step count tells us if episode ended early.
+            ended_naturally = last_step + 1 < self.max_steps_per_episode
             status = "kill" if ended_naturally else "timeout"
             print(f"    ep {episodes}/{self.episodes_per_training}  "
-                  f"steps={step + 1} {status}  wr={wr:.2f}  "
+                  f"steps={last_step + 1} {status}  wr={wr:.2f}  "
                   f"avg_r={avg_r:.4f}", flush=True)
 
             # Terminal progress every 5 episodes (more detailed summary)
@@ -699,6 +733,8 @@ class FluxLeague:
                         num_output_length=self.num_output_length,
                         device=self.device,
                         sub_array_size=self.sub_array_size,
+                        hybrid_fire=self.hybrid_fire,
+                        decouple_value=self.decouple_value,
                     )
                     policy_dict["commander"].load_state_dict(base_ckpt["commander"])
                     policy_dict["radar"].load_state_dict(base_ckpt["radar"])
@@ -1147,6 +1183,8 @@ class FluxLeague:
                 num_output_length=self.num_output_length,
                 device=self.device,
                 sub_array_size=self.sub_array_size,
+                hybrid_fire=self.hybrid_fire,
+                decouple_value=self.decouple_value,
             )
             mutant_trainer = TeamPPOTrainer(
                 commander=policy_dict["commander"],

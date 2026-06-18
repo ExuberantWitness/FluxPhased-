@@ -35,6 +35,8 @@ class PayoffMatrix:
         n_eval_games: int = 50,
         device: str = "cuda",
         max_steps_per_game: int = 200,
+        task_type: str = "generic",
+        pulses_per_control: int = 5,
     ):
         self.pool = opponent_pool
         self.n_eval_games = n_eval_games
@@ -44,12 +46,23 @@ class PayoffMatrix:
         # Default 200 keeps a single PSRO eval bounded; raise it if you
         # genuinely need episodes to run to natural termination.
         self.max_steps_per_game = max_steps_per_game
+        self.task_type = task_type
+        self.pulses_per_control = int(pulses_per_control)
         # matrix[i][j] = win rate of policy i against policy j
         self.matrix: Dict[Tuple[str, str], float] = {}
         # fingerprint[i] = [P(recon), P(detect), P(jam), P(comm)] averaged
         # over all evaluation games where policy i played.
         self.fingerprints: Dict[str, np.ndarray] = {}
         self._fp_counts: Dict[str, int] = {}
+        # Last-iteration kill-rate signal (laser task). Updated by evaluate_pair:
+        # fraction of games that ended in a decisive outcome (not a step-cap draw).
+        # Used by FluxLeague._anneal_kill_radius for success-gated curriculum.
+        self.last_kill_rate: float = 0.0
+        # Cached illumination_progress [E, n_teams] from the most recent step.
+        # Used as a tiebreaker when timeout games need scoring: team closer to
+        # a kill (higher progress) wins. Without this, every timeout collapses
+        # to 0.5 and the league's payoff matrix becomes uninformative.
+        self._last_step_progress = None
 
     def _accumulate_fingerprint(self, policy_id: str, fp: np.ndarray) -> None:
         """Update running mean of policy_id's task fingerprint with one sample fp [4]."""
@@ -79,13 +92,22 @@ class PayoffMatrix:
         """
         red_wins = 0
         total = 0
+        n_step_cap_draws = 0  # games that hit max_steps_per_game without a winner
         remaining = self.n_eval_games
         E = env.num_envs
         live_envs = set()
 
+        # Pulse-level runner: env.step takes (tx_signal, commander_actions,
+        # vehicle_actions) and runs ONE pulse. We need pulses_per_control
+        # pulses to fill a CPI before the radar policy can read state.
+        from training.laser.episode import LaserEpisodeRunner
+        runner = LaserEpisodeRunner(
+            env, pulses_per_control=self.pulses_per_control, device=self.device,
+        )
+
         while remaining > 0:
             batch = min(E, remaining)
-            env.reset()
+            runner.reset(red_trainer=red_trainer, blue_trainer=blue_trainer)
             live_envs = set(range(batch))
 
             for step in range(self.max_steps_per_game):
@@ -104,48 +126,32 @@ class PayoffMatrix:
                             f"eval_match/{red_policy_id}_vs_{blue_policy_id}/games_done": total,
                         })
                 with torch.no_grad():
-                    red = red_trainer.get_own_actions(env, team=0, deterministic=True)
-                    blue = blue_trainer.get_own_actions(env, team=1, deterministic=True)
-
-                    actions = torch.zeros(E, env.n_radars, env.action_dim, device=self.device)
-                    for i, r in enumerate(range(red["r_start"], red["r_end"])):
-                        actions[:, r, :] = red["radar_actions"][i]
-                    for i, r in enumerate(range(blue["r_start"], blue["r_end"])):
-                        actions[:, r, :] = blue["radar_actions"][i]
-
-                    commander_actions = torch.zeros(
-                        E, env.n_teams, env.battlefield.commander_action_dim,
-                        device=self.device,
+                    # LaserEpisodeRunner handles the N-pulse loop, builds global
+                    # tx_signal from both trainers' per-team actions, and calls
+                    # env.step(tx_signal, commander_actions, vehicle_actions).
+                    step_out = runner.step_control(
+                        red_trainer, blue_trainer, deterministic=True,
                     )
-                    commander_actions[:, 0, :] = red["commander_action"]
-                    commander_actions[:, 1, :] = blue["commander_action"]
-
-                    # Force missile launch during eval: the deterministic
-                    # commander of an untrained network outputs ~0 for
-                    # launch_flag (tanh(0)≈0 < 0.5 threshold), so no missile
-                    # ever flies and all games end as draws.  We override
-                    # launch_flag + target here because eval is meant to
-                    # measure radar-policy quality, not launch timing.
-                    half_y = env.map_size[1] / 2.0  # 10 km
-                    commander_actions[:, 0, 0] = 1.0   # Red: launch
-                    commander_actions[:, 0, 1] = 0.0   # target_x
-                    commander_actions[:, 0, 2] = 1.0   # target_y → (0, +10km) Blue territory
-                    commander_actions[:, 1, 0] = 1.0   # Blue: launch
-                    commander_actions[:, 1, 1] = 0.0   # target_x
-                    commander_actions[:, 1, 2] = -1.0  # target_y → (0, -10km) Red territory
-
-                    # Zero radar instruction dims for consistency with training.
-                    # Deterministic commander already outputs ~0 here, but be explicit.
-                    commander_actions[:, :, 3:] = 0.0
-
-                result = env.step(actions=actions, commander_actions=commander_actions)
-
-                fp_t = result.get("task_fingerprint", None)
-                if fp_t is not None:
-                    fp_red = fp_t[:batch, 0].mean(dim=0).detach().cpu().numpy()
-                    fp_blue = fp_t[:batch, 1].mean(dim=0).detach().cpu().numpy()
-                    self._accumulate_fingerprint(red_policy_id, fp_red)
-                    self._accumulate_fingerprint(blue_policy_id, fp_blue)
+                result = step_out["result"]
+                if result is None:
+                    break
+                # Cache illumination_progress for timeout tiebreaker.
+                # Shape [E, n_teams], values in [0, 1] (fraction of dwell done).
+                if self.task_type == "laser":
+                    self._last_step_progress = result.get("illumination_progress")
+                    # Surface progress on the final step so we can diagnose why
+                    # timeout tiebreaker might still produce 0.5 (e.g., both
+                    # teams genuinely making zero progress).
+                    if step == self.max_steps_per_game - 1 and \
+                            self._last_step_progress is not None:
+                        p = self._last_step_progress
+                        print(f"    [{red_policy_id} vs {blue_policy_id}] "
+                              f"final-step illumination_progress: "
+                              f"team0={p[:, 0].mean().item():.4f} "
+                              f"team1={p[:, 1].mean().item():.4f} "
+                              f"(max t0={p[:, 0].max().item():.4f} "
+                              f"t1={p[:, 1].max().item():.4f})",
+                              flush=True)
 
                 if result["dones"].any():
                     for e in sorted(live_envs):
@@ -156,14 +162,40 @@ class PayoffMatrix:
                             total += 1
                             remaining -= 1
 
-            # Score any still-live envs as draws (step cap reached)
+            # Score any still-live envs (step cap reached). For laser task,
+            # use illumination_progress as tiebreaker so the team closer to a
+            # kill wins; falls back to 0.5 draw for generic/missile tasks or
+            # when both sides made zero progress.
+            last_progress = self._last_step_progress
             for e in sorted(live_envs):
-                red_wins += 0.5
                 total += 1
+                n_step_cap_draws += 1
                 remaining -= 1
+                if last_progress is not None and self.task_type == "laser" \
+                        and e < last_progress.shape[0]:
+                    p0 = float(last_progress[e, 0])
+                    p1 = float(last_progress[e, 1])
+                    # Threshold: progress diff < 1% of dwell-requirement → draw.
+                    # Otherwise the team with higher progress wins outright.
+                    if p0 - p1 > 0.01:
+                        red_wins += 1.0
+                    elif p1 - p0 > 0.01:
+                        red_wins += 0.0
+                    else:
+                        red_wins += 0.5
+                else:
+                    red_wins += 0.5
             live_envs.clear()
+            self._last_step_progress = None
 
         win_rate = red_wins / max(total, 1)
+        # Laser kill signal: fraction of games that ended in a real win
+        # (someone died), as opposed to running out the step clock. This is
+        # the success-gate for kill_radius curriculum annealing.
+        n_decisive = max(total - n_step_cap_draws, 0)
+        pair_kill_rate = n_decisive / max(total, 1)
+        self.last_kill_rate = pair_kill_rate
+
         self.matrix[(red_policy_id, blue_policy_id)] = win_rate
         self.matrix[(blue_policy_id, red_policy_id)] = 1.0 - win_rate
 
@@ -190,6 +222,10 @@ class PayoffMatrix:
 
         total_pairs = len(red_policies) * len(blue_policies)
         n_done = 0
+        # Track the BEST kill_rate across all pairs evaluated this iteration.
+        # For kill_radius curriculum, we tighten when ANY pair demonstrates
+        # the policy can reliably land decisive wins — not the average.
+        max_kill_rate = 0.0
         for r_id in red_policies:
             for b_id in blue_policies:
                 key = (r_id, b_id)
@@ -204,7 +240,11 @@ class PayoffMatrix:
                         elapsed = time.time() - t0
                         win_rate = self.matrix.get(key, 0.5)
                         print(f"win_rate={win_rate:.2f} ({elapsed:.1f}s)", flush=True)
+                        max_kill_rate = max(max_kill_rate, self.last_kill_rate)
                 n_done += 1
+        # Publish the iteration-level kill signal (best pair).
+        if max_kill_rate > 0.0:
+            self.last_kill_rate = max_kill_rate
 
     def get_submatrix(self, team: int, exclude_roles: Optional[List[str]] = None) -> np.ndarray:
         """Get payoff submatrix for one team's perspective.

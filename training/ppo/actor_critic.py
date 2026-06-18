@@ -990,6 +990,8 @@ def create_team_policy(
     encoder_kwargs: dict = None,
     sub_array_size: int = 0,
     commander_privileged_dim: int = 0,
+    hybrid_fire: bool = False,
+    decouple_value: bool = False,
 ) -> dict:
     """Create a full team policy (commander + shared radar).
 
@@ -997,6 +999,12 @@ def create_team_policy(
         sub_array_size: If > 0, use SubArrayRadarActorCritic with this sub-array
                        block size (e.g., 5 for 5×5 sub-array blocks in a 25×25 array).
         commander_privileged_dim: If > 0, add CTDE privileged critic to commander.
+        hybrid_fire: If True, zero-init the aim head (dims 1:) so residual_aim
+                    starts as aim = enemy_anchor + 0. Required for laser task
+                    where untrained aim must land on target via sensing anchor.
+        decouple_value: If True, give value head its own trunk so value-loss
+                       gradient doesn't churn policy trunk (needed for aim-head
+                       convergence under PPO).
     Returns:
         dict with "commander" and "radar" actor-critic modules.
     """
@@ -1005,6 +1013,8 @@ def create_team_policy(
         act_dim=5,
         hidden_dim=256,
         privileged_dim=commander_privileged_dim,
+        hybrid_fire=hybrid_fire,
+        decouple_value=decouple_value,
     ).to(device)
 
     if sub_array_size > 0:

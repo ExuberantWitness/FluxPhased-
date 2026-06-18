@@ -204,6 +204,9 @@ class TeamPPOTrainer:
         device: str = "cuda",
         stealth_weight: float = 0.1,
         reward_shaping_config: dict = None,
+        task_type: str = "generic",
+        laser_cfg: dict = None,
+        sensing_cfg: dict = None,
     ):
         # Commander buffer is tiny (obs=76, act=35) so it can always be
         # large.  Radar buffer is huge for 25×25 (obs=163783, act=13753)
@@ -257,16 +260,131 @@ class TeamPPOTrainer:
         self.team_reward_weight = rsc.get("team_reward_weight", 0.1)
         self.team_kill_weight = rsc.get("team_kill_weight", 1.0)
 
-    def init_buffers(self, env_state_dim: int, env_action_dim: int):
-        """Initialize rollout buffers with correct dimensions from env."""
+        # ── Laser task hooks ─────────────────────────────────────────────
+        # When task_type=="laser", swap DenseRewardShaper for LaserRewardShaper
+        # and attach a KalmanTracker for multi-radar fused sensing. The laser
+        # task replaces both radar and commander rewards (kill/illum/beam/fire_lock).
+        self.task_type = task_type
+        self.laser_cfg = laser_cfg or {}
+        self.sensing_cfg = sensing_cfg or {}
+        if task_type == "laser":
+            from training.laser.reward import LaserRewardShaper
+            from training.laser.sensing import KalmanTracker
+            # Override the DenseRewardShaper with laser shaper
+            self.reward_shaper = LaserRewardShaper(
+                self.laser_cfg, env=None, device=device,
+            )
+            scfg = self.sensing_cfg
+            self.kalman_tracker = KalmanTracker(
+                track_q_m=scfg.get("track_q_m", 0.05),
+                track_burnin=scfg.get("track_burnin", 30),
+                acq_baseline_m=scfg.get("acq_baseline_m", 0.0),
+            )
+            self.sensing_mode = scfg.get("mode", "single")
+            self.sensing_range_sigma_m = scfg.get("range_sigma_m", 0.0)
+            self.sensing_crossrange_factor = scfg.get("crossrange_factor", 0.0)
+            self.jam_gain = scfg.get("jam_gain", 0.0)
+            self.exposure_gain = scfg.get("exposure_gain", 0.0)
+            self.residual_aim = self.laser_cfg.get("residual_aim", False)
+            self.residual_scale_m = self.laser_cfg.get("residual_scale_m", 100.0)
+            self.min_radar_baseline_m = self.laser_cfg.get("min_radar_baseline_m", 0.0)
+            self._laser_env_attached = False
+        else:
+            self.kalman_tracker = None
+            self.sensing_mode = "single"
+            self.sensing_range_sigma_m = 0.0
+            self.sensing_crossrange_factor = 0.0
+            self.jam_gain = 0.0
+            self.exposure_gain = 0.0
+            self.residual_aim = False
+            self.residual_scale_m = 100.0
+            self.min_radar_baseline_m = 0.0
+            self._laser_env_attached = False
+
+    def _attach_laser_env(self, env):
+        """Laser hooks need an env reference for reward/sensing — attach on first use."""
+        if not self._laser_env_attached and self.task_type == "laser":
+            self.reward_shaper.env = env
+            self._laser_env_attached = True
+
+    def _apply_laser_sensing(self, cmd_obs: torch.Tensor, env) -> torch.Tensor:
+        """Replace exact enemy_xy in cmd_obs[..., 68:72] with Kalman-fused multi-radar estimate.
+
+        Operates on the full [E, n_teams, 76] commander obs (sensing applies
+        per-team: each team's own jam degrades the enemy's view of it).
+
+        For "single" mode (default if sensing_noise.range_sigma_m=0): returns obs unchanged.
+        For "fused"/"tracked": runs information-filter fusion (+ optional KF over time).
+        """
+        if self.sensing_range_sigma_m <= 0.0 and self.sensing_crossrange_factor <= 0.0:
+            return cmd_obs
+        half_x = float(env.map_size[0]) / 2.0
+        half_y = float(env.map_size[1]) / 2.0
+        from training.laser.sensing import fused_sensing, add_sensing_noise
+        if self.sensing_mode in ("fused", "tracked"):
+            jam = self.reward_shaper._jam_level  # [E, n_teams]
+            cmd_obs = fused_sensing(
+                cmd_obs, half_x, half_y,
+                self.sensing_range_sigma_m, self.sensing_crossrange_factor,
+                tracker=self.kalman_tracker if self.sensing_mode == "tracked" else None,
+                jam_gain=self.jam_gain, exposure_gain=self.exposure_gain,
+                jam_level=jam,
+            )
+            return torch.nan_to_num(cmd_obs, nan=0.0, posinf=1.0, neginf=-1.0)
+        return add_sensing_noise(
+            cmd_obs, self.sensing_range_sigma_m, self.sensing_crossrange_factor,
+            half_x, half_y,
+        )
+
+    def _apply_residual_aim(self, cmd_action: torch.Tensor, cmd_obs: torch.Tensor,
+                             env) -> torch.Tensor:
+        """Anchor commander action[1:3] (aim_xy) at the sensed enemy_xy (cmd_obs[68:70])
+        plus a small learned residual scaled by residual_scale_m. Makes sub-meter aim
+        reachable without requiring the absolute tanh-Gaussian to resolve 0.2m directly.
+        """
+        if not self.residual_aim:
+            return cmd_action
+        half_x = float(env.map_size[0]) / 2.0
+        half_y = float(env.map_size[1]) / 2.0
+        anchor_x = cmd_obs[..., 68]  # sensed enemy-0 x (normalized [-1,1])
+        anchor_y = cmd_obs[..., 69]
+        # residual in physical metres → normalized [-1, 1]
+        dx_norm = cmd_action[..., 1] * self.residual_scale_m / half_x
+        dy_norm = cmd_action[..., 2] * self.residual_scale_m / half_y
+        aim_x = (anchor_x + dx_norm).clamp(-1.0, 1.0)
+        aim_y = (anchor_y + dy_norm).clamp(-1.0, 1.0)
+        cmd_action[..., 1] = aim_x
+        cmd_action[..., 2] = aim_y
+        return cmd_action
+
+    def init_buffers(self, env_state_dim: int, env_action_dim: int,
+                     commander_act_dim: int = 5):
+        """Initialize rollout buffers with correct dimensions from env.
+
+        Args:
+            env_state_dim: radar obs dim (env.state_dim) — used as a fallback;
+                the actor_critic's actual expected input dim takes precedence
+                because env.state_dim is known to be off-by-N in some configs
+                (laser vs generic disagree on missile_dim).
+            env_action_dim: radar action dim (env.action_dim)
+            commander_act_dim: commander action dim — pass env.battlefield.commander_action_dim.
+                Defaults to 5 (matches env truth: [fire, aim_x, aim_y, aim_z, reserved]).
+                Previously hardcoded 35, which was a latent bug — see plan Phase 0.
+        """
         # Privileged extra dim: task_fingerprint (n_teams*4) + intercept (n_teams*3) + target (2)
         privileged_dim = 2 * 4 + 2 * 3 + 2  # assuming n_teams=2
+        # Authoritative obs dim: ask the actor_critic, which knows its own input layout.
+        ac = self.radar_trainer.ac
+        obs_dim = getattr(ac, "spectrum_flat_dim", 0) + getattr(ac, "comm_flat_dim", 0) \
+            + getattr(ac, "recon_flat_dim", 0) + getattr(ac, "other_dim", 0)
+        if obs_dim == 0:
+            obs_dim = env_state_dim  # fallback for AC variants without the breakdown
         self.commander_buffer = RolloutBuffer(
-            self.buffer_size_commander, obs_dim=76, act_dim=35,
+            self.buffer_size_commander, obs_dim=76, act_dim=commander_act_dim,
             gamma=self.gamma, gae_lambda=self.gae_lambda, device=self.device,
         )
         self.radar_buffer = RolloutBuffer(
-            self.buffer_size_radar, obs_dim=env_state_dim, act_dim=env_action_dim,
+            self.buffer_size_radar, obs_dim=obs_dim, act_dim=env_action_dim,
             gamma=self.gamma, gae_lambda=self.gae_lambda, device=self.device,
             privileged_dim=privileged_dim,
         )
@@ -290,24 +408,60 @@ class TeamPPOTrainer:
         for p in self.bc_radar.parameters():
             p.requires_grad_(False)
 
-    def _get_observations(self, env):
-        """Get current state and commander observations from env."""
-        state = env._assemble_state(env._buf_spectrum, env._buf_comm_data)
-        comm_input = torch.zeros(
-            env.num_envs, env.n_radars, env.num_input_length, device=self.device,
+    def _get_observations(self, env, spectrum: torch.Tensor = None,
+                          events: dict = None):
+        """Build per-radar state + commander obs from spectrum + events.
+
+        Args:
+            env: MFARVecEnv
+            spectrum: [E, R, N, P, n_bins] FFT-magnitude CPI (from runner).
+                None on the very first control step → zero state.
+            events: dict with radar_pos etc. (from runner).
+        Returns:
+            state: [E, R, state_dim] radar policy input.
+            commander_obs: [E, n_teams, 76] from env.battlefield.
+        """
+        dev = self.device
+        E = env.num_envs
+        R = env.n_radars
+        N = env.n_elem
+        P = env.n_pulses
+        n_bins = env.n_bins
+
+        if spectrum is not None:
+            spec_flat = spectrum.reshape(E, R, -1)
+        else:
+            spec_flat = torch.zeros(E, R, N * P * n_bins, device=dev)
+        comm_flat = torch.zeros(E, R, N * 2, device=dev)
+        recon_flat = torch.zeros(E, R, N * 4, device=dev)
+        vehicle = torch.zeros(E, R, 5, device=dev)
+        laser_state = torch.zeros(E, R, 12, device=dev)
+        cmd_instr = torch.zeros(E, R, 16, device=dev)
+        if events is not None and "radar_pos" in events:
+            vehicle[:, :, 0] = events["radar_pos"][:, :, 0]
+            vehicle[:, :, 1] = events["radar_pos"][:, :, 1]
+        state = torch.cat(
+            [spec_flat, comm_flat, recon_flat, vehicle, laser_state, cmd_instr],
+            dim=-1,
         )
+
+        comm_input = torch.zeros(E, R, 32, device=dev)
         commander_obs = env.battlefield.get_commander_observation(
             env.radar_pos, comm_input,
         )
         return state, commander_obs
 
-    def get_own_actions(self, env, team: int, deterministic: bool = False):
-        """Query own policies and return actions for env.step().
+    def get_own_actions(self, env, team: int, deterministic: bool = False,
+                        spectrum: torch.Tensor = None, events: dict = None):
+        """Query own policies and return per-team actions.
 
         Args:
             env: MFARVecEnv instance
             team: team index (0 or 1)
             deterministic: use mean actions (for evaluation)
+            spectrum: [E, R, N, P, n_bins] FFT-magnitude CPI (from runner).
+                None on first control step → zero state.
+            events: dict from runner (radar_pos, alive, ...).
         Returns:
             dict with radar_actions, commander_action, transition, r_start, r_end
         """
@@ -315,17 +469,31 @@ class TeamPPOTrainer:
         r_start = team * r_per_team
         r_end = r_start + r_per_team
 
-        state, commander_obs = self._get_observations(env)
+        state, commander_obs = self._get_observations(env, spectrum, events)
 
         # Build privileged info for asymmetric critic (only during training)
         privileged_info = self._build_privileged_info(env, team)
 
+        # Laser task: attach env to reward shaper + enforce radar baseline (one-time per episode)
+        if self.task_type == "laser":
+            self._attach_laser_env(env)
+            from training.laser.sensing import enforce_radar_baseline
+            enforce_radar_baseline(env, self.min_radar_baseline_m)
+
         with torch.no_grad():
+            # Laser task: replace exact enemy_xy with Kalman-fused estimate.
+            # Operates on the full [E, n_teams, 76] before per-team slicing.
+            if self.task_type == "laser":
+                commander_obs = self._apply_laser_sensing(commander_obs, env)
             # Commander
-            cmd_obs = commander_obs[:, team, :]  # [E, 68]
+            cmd_obs = commander_obs[:, team, :]  # [E, 76]
             cmd_action, cmd_logp, cmd_val, _ = self.commander_trainer.ac.get_action(
                 cmd_obs, deterministic=deterministic,
             )
+            # Laser task: anchor aim_xy at sensed enemy + residual; update jam level
+            if self.task_type == "laser":
+                cmd_action = self._apply_residual_aim(cmd_action, cmd_obs, env)
+                self.reward_shaper.update_jam(cmd_action, team)
 
             # Radars (shared policy, individual observations)
             radar_actions = []
@@ -424,8 +592,14 @@ class TeamPPOTrainer:
         r_per_team = env.n_radars // env.n_teams
         r_start = team * r_per_team
 
-        total_radar_reward = shaped["total_shaped"] + result["radar_rewards"]  # [E, R]
-        cmd_reward = result["commander_rewards"]  # [E, n_teams]
+        if self.task_type == "laser":
+            # Laser task: LaserRewardShaper returns full reward override (not delta).
+            total_radar_reward = shaped["radar_rewards"]  # [E, R] full
+            cmd_reward = shaped["commander_rewards"]      # [E, n_teams] full
+        else:
+            # Generic task: DenseRewardShaper returns add-on to radar reward.
+            total_radar_reward = shaped["total_shaped"] + result["radar_rewards"]  # [E, R]
+            cmd_reward = result["commander_rewards"]  # [E, n_teams]
 
         # ── Team-level reward for CTDE hierarchical critic ──
         # R_team = w1 * Σ(all_radar_rewards) + w2 * Σ(commander_rewards)
@@ -437,15 +611,35 @@ class TeamPPOTrainer:
         )
 
         # ── Build team_state for TeamCritic ──
+        # commander_obs is passed via transition (env.step() doesn't return it).
         bf = env.battlefield
+        # transition["cmd_obs"] is [E, 76] for own team only; rebuild the
+        # full [E, n_teams, 76] view by querying env fresh — both teams' obs
+        # share the same battlefield state.
+        comm_input = torch.zeros(env.num_envs, env.n_radars, 32, device=self.device)
+        full_cmd_obs = env.battlefield.get_commander_observation(
+            env.radar_pos, comm_input,
+        )
+        # Missile is generic-task only; laser uses dwell-to-kill (no missile obj).
+        missile = getattr(bf, "missile", None)
+        E = env.num_envs
+        T = env.n_teams
+        if missile is not None:
+            missile_pos = missile.missile_pos
+            missile_in_flight = missile.in_flight
+            missile_target = missile.target_pos
+        else:
+            missile_pos = torch.zeros(E, T, 3, device=self.device)
+            missile_in_flight = torch.zeros(E, T, device=self.device)
+            missile_target = torch.zeros(E, T, 3, device=self.device)
         team_states = build_team_state(
-            commander_obs=result["commander_obs"],           # [E, n_teams, 68]
-            task_fingerprint=result.get("task_fingerprint"), # [E, n_teams, 4]
-            avg_snr=None,  # computed inside reward_shaper, not cached
+            commander_obs=full_cmd_obs,                       # [E, n_teams, 68 or 76]
+            task_fingerprint=transition.get("task_fingerprint"),  # not used; placeholder
+            avg_snr=None,
             alive=bf.alive,                                   # [E, n_radars]
-            missile_pos=bf.missile.missile_pos,                # [E, n_teams, 3]
-            missile_in_flight=bf.missile.in_flight,             # [E, n_teams]
-            missile_target=bf.missile.target_pos,               # [E, n_teams, 3]
+            missile_pos=missile_pos,
+            missile_in_flight=missile_in_flight,
+            missile_target=missile_target,
         )  # [E, 88]
 
         for e in range(env.num_envs):
