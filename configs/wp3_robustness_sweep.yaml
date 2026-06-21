@@ -1,0 +1,145 @@
+# ============================================================================
+# WP3.2 ROBUSTNESS SWEEP — damage injection templates
+# ============================================================================
+# STATUS: CONFIG-READY, ENV-PENDING
+#
+# These configs define the 5 damage types from PAPER_PLAN_EAAI.md §WP3.2 that
+# EAAI reviewers will demand. Each is a single override on wp1_gate.yaml.
+# They will FAIL with KeyError until vec_mfar_env.py is extended to read these
+# fields — that's tracked as a separate task (env extension, ~1 day work).
+#
+# Once env supports them, run each as a cell in the robustness matrix:
+#   python -m training.train --config configs/wp3_<damage>.yaml
+#
+# PASS for the cell: performance retention ≥ 70% relative to wp1_gate baseline.
+# ============================================================================
+
+# --- 1. Ground/Sea Clutter (Weibull) ---
+# Adds Weibull-distributed additive noise to rx_iq. Parametrized by shape k
+# and scale λ derived from CNR (clutter-to-noise ratio in dB).
+wp3_clutter_weibull_neg10:
+  &clutter_base
+  task_type: laser
+  sub_array_size: 5
+  league: {population_cap: 12, n_eval_games: 50, meta_solver: "nash", pfsp_temperature: 1.0,
+           exploiter_reset_prob: 0.1, episodes_per_training: 10, max_steps_per_episode: 500,
+           checkpoint_dir: "checkpoints/wp3_clutter_weibull_neg10",
+           use_elo_band: true, elo_band_init: 400.0, elo_band_final: 100.0,
+           elo_anneal_iters: 18, alpha_schedule: linear, team_critic_enabled: true,
+           tcdams_lambda: 0.3,
+           mutation: {enabled: true, epsilon: 0.05, n_mutants_per_policy: 2,
+                      n_top_policies: 1, win_rate_threshold: 0.55}}
+  ppo:
+    commander: {lr: 3.0e-4, clip_range: 0.2, entropy_coef: 0.01}
+    radar: {lr: 1.0e-4, clip_range: 0.1, entropy_coef: 0.02}
+    shared: {gamma: 0.999, gae_lambda: 0.99, n_epochs: 3, batch_size: 256,
+             buffer_size: 2048, buffer_size_commander: 2048, buffer_size_radar: 512,
+             value_coef: 1.0, vf_clip_range: 10.0, max_grad_norm: 0.5}
+  training: {psro_iterations: 30, kill_radius_init: 100.0, kill_rate_threshold: 0.7,
+             kill_radius_decay: 0.7, residual_aim: true, residual_scale_m: 6.0,
+             hybrid_fire: true, decouple_value: true,
+             warmup_episodes: 0, critic_pretrain_episodes: 0, bc_pretrain_epochs: 0}
+  reward_shaping: {detect_snr_weight: 0.1, beam_accuracy_weight: 5.0,
+                   illumination_progress_weight: 1.0, kill_bonus: 100.0, death_penalty: -10.0,
+                   emission_cost: -0.001, snr_threshold_db: 10.0,
+                   team_reward_weight: 0.1, team_kill_weight: 1.0,
+                   beam_guidance_weight: 5.0, illum_reward_weight: 50.0,
+                   fire_lock_bonus: 5.0, misfire_penalty: 0.5,
+                   beam_r_ref_m: 3000.0, beam_r_floor_m: 0.2,
+                   beam_reward_weight: 5.0, beam_hit_radius_m: 500.0,
+                   beam_spatial_cap: 1000.0, beam_temporal_epsilon: 0.05}
+  env:
+    min_radar_baseline_m: 5000.0
+    rows: 25
+    cols: 25
+    num_envs: 12
+    n_radars: 4
+    n_teams: 2
+    pulses_per_cpi: 4
+    fft_size: 64
+    device: "cuda"
+    tx_power_w: 1.0
+    prf: 10000.0
+    pulses_per_control: 5
+    bandwidth: 200000000.0
+    vehicle_speed_ms: 20.0
+    kill_radius_m: 0.2
+    illumination_time_s: 0.002
+    drone_altitude_m: 3000.0
+    map_size: [20000.0, 20000.0]
+    # *** DAMAGE INJECTION *** (env extension required)
+    clutter_model: weibull       # {none, weibull, kdist}
+    clutter_shape_k: 1.5         # Weibull k param (1=exp, 2=Rayleigh-like)
+    clutter_scale_lambda: 1.2    # derived from CNR
+    clutter_cnr_db: -10.0        # clutter-to-noise ratio
+  sensing_noise: {mode: tracked, track_q_m: 0.02, track_burnin: 120,
+                  acq_baseline_m: 0.0, range_sigma_m: 0.05, crossrange_factor: 7.4e-5}
+
+# --- 2. Multipath (2-ray ground reflection) ---
+wp3_multipath_2ray:
+  <<: *clutter_base
+  league:
+    checkpoint_dir: "checkpoints/wp3_multipath_2ray"
+    population_cap: 12
+    n_eval_games: 50
+    meta_solver: "nash"
+    mutation: {enabled: true, epsilon: 0.05, n_mutants_per_policy: 2,
+               n_top_policies: 1, win_rate_threshold: 0.55}
+  env:
+    clutter_model: none
+    multipath_model: 2ray       # {none, 2ray, rayleigh}
+    multipath_delay_spread_ns: 50.0
+    multipath_attenuation_db: 6.0
+  env_sweep_disabled: true      # marker for config inheritance check
+
+# --- 3. Sensing bias + control delay ---
+wp3_bias_5m_delay_3step:
+  <<: *clutter_base
+  league:
+    checkpoint_dir: "checkpoints/wp3_bias_5m_delay_3step"
+    population_cap: 12
+    n_eval_games: 50
+    meta_solver: "nash"
+    mutation: {enabled: true, epsilon: 0.05, n_mutants_per_policy: 2,
+               n_top_policies: 1, win_rate_threshold: 0.55}
+  env:
+    clutter_model: none
+    sensing_bias_m: 5.0          # constant offset added to fused xy
+    control_delay_steps: 3       # actuation latency in control steps
+
+# --- 4. Constrained beam agility ---
+wp3_slew_limit_60degs:
+  <<: *clutter_base
+  league:
+    checkpoint_dir: "checkpoints/wp3_slew_limit_60degs"
+    population_cap: 12
+    n_eval_games: 50
+    meta_solver: "nash"
+    mutation: {enabled: true, epsilon: 0.05, n_mutants_per_policy: 2,
+               n_top_policies: 1, win_rate_threshold: 0.55}
+  env:
+    clutter_model: none
+    max_slew_rate_deg_per_s: 60.0   # beam steer rate cap
+    duty_cycle_max: 0.10            # 10% max transmission duty cycle
+
+# --- 5. ISAC comm-rate limit ---
+wp3_comm_rate_1kbps:
+  <<: *clutter_base
+  league:
+    checkpoint_dir: "checkpoints/wp3_comm_rate_1kbps"
+    population_cap: 12
+    n_eval_games: 50
+    meta_solver: "nash"
+    mutation: {enabled: true, epsilon: 0.05, n_mutants_per_policy: 2,
+               n_top_policies: 1, win_rate_threshold: 0.55}
+  env:
+    clutter_model: none
+  sensing_noise:
+    mode: tracked
+    track_q_m: 0.02
+    track_burnin: 120
+    acq_baseline_m: 0.0
+    range_sigma_m: 0.05
+    crossrange_factor: 7.4e-5
+    comm_rate_bps: 1000          # ISAC uplink rate cap (bits/sec)
+    comm_encoding: bpsk          # differential BPSK backhaul model
