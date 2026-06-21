@@ -54,6 +54,8 @@ class LaserEpisodeRunner:
         env,
         pulses_per_control: int = 5,
         device: str = "cuda",
+        max_slew_rate_deg_per_s: float = None,
+        control_delay_steps: int = None,
     ):
         self.env = env
         self.pulses_per_control = int(pulses_per_control)
@@ -77,6 +79,43 @@ class LaserEpisodeRunner:
         # Cached previous-step transitions (for store_transition timing)
         self._prev_red_transition: Optional[dict] = None
         self._prev_blue_transition: Optional[dict] = None
+
+        # WP3.2 damage: auto-inherit from env if not explicitly provided
+        if max_slew_rate_deg_per_s is None:
+            max_slew_rate_deg_per_s = getattr(env, "max_slew_rate_deg_per_s", 0.0)
+        if control_delay_steps is None:
+            control_delay_steps = getattr(env, "control_delay_steps", 0)
+
+        # WP3.2 damage: beam slew rate cap (per-pulse deg)
+        self.max_slew_rate_deg_per_s = float(max_slew_rate_deg_per_s)
+        self._max_slew_per_pulse = self.max_slew_rate_deg_per_s * env.pri
+        # Track previous beam az/el in [-1, 1] normalized action space, [E, R, 2]
+        if self._max_slew_per_pulse > 0:
+            bw_az_deg = float(np.degrees(0.886 / (env.cols * 0.5)))
+            bw_el_deg = float(np.degrees(0.886 / (env.rows * 0.5)))
+            # action[4:6] is in [-1,1] mapping to ±(beam_az_max_deg / 2)
+            # Convert per-pulse deg cap → action units
+            self._slew_cap_az = self._max_slew_per_pulse / max(bw_az_deg, 1e-6)
+            self._slew_cap_el = self._max_slew_per_pulse / max(bw_el_deg, 1e-6)
+            self._prev_beam = torch.zeros(E, R, 2, device=self.device)
+            self._slew_initialized = False
+        else:
+            self._slew_cap_az = 0.0
+            self._slew_cap_el = 0.0
+            self._prev_beam = None
+            self._slew_initialized = False
+
+        # WP3.2 damage: control delay (queue length N)
+        self.control_delay_steps = int(control_delay_steps)
+        if self.control_delay_steps > 0:
+            # FIFO of (tx, cmd, veh) tuples; oldest is what gets executed
+            self._action_queue_tx = []
+            self._action_queue_cmd = []
+            self._action_queue_veh = []
+        else:
+            self._action_queue_tx = None
+            self._action_queue_cmd = None
+            self._action_queue_veh = None
 
         # Element positions / wavelength for _assemble_tx
         self.elem_x = env.elem_x
@@ -107,6 +146,14 @@ class LaserEpisodeRunner:
         self._cached_veh = None
         self._prev_red_transition = None
         self._prev_blue_transition = None
+        # WP3.2: clear damage-injection state for new episode
+        if self._action_queue_tx is not None:
+            self._action_queue_tx.clear()
+            self._action_queue_cmd.clear()
+            self._action_queue_veh.clear()
+        if self._prev_beam is not None:
+            self._prev_beam.zero_()
+            self._slew_initialized = False
         # Laser per-episode state: reward shaper _jam_level/_beam_hit_time
         # and KalmanTracker _initialized. Reset on both trainers if attached.
         E = self.env.num_envs
@@ -279,6 +326,33 @@ class LaserEpisodeRunner:
         for i, r in enumerate(range(blue_new["r_start"], blue_new["r_end"])):
             global_radar[:, r, :] = blue_new["radar_actions"][i]
 
+        # WP3.2 damage: clamp beam az/el slew rate (action indices 4,5 per elem).
+        # action layout per element: [task_id(4), beam_az(1), beam_el(1), wf(8), jam(4), comm(4)]
+        if self._prev_beam is not None and self._max_slew_per_pulse > 0:
+            n_elem = env.n_elem
+            ACTION_PER_ELEM = 22
+            elem_view = global_radar[:, :, :n_elem * ACTION_PER_ELEM].reshape(
+                E, R, n_elem, ACTION_PER_ELEM,
+            )
+            cur_az = elem_view[:, :, :, 4]
+            cur_el = elem_view[:, :, :, 5]
+            # First-step init: prev := current (no clamp on first action)
+            if not getattr(self, "_slew_initialized", False):
+                self._prev_beam[..., 0] = cur_az.mean(dim=-1)
+                self._prev_beam[..., 1] = cur_el.mean(dim=-1)
+                self._slew_initialized = True
+            prev_az = self._prev_beam[..., 0].unsqueeze(-1)  # [E, R, 1]
+            prev_el = self._prev_beam[..., 1].unsqueeze(-1)
+            # Clamp Δ to ±cap, broadcast across elements
+            new_az = prev_az + (cur_az - prev_az).clamp(
+                -self._slew_cap_az, self._slew_cap_az)
+            new_el = prev_el + (cur_el - prev_el).clamp(
+                -self._slew_cap_el, self._slew_cap_el)
+            elem_view[:, :, :, 4] = new_az
+            elem_view[:, :, :, 5] = new_el
+            self._prev_beam[..., 0] = new_az.mean(dim=-1)
+            self._prev_beam[..., 1] = new_el.mean(dim=-1)
+
         global_cmd = torch.zeros(
             E, n_teams, env.battlefield.commander_action_dim, device=dev,
         )
@@ -287,9 +361,29 @@ class LaserEpisodeRunner:
 
         global_veh = global_radar[..., -3:]  # last 3 dims are vehicle (speed/heading/rot)
 
-        self._cached_tx = self.assemble_tx(global_radar)
-        self._cached_cmd = global_cmd
-        self._cached_veh = global_veh
+        new_tx = self.assemble_tx(global_radar)
+        new_cmd = global_cmd
+        new_veh = global_veh
+
+        # WP3.2 damage: control_delay_steps FIFO queue.
+        # If delay > 0, push new actions to back; pop oldest from front for execution.
+        if self.control_delay_steps > 0 and self._action_queue_tx is not None:
+            self._action_queue_tx.append(new_tx)
+            self._action_queue_cmd.append(new_cmd)
+            self._action_queue_veh.append(new_veh)
+            # While queue not full, use oldest (which is the only one for first N steps)
+            if len(self._action_queue_tx) > self.control_delay_steps + 1:
+                self._action_queue_tx.pop(0)
+                self._action_queue_cmd.pop(0)
+                self._action_queue_veh.pop(0)
+            # Execute the oldest queued action (FIFO front)
+            self._cached_tx = self._action_queue_tx[0]
+            self._cached_cmd = self._action_queue_cmd[0]
+            self._cached_veh = self._action_queue_veh[0]
+        else:
+            self._cached_tx = new_tx
+            self._cached_cmd = new_cmd
+            self._cached_veh = new_veh
 
         # Phase 5: rotate transitions — previous becomes "to credit", new becomes "previous".
         red_to_credit = self._prev_red_transition

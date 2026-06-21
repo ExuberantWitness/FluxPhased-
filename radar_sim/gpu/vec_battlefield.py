@@ -40,6 +40,8 @@ class VecBattlefield:
         num_output_length: int = 16,
         device: str = "cuda",
         reward_config: dict = None,
+        comm_rate_bps: float = 0.0,
+        pri: float = 1e-4,
     ):
         self.num_envs = num_envs
         self.n_radars = n_radars
@@ -76,6 +78,7 @@ class VecBattlefield:
             num_envs=num_envs, n_teams=n_teams, n_radars=n_radars,
             altitude_m=drone_altitude_m, map_size=map_size,
             fs=fs, symbol_rate=symbol_rate, device=device,
+            comm_rate_bps=comm_rate_bps, pri=pri,
         )
         self.laser = VecLaser(
             num_envs=num_envs, n_teams=n_teams,

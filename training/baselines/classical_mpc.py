@@ -58,6 +58,20 @@ def _create_env(config: dict) -> MFARVecEnv:
     for k in ("kill_radius_m", "illumination_time_s", "drone_altitude_m", "map_size"):
         if k in env_cfg:
             kwargs[k] = env_cfg[k]
+    # WP3.2 damage injection (mirror training/train.py)
+    damage_keys = (
+        "clutter_model", "clutter_shape_k", "clutter_scale_lambda", "clutter_cnr_db",
+        "multipath_model", "multipath_delay_spread_ns", "multipath_attenuation_db",
+        "max_slew_rate_deg_per_s", "duty_cycle_max",
+        "control_delay_steps", "comm_rate_bps", "comm_encoding",
+    )
+    damage_config = {k: env_cfg[k] for k in damage_keys if k in env_cfg}
+    sensing_cfg = config.get("sensing_noise", {})
+    for k in ("comm_rate_bps", "comm_encoding"):
+        if k not in damage_config and k in sensing_cfg:
+            damage_config[k] = sensing_cfg[k]
+    if damage_config:
+        kwargs["damage_config"] = damage_config
     return MFARVecEnv(**kwargs)
 
 

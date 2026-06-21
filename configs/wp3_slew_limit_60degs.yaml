@@ -1,0 +1,80 @@
+# Auto-generated from configs/wp3_robustness_sweep.yaml
+# Cell: wp3_slew_limit_60degs
+# Run: python -m training.train --config configs/wp3_slew_limit_60degs.yaml
+
+task_type: laser
+sub_array_size: 5
+league:
+  checkpoint_dir: checkpoints/wp3_slew_limit_60degs
+  population_cap: 12
+  n_eval_games: 50
+  meta_solver: nash
+  mutation:
+    enabled: true
+    epsilon: 0.05
+    n_mutants_per_policy: 2
+    n_top_policies: 1
+    win_rate_threshold: 0.55
+ppo:
+  commander:
+    lr: 0.0003
+    clip_range: 0.2
+    entropy_coef: 0.01
+  radar:
+    lr: 0.0001
+    clip_range: 0.1
+    entropy_coef: 0.02
+  shared:
+    gamma: 0.999
+    gae_lambda: 0.99
+    n_epochs: 3
+    batch_size: 256
+    buffer_size: 2048
+    buffer_size_commander: 2048
+    buffer_size_radar: 512
+    value_coef: 1.0
+    vf_clip_range: 10.0
+    max_grad_norm: 0.5
+training:
+  psro_iterations: 30
+  kill_radius_init: 100.0
+  kill_rate_threshold: 0.7
+  kill_radius_decay: 0.7
+  residual_aim: true
+  residual_scale_m: 6.0
+  hybrid_fire: true
+  decouple_value: true
+  warmup_episodes: 0
+  critic_pretrain_episodes: 0
+  bc_pretrain_epochs: 0
+reward_shaping:
+  detect_snr_weight: 0.1
+  beam_accuracy_weight: 5.0
+  illumination_progress_weight: 1.0
+  kill_bonus: 100.0
+  death_penalty: -10.0
+  emission_cost: -0.001
+  snr_threshold_db: 10.0
+  team_reward_weight: 0.1
+  team_kill_weight: 1.0
+  beam_guidance_weight: 5.0
+  illum_reward_weight: 50.0
+  fire_lock_bonus: 5.0
+  misfire_penalty: 0.5
+  beam_r_ref_m: 3000.0
+  beam_r_floor_m: 0.2
+  beam_reward_weight: 5.0
+  beam_hit_radius_m: 500.0
+  beam_spatial_cap: 1000.0
+  beam_temporal_epsilon: 0.05
+env:
+  clutter_model: none
+  max_slew_rate_deg_per_s: 60.0
+  duty_cycle_max: 0.1
+sensing_noise:
+  mode: tracked
+  track_q_m: 0.02
+  track_burnin: 120
+  acq_baseline_m: 0.0
+  range_sigma_m: 0.05
+  crossrange_factor: 7.4e-05

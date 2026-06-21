@@ -16,6 +16,11 @@ from .vec_array import VecArray
 from .vec_channel import VecChannel
 from .vec_interference import VecInterference
 from .vec_battlefield import VecBattlefield
+from .damage import (
+    apply_weibull_clutter,
+    apply_multipath_2ray,
+    clamp_beam_slew,
+)
 from ..config import DEFAULT_ROWS, DEFAULT_COLS
 
 SPEED_OF_LIGHT = 299792458.0
@@ -63,6 +68,7 @@ class MFARVecEnv:
         reset_config: dict = None,
         reward_config: dict = None,
         vehicle_speed_ms: float = 20.0,
+        damage_config: dict = None,
     ):
         self.num_envs = num_envs
         self.n_radars = n_radars
@@ -92,6 +98,9 @@ class MFARVecEnv:
         self.reset_config = reset_config or {}
         self.reward_config = reward_config or {}
         self.vehicle_speed_ms = vehicle_speed_ms
+        # WP3.2 damage-injection config (None → all damages disabled)
+        self.damage_config = damage_config or {}
+        self._init_damage()
 
         E, R, N = num_envs, n_radars, self.n_elem
         S = self.n_samples
@@ -153,10 +162,64 @@ class MFARVecEnv:
             illumination_time_s=illumination_time_s,
             drone_altitude_m=drone_altitude_m,
             reward_config=reward_config,
+            comm_rate_bps=float((damage_config or {}).get("comm_rate_bps", 0.0)),
+            pri=self.pri,
         )
 
         # Pulse counter
         self._pulse_count = torch.zeros(E, dtype=torch.long, device=dev)
+
+    def _init_damage(self):
+        """Initialize WP3.2 damage-injection state from damage_config dict.
+
+        Reads optional fields:
+          clutter_model: "none" | "weibull"
+          clutter_shape_k, clutter_scale_lambda, clutter_cnr_db
+          multipath_model: "none" | "2ray"
+          multipath_delay_spread_ns, multipath_attenuation_db
+          max_slew_rate_deg_per_s  (beam steer rate cap)
+          duty_cycle_max           (tx duty cap, 0..1)
+
+        All defaults are no-op. Pre-allocates scratch buffers lazily on first
+        use to keep zero-damage runs cost-free.
+        """
+        cfg = self.damage_config
+        dev = torch.device(self.device)
+        E, R, N = self.num_envs, self.n_radars, self.n_elem
+
+        # --- Clutter (Weibull) ---
+        self.clutter_model = str(cfg.get("clutter_model", "none")).lower()
+        self.clutter_shape_k = float(cfg.get("clutter_shape_k", 0.0))
+        self.clutter_scale_lambda = float(cfg.get("clutter_scale_lambda", 0.0))
+        self.clutter_cnr_db = float(cfg.get("clutter_cnr_db", 0.0))
+        self._buf_clutter = None  # lazy alloc
+
+        # --- Multipath (2-ray) ---
+        self.multipath_model = str(cfg.get("multipath_model", "none")).lower()
+        delay_ns = float(cfg.get("multipath_delay_spread_ns", 0.0))
+        self.multipath_delay_samples = int(delay_ns * 1e-9 * self.fs)
+        self.multipath_attenuation_db = float(
+            cfg.get("multipath_attenuation_db", 0.0))
+
+        # --- Slew rate cap (action-level; tracked in episode runner) ---
+        # Stored here for reference / scheduling; the actual clamp happens in
+        # training/laser/episode.py where raw radar_actions are visible.
+        self.max_slew_rate_deg_per_s = float(
+            cfg.get("max_slew_rate_deg_per_s", 0.0))
+
+        # --- Control delay (action queue depth, episode runner) ---
+        self.control_delay_steps = int(cfg.get("control_delay_steps", 0))
+
+        # --- Duty cycle cap (average-power interpretation) ---
+        # duty_cycle_max < 1 → scale tx_signal power by duty_cycle_max so the
+        # radar's effective average radiated power matches a pulsed duty cycle
+        # without requiring an explicit transmit on/off action.
+        self.duty_cycle_max = float(cfg.get("duty_cycle_max", 0.0))
+        if 0.0 < self.duty_cycle_max < 1.0:
+            # amplitude scale = sqrt(power_scale) for IQ
+            self._duty_amp_scale = float(np.sqrt(self.duty_cycle_max))
+        else:
+            self._duty_amp_scale = 1.0
 
     @property
     def state_dim(self) -> int:
@@ -240,6 +303,10 @@ class MFARVecEnv:
         dev = torch.device(self.device)
         dt = self.pri
 
+        # WP3.2 damage: duty cycle cap (average-power interpretation)
+        if self._duty_amp_scale < 1.0:
+            tx_signal = tx_signal * self._duty_amp_scale
+
         t0 = time.perf_counter()
 
         # --- 1. Compute channel params for static targets ---
@@ -311,6 +378,27 @@ class MFARVecEnv:
         # --- 4. Noise ---
         self.channel.generate_noise(out=self._buf_noise)
         self._buf_rx += self._buf_noise
+
+        # --- 4b. WP3.2 damage: Weibull clutter (post-noise, pre-detection) ---
+        if self.clutter_model == "weibull" and self.clutter_shape_k > 0:
+            if self._buf_clutter is None:
+                self._buf_clutter = torch.zeros_like(self._buf_rx)
+            apply_weibull_clutter(
+                self._buf_rx, self._buf_clutter,
+                shape_k=self.clutter_shape_k,
+                scale_lambda=self.clutter_scale_lambda,
+                cnr_db=self.clutter_cnr_db,
+                noise_power_linear=self.channel.noise_power_linear,
+            )
+
+        # --- 4c. WP3.2 damage: 2-ray multipath (FIR on aggregated rx) ---
+        if self.multipath_model == "2ray" and self.multipath_delay_samples > 0:
+            atten_lin = 10.0 ** (-abs(self.multipath_attenuation_db) / 20.0)
+            apply_multipath_2ray(
+                self._buf_rx,
+                delay_samples=self.multipath_delay_samples,
+                attenuation_linear=atten_lin,
+            )
 
         # --- 5. Vehicle movement ---
         if vehicle_actions is not None:

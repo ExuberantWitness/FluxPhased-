@@ -35,6 +35,8 @@ class VecDrone:
         fs: float = 200e6,
         symbol_rate: float = 1e6,
         device: str = "cuda",
+        comm_rate_bps: float = 0.0,
+        pri: float = 1e-4,
     ):
         self.num_envs = num_envs
         self.n_teams = n_teams
@@ -44,6 +46,11 @@ class VecDrone:
         self.fs = fs
         self.symbol_rate = symbol_rate
         self.device = device
+        # WP3.2 ISAC uplink rate cap: 0 → no cap. Bits beyond rate*per-pulse-dt
+        # are dropped (CRC will fail naturally → position not updated).
+        self.comm_rate_bps = float(comm_rate_bps)
+        self.comm_bits_per_pulse = max(0, int(self.comm_rate_bps * pri)) \
+            if self.comm_rate_bps > 0 else 0
 
         dev = torch.device(device)
         r_per_team = n_radars // n_teams
@@ -142,6 +149,11 @@ class VecDrone:
 
             # BPSK demodulate + decode
             bits = demodulate_bpsk_batch(rx, self.symbol_rate, self.fs, n_bits=32)
+            # WP3.2 ISAC uplink rate cap: if configured, only the first
+            # N bits survive (where N = comm_rate_bps × pulse duration).
+            # Remaining bits are zeroed (CRC will fail → no position update).
+            if self.comm_bits_per_pulse > 0 and self.comm_bits_per_pulse < 32:
+                bits[..., self.comm_bits_per_pulse:] = 0
             data_x, data_y, crc_ok = decode_bpsk_batch(bits)
 
             # Store CRC status

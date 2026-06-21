@@ -55,6 +55,21 @@ def create_env(config: dict) -> MFARVecEnv:
     for k in ("kill_radius_m", "illumination_time_s", "drone_altitude_m", "map_size"):
         if k in env_cfg:
             kwargs[k] = env_cfg[k]
+    # WP3.2 damage injection: collect all damage-related fields into a sub-dict.
+    # comm_rate_bps/comm_encoding can live under either env or sensing_noise.
+    damage_keys = (
+        "clutter_model", "clutter_shape_k", "clutter_scale_lambda", "clutter_cnr_db",
+        "multipath_model", "multipath_delay_spread_ns", "multipath_attenuation_db",
+        "max_slew_rate_deg_per_s", "duty_cycle_max",
+        "control_delay_steps", "comm_rate_bps", "comm_encoding",
+    )
+    damage_config = {k: env_cfg[k] for k in damage_keys if k in env_cfg}
+    sensing_cfg = config.get("sensing_noise", {})
+    for k in ("comm_rate_bps", "comm_encoding"):
+        if k not in damage_config and k in sensing_cfg:
+            damage_config[k] = sensing_cfg[k]
+    if damage_config:
+        kwargs["damage_config"] = damage_config
     return MFARVecEnv(**kwargs)
 
 
@@ -157,7 +172,13 @@ def create_league(config: dict, env_params: dict) -> FluxLeague:
             "residual_aim": config.get("training", {}).get("residual_aim", False),
             "min_radar_baseline_m": config.get("env", {}).get("min_radar_baseline_m", 0.0),
         },
-        sensing_cfg=config.get("sensing_noise", {}),
+        sensing_cfg={
+            **config.get("sensing_noise", {}),
+            # WP3.2 damage: sensing_bias_m lives under env in the robustness
+            # configs but conceptually belongs to sensing. Thread it through.
+            "sensing_bias_m": config.get("env", {}).get("sensing_bias_m", 0.0),
+            "control_delay_steps": int(config.get("env", {}).get("control_delay_steps", 0)),
+        },
     )
     # ── TeamCritic toggle (Config C disables for ablation) ──
     league.team_critic_enabled = league_cfg.get("team_critic_enabled", True)

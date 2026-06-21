@@ -285,6 +285,8 @@ class TeamPPOTrainer:
             self.sensing_crossrange_factor = scfg.get("crossrange_factor", 0.0)
             self.jam_gain = scfg.get("jam_gain", 0.0)
             self.exposure_gain = scfg.get("exposure_gain", 0.0)
+            # WP3.2: constant fused-position bias (calibration error damage)
+            self.sensing_bias_m = float(scfg.get("sensing_bias_m", 0.0))
             self.residual_aim = self.laser_cfg.get("residual_aim", False)
             self.residual_scale_m = self.laser_cfg.get("residual_scale_m", 100.0)
             self.min_radar_baseline_m = self.laser_cfg.get("min_radar_baseline_m", 0.0)
@@ -330,6 +332,16 @@ class TeamPPOTrainer:
                 jam_gain=self.jam_gain, exposure_gain=self.exposure_gain,
                 jam_level=jam,
             )
+            # WP3.2 damage: apply constant fused-xy bias (calibration error).
+            # cmd_obs[68:72] holds 2 enemies' fused xy in normalized [-1,1]:
+            #   68=enemy0.x, 69=enemy0.y, 70=enemy1.x, 71=enemy1.y
+            if self.sensing_bias_m != 0.0:
+                bx = self.sensing_bias_m / half_x
+                by = self.sensing_bias_m / half_y
+                cmd_obs[..., 68].add_(bx)
+                cmd_obs[..., 69].add_(by)
+                cmd_obs[..., 70].add_(bx)
+                cmd_obs[..., 71].add_(by)
             return torch.nan_to_num(cmd_obs, nan=0.0, posinf=1.0, neginf=-1.0)
         return add_sensing_noise(
             cmd_obs, self.sensing_range_sigma_m, self.sensing_crossrange_factor,
