@@ -1,15 +1,18 @@
 # ============================================================================
 # WP3.2 ROBUSTNESS SWEEP — damage injection templates
 # ============================================================================
-# STATUS: CONFIG-READY, ENV-PENDING
+# STATUS: CONFIG-READY, ENV-READY (commit 1b0ed97)
 #
 # These configs define the 5 damage types from PAPER_PLAN_EAAI.md §WP3.2 that
-# EAAI reviewers will demand. Each is a single override on wp1_gate.yaml.
-# They will FAIL with KeyError until vec_mfar_env.py is extended to read these
-# fields — that's tracked as a separate task (env extension, ~1 day work).
+# EAAI reviewers demand. Each is a single override on wp1_gate.yaml.
+# Env extension landed in radar_sim/gpu/damage.py + vec_mfar_env.py + vec_drone.py
+# + training/laser/episode.py. All 5 damage types smoke-tested end-to-end.
 #
-# Once env supports them, run each as a cell in the robustness matrix:
-#   python -m training.train --config configs/wp3_<damage>.yaml
+# Each cell has been auto-split into a standalone config:
+#   configs/wp3_<damage>.yaml
+# Run a cell directly:
+#   python -m training.train --config configs/wp3_clutter_weibull_neg10.yaml
+# (regenerate via: python scripts/split_wp3_configs.py)
 #
 # PASS for the cell: performance retention ≥ 70% relative to wp1_gate baseline.
 # ============================================================================
