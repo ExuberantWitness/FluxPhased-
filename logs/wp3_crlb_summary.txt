@@ -1,0 +1,36 @@
+========================================================================
+WP3.1 — CRLB Physical Anchor Summary
+========================================================================
+
+S-300/400-class sensing parameters:
+  range_sigma_m        = 0.05 m
+  crossrange_factor    = 7.4e-05  (σ_cr = factor × R)
+  track_burnin         = 120 (PCRB effective N)
+  kill_radius_m target = 0.2
+
+CRLB vs deployment baseline (target at 5 km, both modes):
+   baseline (km)    STATIC (m)     TRACKED (m)         FIM det      GDOP
+            0.10         0.262         0.02392       1.187e+04      1.25
+            0.50        0.2456         0.02242       1.352e+04      1.17
+            1.00        0.2126         0.01941       1.806e+04      1.01
+            2.00        0.1478         0.01349       3.746e+04      0.70
+            3.00        0.1082        0.009879       6.991e+04      0.52
+            5.00        0.0775        0.007074       1.359e+05      0.37
+            7.00       0.07081        0.006464       1.621e+05      0.30
+           10.00       0.07079        0.006462       1.617e+05      0.22
+
+Extreme case — co-located radars (baseline=1mm, static mode):
+  STATIC RMSE = 0.264 m
+  FIM det    = 1.169e+04   (small det → ill-conditioned)
+  GDOP       = 1.26     (>>1 means geometry amplifies noise)
+
+C1 justification — baseline knee (where CRLB drops below 0.2m):
+  STATIC  mode:  ≥ 1.19 km
+  TRACKED mode:  ≥ 0.01 km
+
+Interpretation:
+  - Static mode (pre-Kalman) is the 0.5-bug regime: without 5km baseline,
+    initial fused estimate has RMSE > 0.2m → anchor saturates → win_rate=0.5.
+  - Tracked mode is the steady-state: Kalman averaging makes CRLB reachable
+    even with small baseline, but ONLY if the initial anchor didn't already
+    lock the tracker onto a degenerate solution (the actual 0.5-bug mechanism).
