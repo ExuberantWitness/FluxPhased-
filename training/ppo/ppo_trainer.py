@@ -66,6 +66,7 @@ class PPOTrainer:
         total_team_value_loss = 0.0
         total_kl_penalty = 0.0
         total_entropy = 0.0
+        total_nan_skips = 0
         n_updates = 0
 
         for epoch in range(self.n_epochs):
@@ -109,7 +110,11 @@ class PPOTrainer:
                     obs, old_actions, privileged_info=privileged_info,
                 )
 
-                ratio = torch.exp(log_prob - old_log_probs)
+                # F4: clamp log-ratio to [-20, 20] before exp. Without this, a
+                # single mismatched log_prob (e.g. residual vs absolute aim before
+                # F1) could blow ratio to ±inf and poison the whole minibatch.
+                log_ratio = (log_prob - old_log_probs).clamp(-20.0, 20.0)
+                ratio = torch.exp(log_ratio)
                 surr1 = ratio * advantages
                 surr2 = torch.clamp(ratio, 1 - self.clip_range, 1 + self.clip_range) * advantages
                 policy_loss = -torch.min(surr1, surr2).mean()
@@ -145,6 +150,16 @@ class PPOTrainer:
 
                 self.optimizer.zero_grad()
                 loss.backward()
+                # F4: NaN/Inf skip-guard. If loss or any grad is non-finite, drop
+                # this minibatch entirely (don't step, don't update Adam moments).
+                # This is the defensive backstop for cases F1/F2 don't catch.
+                if not torch.isfinite(loss) or any(
+                    not torch.isfinite(p.grad).all()
+                    for p in self.ac.parameters() if p.grad is not None
+                ):
+                    self.optimizer.zero_grad()
+                    total_nan_skips += 1
+                    continue
                 nn.utils.clip_grad_norm_(self.ac.parameters(), self.max_grad_norm)
                 self.optimizer.step()
 
@@ -159,6 +174,7 @@ class PPOTrainer:
             "value_loss": total_value_loss / max(n_updates, 1),
             "privileged_value_loss": total_privileged_value_loss / max(n_updates, 1),
             "entropy": total_entropy / max(n_updates, 1),
+            "nan_skips": total_nan_skips,
         }
         if total_team_value_loss > 0:
             metrics["team_value_loss"] = total_team_value_loss / max(n_updates, 1)
@@ -207,6 +223,7 @@ class TeamPPOTrainer:
         task_type: str = "generic",
         laser_cfg: dict = None,
         sensing_cfg: dict = None,
+        reward_normalize: bool = False,  # F8: return-based scaling
     ):
         # Commander buffer is tiny (obs=76, act=35) so it can always be
         # large.  Radar buffer is huge for 25×25 (obs=163783, act=13753)
@@ -267,6 +284,7 @@ class TeamPPOTrainer:
         self.task_type = task_type
         self.laser_cfg = laser_cfg or {}
         self.sensing_cfg = sensing_cfg or {}
+        self.reward_normalize = reward_normalize  # F8
         if task_type == "laser":
             from training.laser.reward import LaserRewardShaper
             from training.laser.sensing import KalmanTracker
@@ -289,6 +307,11 @@ class TeamPPOTrainer:
             self.sensing_bias_m = float(scfg.get("sensing_bias_m", 0.0))
             self.residual_aim = self.laser_cfg.get("residual_aim", False)
             self.residual_scale_m = self.laser_cfg.get("residual_scale_m", 100.0)
+            # Phase 3 v5c/v5d: optional Gaussian noise added to the Kalman-fused
+            # anchor each step. Forces the policy to learn corrections instead
+            # of free-riding on the (noisy but biased-low) Kalman output. Noise
+            # is in metres, scaled to normalized [-1,1] space at apply time.
+            self.anchor_noise_std_m = float(self.laser_cfg.get("anchor_noise_std_m", 0.0))
             self.min_radar_baseline_m = self.laser_cfg.get("min_radar_baseline_m", 0.0)
             self._laser_env_attached = False
         else:
@@ -300,6 +323,7 @@ class TeamPPOTrainer:
             self.exposure_gain = 0.0
             self.residual_aim = False
             self.residual_scale_m = 100.0
+            self.anchor_noise_std_m = 0.0
             self.min_radar_baseline_m = 0.0
             self._laser_env_attached = False
 
@@ -308,6 +332,30 @@ class TeamPPOTrainer:
         if not self._laser_env_attached and self.task_type == "laser":
             self.reward_shaper.env = env
             self._laser_env_attached = True
+
+    def reset_episode(self):
+        """Reset all per-episode state at the start of a new episode.
+
+        Critical fix: the KalmanTracker and LaserRewardShaper both hold per-episode
+        state that MUST be cleared when env.reset() spawns new enemies. Without
+        this, the KF carries the previous episode's enemy position as its prior,
+        producing anchor biases of 2-3 km on ep 2+ (verified by test_kalman_bias).
+        """
+        if self.task_type != "laser":
+            return
+        if self.kalman_tracker is not None:
+            self.kalman_tracker.reset()
+        # Reset reward shaper per-episode state. Skip on first episode (env not
+        # attached yet — shaper's lazy __call__ guard handles initial alloc).
+        # IMPORTANT: don't null _jam_level — update_jam() runs BEFORE __call__
+        # and would crash on None assignment. Call the shaper's reset_episode
+        # directly, which zero-inits all four per-ep tensors with right shape.
+        shaper = self.reward_shaper
+        if (shaper is not None and hasattr(shaper, "reset_episode")
+                and getattr(shaper, "env", None) is not None):
+            E = shaper.env.num_envs
+            n_teams = shaper.env.n_teams
+            shaper.reset_episode(E, n_teams)
 
     def _apply_laser_sensing(self, cmd_obs: torch.Tensor, env) -> torch.Tensor:
         """Replace exact enemy_xy in cmd_obs[..., 68:72] with Kalman-fused multi-radar estimate.
@@ -350,9 +398,17 @@ class TeamPPOTrainer:
 
     def _apply_residual_aim(self, cmd_action: torch.Tensor, cmd_obs: torch.Tensor,
                              env) -> torch.Tensor:
-        """Anchor commander action[1:3] (aim_xy) at the sensed enemy_xy (cmd_obs[68:70])
-        plus a small learned residual scaled by residual_scale_m. Makes sub-meter aim
-        reachable without requiring the absolute tanh-Gaussian to resolve 0.2m directly.
+        """Build the env-action by anchoring aim_xy at sensed enemy + learned residual.
+
+        F1 fix (LASER_LEAGUE_NAN_FULL_ANALYSIS.md): the env needs absolute aim
+        (anchor + residual), but the PPO buffer must store the policy's raw
+        residual so log_prob matches what was sampled. Returning a fresh tensor
+        (not mutating cmd_action in-place) keeps the two decoupled — mirroring
+        train_laser.py:1136-1139 which builds `env_a` as a separate tensor.
+
+        The returned env-action uses a soft ±(1−1e-4) clamp so downstream
+        consumers (env.step, sensing) never see exactly ±1 (which would
+        re-introduce the atanh singularity via S4 nan_to_num posinf=1.0).
         """
         if not self.residual_aim:
             return cmd_action
@@ -360,14 +416,21 @@ class TeamPPOTrainer:
         half_y = float(env.map_size[1]) / 2.0
         anchor_x = cmd_obs[..., 68]  # sensed enemy-0 x (normalized [-1,1])
         anchor_y = cmd_obs[..., 69]
+        # Phase 3 v5c/v5d: add Gaussian noise to anchor (normalized units).
+        if self.anchor_noise_std_m > 0.0:
+            noise_sigma_x = self.anchor_noise_std_m / half_x
+            noise_sigma_y = self.anchor_noise_std_m / half_y
+            anchor_x = anchor_x + torch.randn_like(anchor_x) * noise_sigma_x
+            anchor_y = anchor_y + torch.randn_like(anchor_y) * noise_sigma_y
         # residual in physical metres → normalized [-1, 1]
         dx_norm = cmd_action[..., 1] * self.residual_scale_m / half_x
         dy_norm = cmd_action[..., 2] * self.residual_scale_m / half_y
-        aim_x = (anchor_x + dx_norm).clamp(-1.0, 1.0)
-        aim_y = (anchor_y + dy_norm).clamp(-1.0, 1.0)
-        cmd_action[..., 1] = aim_x
-        cmd_action[..., 2] = aim_y
-        return cmd_action
+        aim_x = (anchor_x + dx_norm).clamp(-1.0 + 1e-4, 1.0 - 1e-4)
+        aim_y = (anchor_y + dy_norm).clamp(-1.0 + 1e-4, 1.0 - 1e-4)
+        env_action = cmd_action.clone()
+        env_action[..., 1] = aim_x
+        env_action[..., 2] = aim_y
+        return env_action
 
     def init_buffers(self, env_state_dim: int, env_action_dim: int,
                      commander_act_dim: int = 5):
@@ -394,11 +457,13 @@ class TeamPPOTrainer:
         self.commander_buffer = RolloutBuffer(
             self.buffer_size_commander, obs_dim=76, act_dim=commander_act_dim,
             gamma=self.gamma, gae_lambda=self.gae_lambda, device=self.device,
+            reward_normalize=self.reward_normalize,  # F8
         )
         self.radar_buffer = RolloutBuffer(
             self.buffer_size_radar, obs_dim=obs_dim, act_dim=env_action_dim,
             gamma=self.gamma, gae_lambda=self.gae_lambda, device=self.device,
             privileged_dim=privileged_dim,
+            reward_normalize=self.reward_normalize,  # F8
         )
 
     def set_bc_pretrained(self):
@@ -505,10 +570,16 @@ class TeamPPOTrainer:
             cmd_action, cmd_logp, cmd_val, _ = self.commander_trainer.ac.get_action(
                 cmd_obs, deterministic=deterministic,
             )
-            # Laser task: anchor aim_xy at sensed enemy + residual; update jam level
+            # F1: build env-action separately so the PPO buffer can still store
+            # the raw residual (which carries the correct log_prob). The previous
+            # code mutated cmd_action in-place, which desynced buffer vs old_logp
+            # AND could produce aim=±1.0 exactly → atanh singularity → NaN crash.
+            # See LASER_LEAGUE_NAN_FULL_ANALYSIS.md §3.
             if self.task_type == "laser":
-                cmd_action = self._apply_residual_aim(cmd_action, cmd_obs, env)
-                self.reward_shaper.update_jam(cmd_action, team)
+                cmd_action_env = self._apply_residual_aim(cmd_action, cmd_obs, env)
+                self.reward_shaper.update_jam(cmd_action_env, team)
+            else:
+                cmd_action_env = cmd_action
 
             # Radars (shared policy, individual observations)
             radar_actions = []
@@ -528,11 +599,11 @@ class TeamPPOTrainer:
                     rep_privileged_val = r_priv_val.squeeze(-1)  # [E]
 
         return {
-            "radar_actions": radar_actions,    # list of [E, action_dim]
-            "commander_action": cmd_action,    # [E, cmd_act_dim]
+            "radar_actions": radar_actions,        # list of [E, action_dim]
+            "commander_action": cmd_action_env,    # [E, cmd_act_dim] — absolute aim, used by env.step
             "transition": {
                 "cmd_obs": cmd_obs,
-                "cmd_action": cmd_action,
+                "cmd_action": cmd_action,          # residual — what PPO must store to match cmd_logp
                 "cmd_logp": cmd_logp,
                 "cmd_val": cmd_val.squeeze(-1),
                 "radar_obs": rep_obs,
@@ -751,7 +822,16 @@ class TeamPPOTrainer:
                     n_steps=n_step_team, last_value=last_v,
                 )
             else:
-                self.commander_buffer.compute_returns()
+                # C1 fix: pass last_value (deployment) so the GAE bootstrap at
+                # the buffer's final step isn't biased toward 0. The commander
+                # buffer has no privileged_values populated (only deployment
+                # value is stored), so last_privileged_value falls back to
+                # last_value — same behavior as before but no longer zero-filled.
+                last_v = (self.commander_buffer.values[self.commander_buffer.ptr - 1].item()
+                          if self.commander_buffer.ptr > 0 else 0.0)
+                self.commander_buffer.compute_returns(
+                    last_value=last_v, last_privileged_value=last_v,
+                )
             cmd_metrics = self.commander_trainer.update(
                 self.commander_buffer, team_critic=team_critic,
                 alpha=alpha, beta_kl=beta_kl,

@@ -12,6 +12,7 @@ The league manager orchestrates PSRO iterations:
 
 import os
 import time
+import math
 import torch
 import numpy as np
 import functools
@@ -65,9 +66,17 @@ class FluxLeague:
         n_eval_games: int = 50,
         meta_solver: str = "nash",
         pfsp_temperature: float = 1.0,
+        pfsp_hardness_p: float = 1.0,
         exploiter_reset_prob: float = 0.1,
+        # R1+R2: AlphaStar MA distribution. self_play_prob_ma is the per-slot
+        # probability of self-play (AlphaStar uses 0.5). n_opponents_per_cycle_ma
+        # is K — the number of distinct opponents per training cycle (default 1
+        # preserves the legacy single-opponent path; AlphaStar uses 4-8).
+        self_play_prob_ma: float = 0.0,
+        n_opponents_per_cycle_ma: int = 1,
         episodes_per_training: int = 1000,
         max_steps_per_episode: int = 1000,
+        psro_iterations: int = 30,  # F4: total iters for alpha/beta schedule
         checkpoint_dir: str = "checkpoints/league",
         device: str = "cuda",
         sub_array_size: int = 0,
@@ -99,6 +108,8 @@ class FluxLeague:
         stealth_weight: float = 0.1,
         # Full reward shaping config (all weights, not just stealth)
         reward_shaping_config: dict = None,
+        # F8: return-based reward scaling (running std normalization)
+        reward_normalize: bool = False,
         # Policy mutation
         mutation_config: dict = None,
         # Laser task integration
@@ -118,8 +129,11 @@ class FluxLeague:
         self.sub_array_size = sub_array_size
         self.pfsp_temperature = pfsp_temperature
         self.exploiter_reset_prob = exploiter_reset_prob
+        self.self_play_prob_ma = float(self_play_prob_ma)
+        self.n_opponents_per_cycle_ma = int(n_opponents_per_cycle_ma)
         self.episodes_per_training = episodes_per_training
         self.max_steps_per_episode = max_steps_per_episode
+        self.psro_iterations = int(psro_iterations)  # F4
         self.checkpoint_dir = checkpoint_dir
         self.device = device
 
@@ -143,6 +157,7 @@ class FluxLeague:
             device=device,
             stealth_weight=stealth_weight,
             reward_shaping_config=reward_shaping_config or {},
+            reward_normalize=reward_normalize,  # F8
         )
 
         self.n_step_returns = n_step_returns
@@ -152,6 +167,7 @@ class FluxLeague:
             pool_dir=os.path.join(checkpoint_dir, "pool"),
             population_cap=population_cap,
             pfsp_temperature=pfsp_temperature,
+            pfsp_hardness_p=pfsp_hardness_p,
         )
         self.payoff = None  # initialized after env
         self.trainers: Dict[str, TeamPPOTrainer] = {}
@@ -185,6 +201,14 @@ class FluxLeague:
         # aim ~±1 → residual_aim pushes aim tens of km from target → no kills.
         self.hybrid_fire = self.laser_cfg.get("hybrid_fire", False)
         self.decouple_value = self.laser_cfg.get("decouple_value", False)
+        # Tier 1.3: fire head initial bias — biases toward fire_on at init so the
+        # policy explores the sustained-fire reward signal faster (breaks the
+        # "Bernoulli 50% → never 4 consecutive fire_on" failure mode).
+        self.fire_init_logit = float(self.laser_cfg.get("fire_init_logit", 0.0))
+        # F3: floor on commander log_std. Prevents σ from collapsing to ~2.5e-3
+        # which would amplify residual-aim log_prob spikes (NaN amplifier per
+        # LASER_LEAGUE_NAN_FULL_ANALYSIS §5). -3.0 → σ ≥ 0.05 (~50m at 3km).
+        self.log_std_floor = float(self.laser_cfg.get("log_std_floor", -3.0))
         self.pulses_per_control = int(pulses_per_control)
 
         # Hierarchical critic (CTDE architecture)
@@ -244,6 +268,8 @@ class FluxLeague:
                     sub_array_size=self.sub_array_size,
                     hybrid_fire=self.hybrid_fire,
                     decouple_value=self.decouple_value,
+                    fire_init_logit=self.fire_init_logit,
+                    log_std_floor=self.log_std_floor,
                 )
                 trainer = TeamPPOTrainer(
                     commander=policy_dict["commander"],
@@ -289,7 +315,14 @@ class FluxLeague:
         print(f"[League] Iteration {self.iteration}: Evaluating payoff matrix...")
         self.payoff.evaluate_all(env, {**self.trainers, **self.mutant_trainers})
 
-        # Step 2: Compute meta-strategies
+        # Step 2: Compute meta-strategies.
+        # R5 (ALPHASTAR_LEAGUE_GAP_ANALYSIS.md): Nash/TC-DAMS/NashConv are
+        # diagnostic-only — they inform the final deployment pick (see
+        # get_final_agent) and the iteration log, but they DO NOT drive
+        # per-policy opponent selection. Training matchmaking is handled
+        # entirely by PFSP / Elo-band / self-play in the per-policy loop below.
+        # This isolation means Nash collapse on small leagues cannot poison
+        # the training signal.
         if self.elo_sampler is not None:
             self.elo_sampler.update_from_payoff_matrix(self.payoff.matrix)
         iter_diag = {"iteration": self.iteration, "teams": {}}
@@ -371,10 +404,12 @@ class FluxLeague:
             if not record.is_active:
                 continue
 
-            # Determine opponent based on role
+            # Determine opponent(s) based on role.
+            # R1+R2 (ALPHASTAR_LEAGUE_GAP_ANALYSIS.md): Main Agent mixes 0.5
+            # self-play + 0.5 PFSP across K opponents per cycle. The single-
+            # opponent path is preserved for backward compat when K=1.
             if record.role == ROLE_MAIN:
-                # Main Agent: PFSP (Elo-banded if enabled) against full opponent population
-                opponents = self._sample_opponents(policy_id, n_samples=1)
+                opponents = self._sample_ma_opponents(policy_id)
             elif record.role == ROLE_MAIN_EXPLOITER:
                 # Main Exploiter: train against opponent's current Main Agent
                 opp_main = self.pool.get_active_main(1 - record.team)
@@ -393,11 +428,24 @@ class FluxLeague:
                 if np.random.random() < self.exploiter_reset_prob:
                     self._maybe_reset(policy_id, trainer)
 
-            # Train against opponent
-            opp_id = opponents[0]
-            print(f"  Training {record.role} (team {record.team}, {policy_id}) "
-                  f"against {opp_id}...")
-            train_metrics = self._train_against(env, trainer, opp_id, policy_id)
+            # Train against each opponent, splitting the episode budget evenly.
+            # R2: K opponents per cycle → episodes_per_training / K each.
+            episodes_per_opp = max(1, self.episodes_per_training // len(opponents))
+            train_metrics = {}
+            for opp_id in opponents:
+                tag = "self" if opp_id == policy_id else opp_id
+                print(f"  Training {record.role} (team {record.team}, {policy_id}) "
+                      f"against {tag}...")
+                m = self._train_against(
+                    env, trainer, opp_id, policy_id,
+                    n_episodes=episodes_per_opp,
+                )
+                # Merge — later opponents overwrite scalar fields, but lists accumulate.
+                for k, v in m.items():
+                    if k in train_metrics and isinstance(v, list):
+                        train_metrics[k].extend(v)
+                    else:
+                        train_metrics[k] = v
             metrics[f"{policy_id}_train"] = train_metrics
 
             # Save updated checkpoint
@@ -423,7 +471,9 @@ class FluxLeague:
         # alpha: 0 → 1 over training (gradually trust team critic)
         # beta_kl: 0.1 → 0 (gradually release KL constraint)
         # When team_critic_enabled=False (Config C ablation), alpha stays at 0.
-        total_iters = max(30, 1)  # matches psro_iterations in config
+        # F4: read psro_iterations from constructor (was hardcoded max(30,1)
+        # which made the linear schedule saturate at iter 15 instead of 12).
+        total_iters = max(1, self.psro_iterations)
         t = self.iteration / total_iters  # 0→1 normalised time
         if self.team_critic_enabled:
             if self.alpha_schedule == "linear":
@@ -516,14 +566,24 @@ class FluxLeague:
         trainer: TeamPPOTrainer,
         opponent_id: str,
         own_policy_id: str,
+        n_episodes: int = None,
     ) -> dict:
-        """Train one team policy against an opponent for N episodes."""
+        """Train one team policy against an opponent for N episodes.
+
+        R2: n_episodes lets the caller split a fixed episode budget across
+        multiple opponents (K-per-cycle). Defaults to self.episodes_per_training
+        for backward compat.
+        """
+        if n_episodes is None:
+            n_episodes = self.episodes_per_training
         opp_trainer = self.trainers.get(opponent_id) or self.mutant_trainers.get(opponent_id)
         record = self.pool.policies[own_policy_id]
         team = record.team
         opp_team = 1 - team
 
         # Build a dummy opponent trainer if missing — random actions.
+        # When opponent_id == own_policy_id (self-play per R1), the lookup
+        # returns the same trainer — both teams share weights for the episode.
         if opp_trainer is None:
             opp_trainer = trainer  # borrow for env API; we won't store its transitions
 
@@ -540,10 +600,31 @@ class FluxLeague:
         wins = 0
         episodes = 0
 
-        for ep in range(self.episodes_per_training):
+        # Phase 1 diagnostic: detect self-play (opp_trainer shares weights with
+        # trainer) so the win-accounting fix below can count both teams' wins
+        # as own wins (since both teams ARE the same policy in self-play).
+        is_self_play = (opp_trainer is trainer)
+
+        for ep in range(n_episodes):
             runner.reset(red_trainer=trainer, blue_trainer=opp_trainer)
+            # Reset per-episode state in BOTH trainers (Kalman tracker + reward
+            # shaper streak/prev_dist). Without this, KF carries the previous
+            # episode's enemy position as prior → 2-3km anchor bias on ep 2+.
+            if hasattr(trainer, "reset_episode"):
+                trainer.reset_episode()
+            if hasattr(opp_trainer, "reset_episode"):
+                opp_trainer.reset_episode()
             episode_reward = 0.0
             last_step = 0
+
+            # Phase 1 dart-board accumulators (per-episode).
+            dart_min_dist_init_sum = 0.0
+            dart_min_dist_init_n = 0
+            dart_min_dist_final_sum = 0.0
+            dart_min_dist_final_n = 0
+            dart_min_dist_min = float("inf")
+            dart_fire_rate_sum = 0.0
+            dart_steps = 0
 
             for step in range(self.max_steps_per_episode):
                 with torch.no_grad():
@@ -597,12 +678,33 @@ class FluxLeague:
                     r_end = r_start + r_per_team
                     episode_reward += reward_info["radar_reward"][:, r_start:r_end].sum().item()
 
+                    # Phase 1 dart-board metrics accumulation.
+                    shaped = reward_info.get("shaped_rewards", {}) or {}
+                    d_avg = shaped.get("dart_min_dist_avg", float("nan"))
+                    d_min = shaped.get("dart_min_dist_min", float("nan"))
+                    d_fire = shaped.get("dart_fire_rate", 0.0)
+                    if not (isinstance(d_avg, float) and math.isnan(d_avg)):
+                        # First 20 steps = "init"; last 20 steps = "final".
+                        if step < 20:
+                            dart_min_dist_init_sum += float(d_avg)
+                            dart_min_dist_init_n += 1
+                        elif step >= self.max_steps_per_episode - 20:
+                            dart_min_dist_final_sum += float(d_avg)
+                            dart_min_dist_final_n += 1
+                        if not (isinstance(d_min, float) and math.isnan(d_min)):
+                            dart_min_dist_min = min(dart_min_dist_min, float(d_min))
+                        dart_fire_rate_sum += float(d_fire)
+                        dart_steps += 1
+
                 done_mask = result["dones"]
                 if done_mask.any():
                     winners = result["winners"]
                     for e in range(env.num_envs):
-                        if done_mask[e] and winners[e] == team:
-                            wins += 1
+                        if done_mask[e]:
+                            # C2 fix: in self-play both teams share the policy,
+                            # so winning as either color counts as own win.
+                            if winners[e] == team or (is_self_play and winners[e] == opp_team):
+                                wins += 1
                     break
 
             total_rewards += episode_reward
@@ -611,12 +713,23 @@ class FluxLeague:
             wr = wins / max(episodes, 1)
             avg_r = total_rewards / max(episodes, 1)
 
+            # Phase 1 dart-board aggregates.
+            md_init = (dart_min_dist_init_sum / dart_min_dist_init_n) if dart_min_dist_init_n > 0 else float("nan")
+            md_final = (dart_min_dist_final_sum / dart_min_dist_final_n) if dart_min_dist_final_n > 0 else float("nan")
+            md_change = (md_final - md_init) if not (math.isnan(md_init) or math.isnan(md_final)) else float("nan")
+            fr_avg = (dart_fire_rate_sum / dart_steps) if dart_steps > 0 else float("nan")
+            md_min_ep = dart_min_dist_min if dart_min_dist_min != float("inf") else float("nan")
+
             # Per-episode completion: step count tells us if episode ended early.
             ended_naturally = last_step + 1 < self.max_steps_per_episode
             status = "kill" if ended_naturally else "timeout"
             print(f"    ep {episodes}/{self.episodes_per_training}  "
                   f"steps={last_step + 1} {status}  wr={wr:.2f}  "
                   f"avg_r={avg_r:.4f}", flush=True)
+            print(f"      [dart] fire_rate={fr_avg:.3f}  "
+                  f"min_dist_init={md_init:.2f}m  final={md_final:.2f}m  "
+                  f"change={md_change:+.2f}m  min={md_min_ep:.2f}m",
+                  flush=True)
 
             # Terminal progress every 5 episodes (more detailed summary)
             if episodes % 5 == 0:
@@ -633,7 +746,11 @@ class FluxLeague:
                     "train/iteration": self.iteration,
                 })
 
-            if episodes % 10 == 0:
+            # F2: trigger PPO update every episode (was every 10, never fired
+            # for K=4 main agent since episodes_per_opp = max(1, 10//4) = 2 < 10).
+            # The buffer-overflow path at line 614 still fires too, so this
+            # gives us per-episode updates on top of mid-episode flushes.
+            if episodes >= 1:
                 update_metrics = trainer.update(
                     team_critic=self.team_critic,
                     alpha=self.alpha,
@@ -665,13 +782,53 @@ class FluxLeague:
         wandb.log(log_dict)
 
     def _maybe_reset(self, policy_id: str, trainer: TeamPPOTrainer):
-        """Maybe reset exploiter to an earlier checkpoint."""
+        """Reset exploiter to a strong anchor checkpoint.
+
+        R4 (ALPHASTAR_LEAGUE_GAP_ANALYSIS.md): AlphaStar resets exploiters to
+        the supervised (strong) model so they restart the exploit search from
+        a strong baseline. Without supervised data, the closest analog is the
+        strongest Main Agent snapshot in the exploiter's own team. This gives
+        exploiters a real chance to find new exploits, instead of resetting to
+        a weak parent (which keeps them weak forever).
+
+        Fallbacks (in order): strongest MA snapshot → parent → no-op.
+        """
         record = self.pool.policies[policy_id]
-        if record.parent_id and record.parent_id in self.pool.policies:
+
+        # R4 primary: strongest MA on the same team (highest mean win rate
+        # against the opposing team).
+        anchor = self._strongest_main_snapshot(record.team)
+        if anchor is None and record.parent_id and record.parent_id in self.pool.policies:
+            # Legacy fallback: parent checkpoint (weak, but better than nothing
+            # if no MA exists yet — e.g. very first iter).
             parent = self.pool.policies[record.parent_id]
             if os.path.exists(parent.checkpoint_path):
-                print(f"  Resetting {policy_id} to parent checkpoint")
-                trainer.load(parent.checkpoint_path)
+                anchor = parent
+
+        if anchor is not None and os.path.exists(anchor.checkpoint_path):
+            print(f"  Resetting {policy_id} to anchor {anchor.policy_id} "
+                  f"(role={anchor.role}, gen={anchor.generation})")
+            trainer.load(anchor.checkpoint_path)
+
+    def _strongest_main_snapshot(self, team: int):
+        """Return the PolicyRecord of the strongest ROLE_MAIN policy on `team`,
+        or None if no MA exists yet. Strength = mean win rate against the
+        opposing team (falls back to generation if no win rates recorded).
+        """
+        candidates = [
+            (pid, rec) for pid, rec in self.pool.policies.items()
+            if rec.team == team and rec.role == ROLE_MAIN and rec.is_active
+            and os.path.exists(rec.checkpoint_path)
+        ]
+        if not candidates:
+            return None
+        # Prefer win-rate signal if available; else fall back to newest gen.
+        def strength(rec):
+            if rec.win_rates:
+                return float(np.mean(list(rec.win_rates.values())))
+            return float(rec.generation)
+        candidates.sort(key=lambda kv: strength(kv[1]), reverse=True)
+        return candidates[0][1]
 
     def _generate_mutants(self) -> list:
         """Generate mutant policies by perturbing weights of top-performing policies.
@@ -1119,6 +1276,88 @@ class FluxLeague:
                 policy_id, iteration=self.iteration, n_samples=n_samples,
             )
         return self.pool.sample_pfsp(policy_id, n_samples=n_samples)
+
+    def _sample_ma_opponents(self, policy_id: str) -> list:
+        """R1+R2+F5: Main Agent opponent mix per AlphaStar.
+
+        Distribution (AlphaStar §Populating the League):
+          35% self-play (SP)
+          50% PFSP(hard) over full opponent pool
+          15% PFSP(forgotten) — past main players the agent has lost the
+                 ability to beat (win-rate dropped to 0.4-0.7), plus past
+                 main exploiters. Without this channel, PFSP f_hard would
+                 deprioritize forgotten opponents by design.
+
+        Total slots = n_opponents_per_cycle_ma (K). Slots are allocated by
+        the 35/50/15 mass split (rounded), not per-slot Bernoulli (which had
+        6.25% chance of all-SP cycles and high variance).
+        """
+        K = max(1, self.n_opponents_per_cycle_ma)
+        # F5: AlphaStar's exact 35/50/15 mass split
+        n_sp = max(1, int(round(K * 0.35)))
+        n_forgotten = max(0, int(round(K * 0.15)))
+        n_pfsp = max(0, K - n_sp - n_forgotten)
+        opponents: list = []
+        # SP slots
+        opponents.extend([policy_id] * n_sp)
+        # PFSP(hard) slots
+        for _ in range(n_pfsp):
+            opp = self._sample_opponents(policy_id, n_samples=1)
+            opponents.extend(opp)
+        # Forgotten slots (fall back to PFSP if no forgotten available)
+        if n_forgotten > 0:
+            forgotten = self._sample_forgotten_opponents(policy_id, n=n_forgotten)
+            if forgotten:
+                opponents.extend(forgotten)
+            else:
+                opponents.extend(self._sample_opponents(policy_id, n_samples=n_forgotten))
+        # Dedupe while preserving order; self-play policy_id stays.
+        seen: set = set()
+        deduped = []
+        for o in opponents:
+            if o not in seen:
+                seen.add(o)
+                deduped.append(o)
+        return deduped if deduped else [policy_id]
+
+    def _sample_forgotten_opponents(self, policy_id: str, n: int = 1) -> list:
+        """F5: AlphaStar "forgotten" channel.
+
+        Past strategies the agent used to beat but win-rate has dropped.
+        AlphaStar §Populating the League: "15% of PFSP matches against
+        forgotten main players the agent can no longer beats and past main
+        exploiters."
+
+        Forgotten candidates (on opposing team):
+          - Past main snapshots with current wr in [0.4, 0.7]
+            (used to beat them wr>0.7, now struggling wr<0.6)
+          - Past main exploiters (any active)
+          - Past league exploiters (any active, role != main)
+        Sampled uniformly (not PFSP — f_hard would deprioritize these).
+        """
+        record = self.pool.policies[policy_id]
+        candidates: list = []
+        for pid, rec in self.pool.policies.items():
+            if rec.team != 1 - record.team or not rec.is_active:
+                continue
+            if pid == policy_id:
+                continue
+            if rec.role == ROLE_MAIN:
+                wr = record.win_rates.get(pid, None)
+                if wr is None:
+                    continue
+                # Forgotten main: used to beat (wr was high) but dropped
+                if 0.4 <= wr <= 0.7:
+                    candidates.append(pid)
+            elif rec.role in (ROLE_MAIN_EXPLOITER, ROLE_LEAGUE_EXPLOITER):
+                # Past exploiters always qualify for forgotten channel
+                candidates.append(pid)
+        if not candidates:
+            return []
+        idx = np.random.choice(
+            len(candidates), size=min(n, len(candidates)), replace=False,
+        )
+        return [candidates[i] for i in idx]
 
     def get_final_agent(self, team: int) -> str:
         """Get the best policy ID for deployment (meta-strategy weighted)."""

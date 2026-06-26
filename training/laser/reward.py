@@ -65,6 +65,47 @@ class LaserRewardShaper:
         self.fire_lock_bonus = float(rc.get("fire_lock_bonus", 5.0))
         self.misfire_penalty = float(rc.get("misfire_penalty", 0.5))
 
+        # Tier 1.2: Fire-commitment reward (independent of aim quality).
+        # Grow superlinearly with consecutive fire_on steps to strongly encourage
+        # the policy to commit fire once it starts. This breaks the "50% Bernoulli
+        # init → never sustains 4 control steps" failure mode.
+        # Reward per step: fire_commitment_weight × (streak/streak_cap)^p
+        self.fire_commitment_weight = float(rc.get("fire_commitment_weight", 8.0))
+        self.fire_commitment_cap = float(rc.get("fire_commitment_cap", 4.0))  # ~4 control steps = 20 pulses
+        self.fire_commitment_exp = float(rc.get("fire_commitment_exp", 2.0))
+        # Tier 1.2: Make sustained-dwell reward superlinear exponent configurable
+        # (higher exponent → more reward for nearly-complete dwell → stronger pull to finish).
+        self.illum_dwell_exp = float(rc.get("illum_dwell_exp", 2.0))
+
+        # Aim-progress reward ("dart-board" dense signal, v2 ablation).
+        # Per-step reward proportional to (prev_dist - cur_dist) — positive when
+        # aim converges toward enemy, negative when it diverges. This is a much
+        # stronger learning signal than log-distance guidance alone because it
+        # directly reinforces the policy's temporal improvement, not just the
+        # instantaneous aim quality.
+        #   reward = aim_progress_weight × (prev_min_dist - cur_min_dist)
+        # Rationale: kill_bonus is sparse (needs 4 cont. locked pulses inside
+        # kill_radius); pure log-distance guidance saturates near r_floor and
+        # gives no signal once aim is "good enough". The progress signal keeps
+        # giving gradient as long as aim is improving, which is exactly the
+        # "darts converging on bullseye" behavior we want to see in the metrics.
+        self.aim_progress_weight = float(rc.get("aim_progress_weight", 0.0))
+        # Clip the per-step delta so a single wildly off aim doesn't dominate.
+        self.aim_progress_clip_m = float(rc.get("aim_progress_clip_m", 500.0))
+
+        # Phase 3 v5: exponential precision ("dart-board") reward.
+        # Per-step reward = dartboard_weight × exp(-min_dist / dartboard_scale_m),
+        # applied only when fire_on (so policy is rewarded for firing AT the
+        # target, not just being close). Compared to log-distance guidance,
+        # exp(-d/scale) has much stronger gradient near d→0:
+        #   d=270m, scale=5m  → exp(-54) ≈ 0     (no reward, far from target)
+        #   d=10m,  scale=5m  → exp(-2)  ≈ 0.135
+        #   d=1m,   scale=5m  → exp(-0.2)≈ 0.82  (near-max reward)
+        # This gives PPO a clear signal: aim closer → exponentially more reward.
+        # Default weight 0 = disabled (backward compat with v3/v4 configs).
+        self.dartboard_weight = float(rc.get("dartboard_weight", 0.0))
+        self.dartboard_scale_m = float(rc.get("dartboard_scale_m", 5.0))
+
         # Kill / death (env already includes these in commander_rewards; kept here
         # for back-compat if laser_cfg chooses to override).
         self.kill_bonus = float(rc.get("kill_bonus", 100.0))
@@ -91,6 +132,10 @@ class LaserRewardShaper:
         # Per-episode state
         self._beam_hit_time: Optional[torch.Tensor] = None  # [E, n_teams]
         self._jam_level: Optional[torch.Tensor] = None      # [E, n_teams]
+        # Tier 1.2: consecutive fire_on streak (resets when fire_on=False)
+        self._fire_streak: Optional[torch.Tensor] = None    # [E, n_teams]
+        # v2 ablation: previous-step min_dist per team (for aim-progress reward)
+        self._prev_min_dist: Optional[torch.Tensor] = None  # [E, n_teams]
         self.E: Optional[int] = None
         self.n_teams: Optional[int] = None
 
@@ -104,6 +149,12 @@ class LaserRewardShaper:
         self.n_teams = n_teams
         self._beam_hit_time = torch.zeros(E, n_teams, device=self.device)
         self._jam_level = torch.zeros(E, n_teams, device=self.device)
+        self._fire_streak = torch.zeros(E, n_teams, device=self.device)
+        # Initialize prev_min_dist to NaN so the first step's progress reward
+        # is zero (no baseline to compare against); replaced on first call.
+        self._prev_min_dist = torch.full(
+            (E, n_teams), float("nan"), device=self.device,
+        )
 
     def update_jam(self, commander_action: torch.Tensor, team: int):
         """Extract jam level from commander action dim 4 for the given team.
@@ -158,6 +209,11 @@ class LaserRewardShaper:
         drone = bf.drone
         radar_pos = env.radar_pos
 
+        # Phase 1 diagnostic: per-step dart-board metrics (read-only).
+        # Collected across teams for episode-level logging in _train_against.
+        min_dist_per_team = torch.full((E, n_teams), float("nan"), device=dev)
+        fire_on_per_team = torch.zeros(E, n_teams, dtype=torch.bool, device=dev)
+
         # Start from env's base rewards (preserve kill/death that env already credited)
         radar_rewards = step_output.get(
             "radar_rewards", torch.zeros(E, env.n_radars, device=dev),
@@ -188,23 +244,65 @@ class LaserRewardShaper:
             guidance = torch.log(self.beam_r_ref_m / r_eff).clamp(min=0.0)
             beam_reward = guidance * self.beam_guidance_weight
 
+            # (A2) Aim-progress reward ("dart-board" signal, v2 ablation).
+            # Per-step delta of min_dist: positive when aim improves, negative
+            # when aim diverges. Stronger temporal gradient than (A) alone.
+            if self.aim_progress_weight > 0.0:
+                prev = self._prev_min_dist[:, t]  # [E], NaN on first step
+                # Use nan_to_num so first-step (NaN prev) → 0 progress reward.
+                progress = (prev - min_dist).clamp(
+                    -self.aim_progress_clip_m, self.aim_progress_clip_m,
+                )
+                progress = torch.nan_to_num(progress, nan=0.0)
+                beam_reward = beam_reward + self.aim_progress_weight * progress
+                # Update prev for next step (only for alive envs to avoid bleed)
+                self._prev_min_dist[:, t] = torch.where(
+                    torch.isnan(prev),
+                    min_dist,  # first step: just record, no reward next step
+                    min_dist,
+                )
+
             # (C) Fire-gated illumination
             kill_radius = float(bf.laser.kill_radius_m)  # live (curriculum)
             fire_on = drone._commander_fire[:, t]  # [E] bool
             locked = (min_dist < kill_radius) & fire_on
+
+            # Phase 1 diagnostic: record per-team metrics.
+            min_dist_per_team[:, t] = min_dist
+            fire_on_per_team[:, t] = fire_on
+
+            # Phase 3 v5: exponential precision ("dart-board") reward.
+            # Strong gradient near target; only counts when fire_on so policy
+            # is rewarded for firing AT the target, not just being close.
+            if self.dartboard_weight > 0.0:
+                dart_r = torch.exp(-min_dist / max(self.dartboard_scale_m, 1e-3))
+                beam_reward = beam_reward + fire_on.float() * self.dartboard_weight * dart_r
             # (C1) Immediate dense reward for firing while locked
             beam_reward = beam_reward + locked.float() * self.fire_lock_bonus
             # (C2) Small penalty for firing while NOT locked
             misfire = fire_on & (min_dist >= kill_radius)
             beam_reward = beam_reward - misfire.float() * self.misfire_penalty
-            # (C3) Sustained-dwell illumination
+            # (C3) Sustained-dwell illumination (superlinear → strong finish pull)
             self._beam_hit_time[:, t] = torch.where(
                 locked,
                 self._beam_hit_time[:, t] + dt,
                 torch.zeros_like(self._beam_hit_time[:, t]),
             )
             t_norm = (self._beam_hit_time[:, t] / self.t_max).clamp(0.0, 1.0)
-            beam_reward = beam_reward + locked.float() * (t_norm ** 2) * self.illum_reward_weight
+            beam_reward = beam_reward + locked.float() * (t_norm ** self.illum_dwell_exp) * self.illum_reward_weight
+
+            # (D) Tier 1.2: Fire-commitment reward — grows with consecutive fire_on
+            # steps, independent of aim quality. This directly attacks the
+            # "fire head ~50% Bernoulli at init → 0.5^4 = 6% chance of 4 cont.
+            # fire_on" failure mode by giving a superlinear incentive to sustain.
+            self._fire_streak[:, t] = torch.where(
+                fire_on,
+                self._fire_streak[:, t] + 1.0,
+                torch.zeros_like(self._fire_streak[:, t]),
+            )
+            streak_norm = (self._fire_streak[:, t] / self.fire_commitment_cap).clamp(0.0, 1.0)
+            commit_reward = (streak_norm ** self.fire_commitment_exp) * self.fire_commitment_weight
+            beam_reward = beam_reward + fire_on.float() * commit_reward
 
             cmd_rewards[:, t] += beam_reward
 
@@ -243,4 +341,11 @@ class LaserRewardShaper:
             "total_shaped": total_shaped,
             "beam_hit_time": self._beam_hit_time.clone(),
             "jam_level": self._jam_level.clone(),
+            "fire_streak": self._fire_streak.clone(),
+            # Phase 1 dart-board metrics (read-only diagnostic).
+            "dart_min_dist_per_team": min_dist_per_team,            # [E, n_teams], m
+            "dart_fire_on_per_team": fire_on_per_team,              # [E, n_teams], bool
+            "dart_min_dist_avg":    float(min_dist_per_team[~torch.isnan(min_dist_per_team)].mean().item()) if not torch.isnan(min_dist_per_team).all() else float("nan"),
+            "dart_min_dist_min":    float(min_dist_per_team[~torch.isnan(min_dist_per_team)].min().item())  if not torch.isnan(min_dist_per_team).all() else float("nan"),
+            "dart_fire_rate":       float(fire_on_per_team.float().mean().item()),
         }
