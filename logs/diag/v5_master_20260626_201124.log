@@ -1,0 +1,25 @@
+
+==========================================================
+[20:11:24] Starting v5a_big_residual
+==========================================================
+  log: logs/diag/v5a_big_residual_20260626_201124.log
+  PID: 2193227
+[20:41:24] v5a_big_residual: 1800s, 2 dart-samples, avg_change=-0.98m, kills=0
+[20:41:24] v5a_big_residual: EARLY KILL — no convergence (avg=-0.98m, no kills)
+15 MiB
+
+==========================================================
+[20:41:39] Starting v5b_no_residual
+==========================================================
+  log: logs/diag/v5b_no_residual_20260626_201124.log
+  PID: 2349304
+[21:11:39] v5b_no_residual: process exited on its own after 1800s
+15 MiB
+
+==========================================================
+[21:11:49] Starting v5c_anchor_noise
+==========================================================
+  log: logs/diag/v5c_anchor_noise_20260626_201124.log
+  PID: 2507454
+[21:41:49] v5c_anchor_noise: 1800s, 2 dart-samples, avg_change=-4.49m, kills=0
+[21:51:49] v5c_anchor_noise: 2400s, 3 dart-samples, avg_change=-4.74m, kills=0

@@ -1,0 +1,156 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 102.0 GB
+[config] override training.psro_iterations=3
+[config] override env.num_envs=8
+[config] override league.episodes_per_training=3
+[config] override league.max_steps_per_episode=50
+[config] override league.n_eval_games=4
+[config] override ppo.shared.batch_size=64
+[config] override ppo.shared.buffer_size_radar=128
+[config] override ppo.shared.buffer_size_commander=128
+FluxPhased League Training
+Config: configs/laser_25x25_pro6000_league.yaml
+Device: cuda
+Environment: E=8, R=4, N=625, P=4, bins=64
+State dim: 163783, Action dim: 13753
+[wandb] wandb not available; skipping logging
+Warp 1.10.1 initialized:
+   CUDA Toolkit 12.8, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Workstation Edition" (95 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/ubuntu/.cache/warp/1.10.1
+[League] kill_radius initialized at 50.000m (will anneal toward 0.200m)
+
+============================================================
+PSRO Iteration 0/3
+============================================================
+[League] Iteration 0: Evaluating payoff matrix...
+  [payoff] p0000 vs p0003 (1/9)... Module radar_sim.gpu.vec_channel 6a2afee load on device 'cuda:0' took 0.40 ms  (cached)
+Module radar_sim.gpu.vec_array 0e899e2 load on device 'cuda:0' took 1.38 ms  (cached)
+win_rate=0.50 (37.7s)
+  [payoff] p0000 vs p0004 (2/9)... win_rate=0.50 (37.3s)
+  [payoff] p0000 vs p0005 (3/9)... win_rate=0.50 (37.4s)
+  [payoff] p0001 vs p0003 (4/9)... win_rate=0.50 (37.4s)
+  [payoff] p0001 vs p0004 (5/9)... win_rate=0.50 (37.6s)
+  [payoff] p0001 vs p0005 (6/9)... win_rate=0.50 (37.1s)
+  [payoff] p0002 vs p0003 (7/9)... win_rate=0.50 (37.4s)
+  [payoff] p0002 vs p0004 (8/9)... win_rate=0.50 (37.4s)
+  [payoff] p0002 vs p0005 (9/9)... win_rate=0.50 (37.2s)
+  Team 0 sigma=[1. 0. 0.] NashConv=0.0000 H_task=1.386 effK=1.00
+  Team 1 sigma=[1. 0. 0.] NashConv=0.0000 H_task=1.386 effK=1.00
+  Training main (team 0, p0000) against p0004...
+      [PPO] main-t0 ep0 step16 cmd(pl=-0.0127 vl=86.2455 ent=2.3688) rad(pl=0.0326 vl=52774.6380 ent=321.4441)
+      [PPO] main-t0 ep0 step31 cmd(pl=-0.0139 vl=31.4369 ent=2.3616) rad(pl=0.0183 vl=51410.5618 ent=321.7623)
+      [PPO] main-t0 ep0 step46 cmd(pl=-0.0003 vl=583.1510 ent=2.3375) rad(pl=0.0060 vl=45963.2663 ent=321.9875)
+    ep 1/3  steps=50 timeout  wr=0.00  avg_r=18.5391
+      [PPO] main-t0 ep1 step12 cmd(pl=-0.0005 vl=296.6187 ent=2.3113) rad(pl=0.0140 vl=43462.7630 ent=322.1058)
+      [PPO] main-t0 ep1 step27 cmd(pl=0.0028 vl=463.6400 ent=2.2930) rad(pl=0.0036 vl=39465.6217 ent=322.1661)
+      [PPO] main-t0 ep1 step42 cmd(pl=-0.0001 vl=306.2793 ent=2.2844) rad(pl=-0.0014 vl=38198.6224 ent=322.2041)
+    ep 2/3  steps=50 timeout  wr=0.00  avg_r=25.0195
+      [PPO] main-t0 ep2 step8 cmd(pl=-0.0009 vl=514.6471 ent=2.2877) rad(pl=0.0006 vl=41230.1439 ent=322.2191)
+      [PPO] main-t0 ep2 step23 cmd(pl=-0.0012 vl=329.3760 ent=2.2962) rad(pl=0.0031 vl=45180.5254 ent=322.1899)
+      [PPO] main-t0 ep2 step38 cmd(pl=0.0005 vl=355.9413 ent=2.2904) rad(pl=0.0021 vl=43139.3691 ent=322.2463)
+    ep 3/3  steps=50 timeout  wr=0.00  avg_r=27.0323
+  Training main_exploiter (team 0, p0001) against p0003...
+      [PPO] main-t0 ep0 step16 cmd(pl=-0.0198 vl=79.5890 ent=2.3674) rad(pl=0.0510 vl=86439.6810 ent=321.7780)
+      [PPO] main-t0 ep0 step31 cmd(pl=-0.0062 vl=14.9224 ent=2.3631) rad(pl=0.0064 vl=82977.4297 ent=321.8734)
+      [PPO] main-t0 ep0 step46 cmd(pl=-0.0155 vl=39.9986 ent=2.3567) rad(pl=0.0026 vl=78714.5469 ent=321.9768)
+    ep 1/3  steps=50 timeout  wr=0.00  avg_r=13.0581
+      [PPO] main-t0 ep1 step12 cmd(pl=-0.0022 vl=62.6924 ent=2.3464) rad(pl=0.0037 vl=93796.3177 ent=322.1765)
+      [PPO] main-t0 ep1 step27 cmd(pl=-0.0096 vl=28.0476 ent=2.3404) rad(pl=0.0065 vl=96160.9661 ent=322.3357)
+      [PPO] main-t0 ep1 step42 cmd(pl=0.0082 vl=100.4094 ent=2.3280) rad(pl=-0.0042 vl=95032.8724 ent=322.3253)
+    ep 2/3  steps=50 timeout  wr=0.00  avg_r=11.9378
+      [PPO] main-t0 ep2 step8 cmd(pl=-0.0037 vl=24.2407 ent=2.3193) rad(pl=0.0023 vl=85628.5195 ent=322.2782)
+      [PPO] main-t0 ep2 step23 cmd(pl=0.0003 vl=368.4606 ent=2.3139) rad(pl=0.0015 vl=75368.4036 ent=322.3800)
+      [PPO] main-t0 ep2 step38 cmd(pl=0.0017 vl=149.2807 ent=2.3173) rad(pl=-0.0150 vl=67135.0039 ent=322.5192)
+    ep 3/3  steps=50 timeout  wr=0.00  avg_r=16.0942
+  Training league_exploiter (team 0, p0002) against p0005...
+      [PPO] leag-t0 ep0 step16 cmd(pl=-0.0356 vl=157.4707 ent=2.3641) rad(pl=0.0302 vl=4128.6003 ent=322.4258)
+      [PPO] leag-t0 ep0 step31 cmd(pl=0.0047 vl=421.9713 ent=2.3465) rad(pl=0.0084 vl=3590.0177 ent=322.5471)
+      [PPO] leag-t0 ep0 step46 cmd(pl=-0.0014 vl=348.0727 ent=2.3473) rad(pl=0.0130 vl=3543.2823 ent=322.7037)
+    ep 1/3  steps=50 timeout  wr=0.00  avg_r=26.4097
+      [PPO] leag-t0 ep1 step12 cmd(pl=-0.0044 vl=41.1652 ent=2.3507) rad(pl=0.0120 vl=8384.4407 ent=322.7900)
+      [PPO] leag-t0 ep1 step27 cmd(pl=-0.0034 vl=104.9757 ent=2.3496) rad(pl=0.0048 vl=9813.2131 ent=322.9232)
+      [PPO] leag-t0 ep1 step42 cmd(pl=-0.0019 vl=62.0612 ent=2.3487) rad(pl=0.0019 vl=9387.6554 ent=322.9144)
+    ep 2/3  steps=50 timeout  wr=0.00  avg_r=23.8607
+      [PPO] leag-t0 ep2 step8 cmd(pl=-0.0006 vl=510.2729 ent=2.3380) rad(pl=0.0027 vl=8028.2483 ent=322.8879)
+      [PPO] leag-t0 ep2 step23 cmd(pl=-0.0151 vl=80.3427 ent=2.3288) rad(pl=0.0002 vl=6664.3197 ent=322.8942)
+      [PPO] leag-t0 ep2 step38 cmd(pl=0.0046 vl=57.8972 ent=2.3141) rad(pl=0.0035 vl=6254.4252 ent=322.9041)
+    ep 3/3  steps=50 timeout  wr=0.00  avg_r=22.9520
+  Training main (team 1, p0003) against p0000...
+      [PPO] main-t1 ep0 step16 cmd(pl=-0.0008 vl=202.5732 ent=2.3661) rad(pl=0.3402 vl=55930.0046 ent=322.3386)
+      [PPO] main-t1 ep0 step31 cmd(pl=0.0045 vl=10.8264 ent=2.3581) rad(pl=0.3254 vl=53300.4349 ent=322.0926)
+      [PPO] main-t1 ep0 step46 cmd(pl=-0.0005 vl=33.9878 ent=2.3600) rad(pl=0.2664 vl=50261.0514 ent=321.7757)
+    ep 1/3  steps=50 timeout  wr=0.00  avg_r=12.8056
+      [PPO] main-t1 ep1 step12 cmd(pl=-0.0176 vl=16.2456 ent=2.3592) rad(pl=0.3767 vl=32271.5749 ent=321.7729)
+      [PPO] main-t1 ep1 step27 cmd(pl=0.0085 vl=50.6659 ent=2.3556) rad(pl=0.3964 vl=25018.2220 ent=322.2084)
+      [PPO] main-t1 ep1 step42 cmd(pl=0.0209 vl=330.3679 ent=2.3604) rad(pl=0.6266 vl=23530.8737 ent=322.5316)
+    ep 2/3  steps=50 timeout  wr=0.00  avg_r=13.3217
+      [PPO] main-t1 ep2 step8 cmd(pl=-0.0036 vl=16.0321 ent=2.3597) rad(pl=0.2996 vl=31676.4124 ent=322.5611)
+      [PPO] main-t1 ep2 step23 cmd(pl=-0.0147 vl=6.2971 ent=2.3566) rad(pl=0.4936 vl=39594.4863 ent=322.5552)
+      [PPO] main-t1 ep2 step38 cmd(pl=0.0201 vl=60.9656 ent=2.3300) rad(pl=0.2981 vl=37929.5605 ent=322.6048)
+    ep 3/3  steps=50 timeout  wr=0.00  avg_r=10.5797
+  Training main_exploiter (team 1, p0004) against p0006...
+      [PPO] main-t1 ep0 step16 cmd(pl=-0.0029 vl=31.6293 ent=2.3591) rad(pl=0.4993 vl=42290.8939 ent=321.7480)
+      [PPO] main-t1 ep0 step31 cmd(pl=-0.0139 vl=118.2823 ent=2.3389) rad(pl=0.5456 vl=40272.6426 ent=322.4327)
+      [PPO] main-t1 ep0 step46 cmd(pl=0.0043 vl=52.1950 ent=2.3388) rad(pl=0.5495 vl=38190.3118 ent=322.8878)
+    ep 1/3  steps=50 timeout  wr=0.00  avg_r=14.0568
+      [PPO] main-t1 ep1 step12 cmd(pl=-0.0136 vl=464.6968 ent=2.3603) rad(pl=0.5002 vl=38432.1986 ent=322.8581)
+      [PPO] main-t1 ep1 step27 cmd(pl=0.0232 vl=349.2290 ent=2.3667) rad(pl=0.3520 vl=38405.1452 ent=322.7741)
+      [PPO] main-t1 ep1 step42 cmd(pl=0.0415 vl=84.2904 ent=2.3685) rad(pl=0.4053 vl=36837.6751 ent=322.7548)
+    ep 2/3  steps=50 timeout  wr=0.00  avg_r=20.0141
+      [PPO] main-t1 ep2 step8 cmd(pl=-0.0029 vl=629.3272 ent=2.3648) rad(pl=0.3506 vl=39289.4850 ent=322.7638)
+      [PPO] main-t1 ep2 step23 cmd(pl=0.0040 vl=71.2711 ent=2.3616) rad(pl=0.3817 vl=38328.6439 ent=322.7894)
+      [PPO] main-t1 ep2 step38 cmd(pl=-0.0053 vl=215.4059 ent=2.3591) rad(pl=0.3827 vl=37192.9212 ent=322.7884)
+    ep 3/3  steps=50 timeout  wr=0.00  avg_r=21.1652
+  Training league_exploiter (team 1, p0005) against p0000...
+      [PPO] leag-t1 ep0 step16 cmd(pl=0.0322 vl=142.5488 ent=2.3662) rad(pl=0.3915 vl=66496.9115 ent=322.5100)
+      [PPO] leag-t1 ep0 step31 cmd(pl=0.0114 vl=112.0146 ent=2.3481) rad(pl=0.3326 vl=63350.9759 ent=322.7346)
+      [PPO] leag-t1 ep0 step46 cmd(pl=-0.0015 vl=148.2742 ent=2.3414) rad(pl=0.3541 vl=60636.0625 ent=322.7692)
+    ep 1/3  steps=50 timeout  wr=0.00  avg_r=15.7829
+      [PPO] leag-t1 ep1 step12 cmd(pl=0.0160 vl=86.7771 ent=2.3492) rad(pl=0.3311 vl=57151.5762 ent=322.7733)
+      [PPO] leag-t1 ep1 step27 cmd(pl=0.0028 vl=37.5806 ent=2.3588) rad(pl=0.2892 vl=54620.1484 ent=322.7959)
+      [PPO] leag-t1 ep1 step42 cmd(pl=0.0097 vl=47.2831 ent=2.3645) rad(pl=0.5891 vl=52133.1335 ent=322.7744)
+    ep 2/3  steps=50 timeout  wr=0.00  avg_r=13.3953
+      [PPO] leag-t1 ep2 step8 cmd(pl=-0.0053 vl=20.1286 ent=2.3589) rad(pl=0.3277 vl=53476.8314 ent=322.6953)
+      [PPO] leag-t1 ep2 step23 cmd(pl=0.0019 vl=9.8484 ent=2.3588) rad(pl=0.4937 vl=59420.8750 ent=322.6452)
+      [PPO] leag-t1 ep2 step38 cmd(pl=-0.0035 vl=35.8934 ent=2.3580) rad(pl=0.4183 vl=57168.3783 ent=322.7285)
+    ep 3/3  steps=50 timeout  wr=0.00  avg_r=9.1543
+[League] Iteration 0 complete in 1024.6s
+[League] alpha=0.000 (schedule=linear) beta_kl=0.100
+[League] kill_radius hold at 50.000m (kill_rate=0.00 < 0.5)
+  Checkpoint saved at iteration 0
+
+============================================================
+PSRO Iteration 1/3
+============================================================
+[League] Iteration 1: Evaluating payoff matrix...
+  [payoff] p0000 vs p0009 (4/36)... win_rate=0.50 (37.4s)
+  [payoff] p0000 vs p0010 (5/36)... win_rate=0.50 (37.5s)
+  [payoff] p0000 vs p0011 (6/36)... win_rate=0.50 (37.6s)
+  [payoff] p0001 vs p0009 (10/36)... win_rate=0.50 (37.6s)
+  [payoff] p0001 vs p0010 (11/36)... win_rate=0.50 (37.7s)
+  [payoff] p0001 vs p0011 (12/36)... win_rate=0.50 (37.3s)
+  [payoff] p0002 vs p0009 (16/36)... win_rate=0.50 (37.4s)
+  [payoff] p0002 vs p0010 (17/36)... win_rate=0.50 (37.6s)
+  [payoff] p0002 vs p0011 (18/36)... win_rate=0.50 (37.4s)
+  [payoff] p0006 vs p0003 (19/36)... win_rate=0.50 (37.7s)
+  [payoff] p0006 vs p0004 (20/36)... win_rate=0.50 (37.7s)
+  [payoff] p0006 vs p0005 (21/36)... win_rate=0.50 (37.6s)
+  [payoff] p0006 vs p0009 (22/36)... win_rate=0.50 (37.8s)
+  [payoff] p0006 vs p0010 (23/36)... win_rate=0.50 (37.4s)
+  [payoff] p0006 vs p0011 (24/36)... win_rate=0.50 (37.5s)
+  [payoff] p0007 vs p0003 (25/36)... win_rate=0.50 (37.5s)
+  [payoff] p0007 vs p0004 (26/36)... win_rate=0.50 (37.4s)
+  [payoff] p0007 vs p0005 (27/36)... win_rate=0.50 (37.3s)
+  [payoff] p0007 vs p0009 (28/36)... win_rate=0.50 (37.1s)
+  [payoff] p0007 vs p0010 (29/36)... win_rate=0.50 (37.4s)
+  [payoff] p0007 vs p0011 (30/36)... win_rate=0.50 (37.2s)
+  [payoff] p0008 vs p0003 (31/36)... win_rate=0.50 (37.3s)
+  [payoff] p0008 vs p0004 (32/36)... win_rate=0.50 (37.5s)
+  [payoff] p0008 vs p0005 (33/36)... win_rate=0.50 (37.4s)
+  [payoff] p0008 vs p0009 (34/36)... win_rate=0.50 (37.5s)
+  [payoff] p0008 vs p0010 (35/36)... 

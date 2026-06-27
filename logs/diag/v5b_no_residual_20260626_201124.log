@@ -1,0 +1,43 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 102.0 GB
+FluxPhased League Training
+Config: configs/ablation_f1f8/v5b_no_residual.yaml
+Device: cuda
+Environment: E=12, R=4, N=625, P=4, bins=64
+State dim: 163783, Action dim: 13753
+[wandb] wandb not available; skipping logging
+Warp 1.10.1 initialized:
+   CUDA Toolkit 12.8, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Workstation Edition" (95 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/ubuntu/.cache/warp/1.10.1
+[League] kill_radius initialized at 50.000m (will anneal toward 0.200m)
+
+============================================================
+PSRO Iteration 0/24
+============================================================
+[League] Iteration 0: Evaluating payoff matrix...
+  [payoff] p0000 vs p0003 (1/9)... Module radar_sim.gpu.vec_channel 6a2afee load on device 'cuda:0' took 0.43 ms  (cached)
+Module radar_sim.gpu.vec_array 0e899e2 load on device 'cuda:0' took 29.44 ms  (cached)
+    step 100: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=8 red_wins=0/0 wr_sofar=0.00
+    [p0000 vs p0003] final-step illumination_progress: team0=0.0000 team1=0.0000 (max t0=0.0000 t1=0.0000)
+win_rate=0.50 (515.5s)
+  [payoff] p0000 vs p0004 (2/9)...     step 100: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=8 red_wins=0/0 wr_sofar=0.00
+    [p0000 vs p0004] final-step illumination_progress: team0=0.0000 team1=0.0000 (max t0=0.0000 t1=0.0000)
+win_rate=0.50 (513.7s)
+  [payoff] p0000 vs p0005 (3/9)...     step 100: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=8 red_wins=0/0 wr_sofar=0.00
+    [p0000 vs p0005] final-step illumination_progress: team0=0.0000 team1=0.0000 (max t0=0.0000 t1=0.0000)
+win_rate=0.50 (515.1s)
+  [payoff] p0001 vs p0003 (4/9)... 

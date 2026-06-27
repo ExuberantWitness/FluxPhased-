@@ -1,0 +1,58 @@
+{
+  "v4_control": {
+    "log_file": "logs/ablation_f1f8/v4_control_20260626_084441.log",
+    "n_iterations": 1,
+    "max_iter": 0,
+    "n_kr_anneals": 0,
+    "final_kr": null,
+    "kr_trajectory": [],
+    "kill_rate_max": null,
+    "kill_rate_last20_avg": null,
+    "policy_loss_last20_avg": -0.0006149999999999999,
+    "policy_loss_n_samples": 142,
+    "avg_reward_last20_avg": 18397.403621428573,
+    "n_ppo_updates": 142
+  },
+  "v1_conservative": {
+    "log_file": "logs/ablation_f1f8/v1_conservative_20260626_104452.log",
+    "n_iterations": 1,
+    "max_iter": 0,
+    "n_kr_anneals": 0,
+    "final_kr": null,
+    "kr_trajectory": [],
+    "kill_rate_max": null,
+    "kill_rate_last20_avg": null,
+    "policy_loss_last20_avg": -0.0006549999999999999,
+    "policy_loss_n_samples": 143,
+    "avg_reward_last20_avg": 18386.379857142856,
+    "n_ppo_updates": 143
+  },
+  "v2_aggressive": {
+    "log_file": "logs/ablation_f1f8/v2_aggressive_20260626_124502.log",
+    "n_iterations": 1,
+    "max_iter": 0,
+    "n_kr_anneals": 0,
+    "final_kr": null,
+    "kr_trajectory": [],
+    "kill_rate_max": null,
+    "kill_rate_last20_avg": null,
+    "policy_loss_last20_avg": -0.000845,
+    "policy_loss_n_samples": 143,
+    "avg_reward_last20_avg": 7843.700685714284,
+    "n_ppo_updates": 143
+  },
+  "v3_scaling": {
+    "log_file": "logs/ablation_f1f8/v3_scaling_20260626_144513.log",
+    "n_iterations": 1,
+    "max_iter": 0,
+    "n_kr_anneals": 0,
+    "final_kr": null,
+    "kr_trajectory": [],
+    "kill_rate_max": null,
+    "kill_rate_last20_avg": null,
+    "policy_loss_last20_avg": -0.0013850000000000002,
+    "policy_loss_n_samples": 143,
+    "avg_reward_last20_avg": 19726.05700714286,
+    "n_ppo_updates": 143
+  }
+}

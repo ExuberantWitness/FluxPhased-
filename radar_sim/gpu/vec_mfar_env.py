@@ -287,6 +287,8 @@ class MFARVecEnv:
         tx_signal: torch.Tensor,
         commander_actions: torch.Tensor = None,
         vehicle_actions: torch.Tensor = None,
+        beam_az: torch.Tensor = None,
+        beam_el: torch.Tensor = None,
     ) -> dict:
         """Process one pulse through the physical channel.
 
@@ -296,6 +298,10 @@ class MFARVecEnv:
                 [..., 0] = fire_on_off, [..., 1:4] = aim(x,y,z), [..., 4] = reserved
             vehicle_actions: [E, R, 3] optional — vehicle movement
                 [..., 0] = speed [0,1], [..., 1] = heading_delta [0,1], [..., 2] = array_rot [0,1]
+            beam_az: [E, R] optional — per-radar mean beam azimuth (degrees) from policy.
+                If None, falls back to boresight (zeros) — backward compat for tasks
+                that don't use beam steering.
+            beam_el: [E, R] optional — per-radar mean beam elevation (degrees).
         Returns:
             dict with keys: rx_iq, events, kills, dones, winners, ...
         """
@@ -315,6 +321,12 @@ class MFARVecEnv:
 
         self._buf_rx.zero_()
 
+        # Default to boresight if policy beam direction not provided.
+        if beam_az is None:
+            beam_az = torch.zeros(E, R, device=dev)
+        if beam_el is None:
+            beam_el = torch.zeros(E, R, device=dev)
+
         for t_idx in range(self.n_targets):
             delay_s, doppler_hz, gain = self.channel.compute_params_batch(
                 self.radar_pos, self.radar_vel,
@@ -323,8 +335,8 @@ class MFARVecEnv:
                 rcs_dbsm=self.target_rcs_dbsm,
                 array_directivity_db=self.array.directivity_db,
                 n_elem=self.n_elem,
-                beam_az=torch.zeros(E, R, device=dev),
-                beam_el=torch.zeros(E, R, device=dev),
+                beam_az=beam_az,
+                beam_el=beam_el,
                 array_rotation=self.array_rotation,
                 bw_az_deg=bw_az, bw_el_deg=bw_el,
             )
@@ -353,8 +365,8 @@ class MFARVecEnv:
                     rcs_dbsm=20.0,  # radar vehicle RCS
                     array_directivity_db=self.array.directivity_db,
                     n_elem=self.n_elem,
-                    beam_az=torch.zeros(E, R, device=dev),
-                    beam_el=torch.zeros(E, R, device=dev),
+                    beam_az=beam_az,
+                    beam_el=beam_el,
                     array_rotation=self.array_rotation,
                     bw_az_deg=bw_az, bw_el_deg=bw_el,
                 )

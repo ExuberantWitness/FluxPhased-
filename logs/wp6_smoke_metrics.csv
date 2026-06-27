@@ -1,0 +1,4 @@
+log,n_iters_completed,final_kill_radius_m,final_nash_conv,final_eff_k,residual_05_ratio
+logs/laser_league_phase_DE_verify.log,3,6.25,0.1825,2.87,0.4609375
+logs/laser_league_reset_fix_verify.log,2,25.0,0.0694,1.89,0.66
+logs/laser_league_q1_eval_fix.log,2,70.0,nan,nan,0.23255813953488372

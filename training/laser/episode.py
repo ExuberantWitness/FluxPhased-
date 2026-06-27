@@ -76,6 +76,11 @@ class LaserEpisodeRunner:
         self._cached_cmd: Optional[torch.Tensor] = None
         self._cached_veh: Optional[torch.Tensor] = None
 
+        # Cached beam direction (degrees, [E, R]) from last assemble_tx call.
+        # Used to thread policy beam steer into env.step() for RX channel.
+        self._last_beam_az: Optional[torch.Tensor] = None
+        self._last_beam_el: Optional[torch.Tensor] = None
+
         # Cached previous-step transitions (for store_transition timing)
         self._prev_red_transition: Optional[dict] = None
         self._prev_blue_transition: Optional[dict] = None
@@ -144,6 +149,8 @@ class LaserEpisodeRunner:
         self._cached_tx = None
         self._cached_cmd = None
         self._cached_veh = None
+        self._last_beam_az = None
+        self._last_beam_el = None
         self._prev_red_transition = None
         self._prev_blue_transition = None
         # WP3.2: clear damage-injection state for new episode
@@ -229,6 +236,10 @@ class LaserEpisodeRunner:
 
         Lifted from train_laser.py:_assemble_tx. Decodes per-element actions
         (task_id, beam_az/el, waveform, jam, comm) into a beamformed LFM chirp.
+
+        Also caches the per-radar mean beam_az/beam_el (in degrees) into
+        self._last_beam_az / self._last_beam_el so downstream code (env.step)
+        can use the same beam direction for RX channel modeling.
         """
         E, R, N, S = self.E, self.R, self.N, self.S
         dev = self.device
@@ -238,6 +249,12 @@ class LaserEpisodeRunner:
         elem_actions = actions[:, :, :N * ACTION_PER_ELEM].reshape(E, R, N, ACTION_PER_ELEM)
         beam_az = elem_actions[..., 4] * 60.0
         beam_el = elem_actions[..., 5] * 45.0
+
+        # Cache mean beam direction per (env, radar) for RX channel modeling.
+        # Channel expects [E, R] in degrees; mean across N elements since the
+        # channel uses a single beam direction per radar.
+        self._last_beam_az = beam_az.mean(dim=-1).detach()  # [E, R]
+        self._last_beam_el = beam_el.mean(dim=-1).detach()  # [E, R]
 
         k = 2.0 * math.pi / self.wavelength
         DEG2RAD = math.pi / 180.0
@@ -294,6 +311,8 @@ class LaserEpisodeRunner:
                 self._cached_veh = torch.zeros(E, R, 3, device=dev)
             result = env.step(
                 self._cached_tx, self._cached_cmd, self._cached_veh,
+                beam_az=self._last_beam_az,
+                beam_el=self._last_beam_el,
             )
             self.cpi_buffer.append(result["rx_iq"])
             if result["dones"].any():

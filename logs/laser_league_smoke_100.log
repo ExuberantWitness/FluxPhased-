@@ -1,0 +1,42 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 102.0 GB
+[config] override training.psro_iterations=1
+[config] override env.num_envs=2
+[config] override league.episodes_per_training=2
+[config] override league.max_steps_per_episode=100
+[config] override league.n_eval_games=2
+FluxPhased League Training
+Config: configs/laser_25x25_pro6000_league.yaml
+Device: cuda
+Environment: E=2, R=4, N=625, P=4, bins=64
+State dim: 163783, Action dim: 13753
+[wandb] wandb not available; skipping logging
+Warp 1.10.1 initialized:
+   CUDA Toolkit 12.8, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Workstation Edition" (95 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/ubuntu/.cache/warp/1.10.1
+[League] kill_radius initialized at 50.000m (will anneal toward 0.200m)
+
+============================================================
+PSRO Iteration 0/1
+============================================================
+[League] Iteration 0: Evaluating payoff matrix...
+  [payoff] p0000 vs p0003 (1/9)... Module radar_sim.gpu.vec_channel 6a2afee load on device 'cuda:0' took 0.41 ms  (cached)
+Module radar_sim.gpu.vec_array 0e899e2 load on device 'cuda:0' took 0.61 ms  (cached)
+win_rate=0.50 (40.8s)
+  [payoff] p0000 vs p0004 (2/9)... win_rate=0.50 (40.6s)
+  [payoff] p0000 vs p0005 (3/9)... win_rate=0.50 (40.7s)
+  [payoff] p0001 vs p0003 (4/9)... win_rate=0.50 (40.3s)
+  [payoff] p0001 vs p0004 (5/9)... win_rate=0.50 (40.2s)
+  [payoff] p0001 vs p0005 (6/9)... win_rate=0.50 (40.6s)
+  [payoff] p0002 vs p0003 (7/9)... win_rate=0.50 (40.1s)
+  [payoff] p0002 vs p0004 (8/9)... win_rate=0.50 (40.4s)
+  [payoff] p0002 vs p0005 (9/9)... win_rate=0.50 (40.0s)
+  Team 0 sigma=[1. 0. 0.] NashConv=0.0000 H_task=1.386 effK=1.00
+  Team 1 sigma=[1. 0. 0.] NashConv=0.0000 H_task=1.386 effK=1.00
+  Training main (team 0, p0000) against p0004...
+    ep 1/2  steps=100 timeout  wr=0.00  avg_r=6.1375

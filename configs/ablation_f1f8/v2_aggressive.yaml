@@ -17,6 +17,18 @@
 task_type: laser
 sub_array_size: 5
 
+# ════════════════════════════════════════════════════════════════════
+# VARIANT v2 — AGGRESSIVE: lift kill_bonus AND suppress dominant shaping
+# terms so kill signal dominates the value target.
+#   kill_bonus:        100 → 20000  (200× lift)
+#   illum_reward_weight:    50 → 5   (10× reduction — was cumulative 200× kill)
+#   fire_commitment_weight: 8 → 1    (8× reduction — was overpowering aim signal)
+#   beam_guidance_weight:   5 → 1    (5× reduction — too flat to drive learning)
+# Purpose: test if SUPPRESSION + LIFT works better than lift alone.
+# Expected: kill becomes dominant signal → faster policy_loss recovery,
+#           kill_rate rise, possibly at cost of early entropy collapse.
+# ════════════════════════════════════════════════════════════════════
+
 league:
   population_cap: 12           # 3 roles × 2 teams × 2 generations
   n_eval_games: 8              # enough for stable payoff (per pair)
@@ -29,8 +41,8 @@ league:
   exploiter_reset_prob: 0.1
   episodes_per_training: 10
   max_steps_per_episode: 500   # 500 pulses = 50ms dwell window (proven)
-  checkpoint_dir: "checkpoints/laser_pro6000_league"
-  use_elo_band: true           # AlphaStar Elo-band PFSP sampler
+  checkpoint_dir: "checkpoints/laser_pro6000_league_v2_aggressive"
+  use_elo_band: false          # F-ablation: bypass Elo-band (re-introduces R3 PFSP bug); use pure PFSP
   elo_band_init: 400.0
   elo_band_final: 100.0
   elo_anneal_iters: 18
@@ -69,16 +81,15 @@ ppo:
 training:
   psro_iterations: 24          # Match baseline horizon
   kill_radius_init: 50.0       # Success-gated → 0.2m via _anneal_kill_radius
-  kill_rate_threshold: 0.5     # tighten only if eval shows decisive kills
-  kill_radius_decay: 0.5       # halve when threshold met
+  kill_rate_threshold: 0.7     # F-ablation: stricter gate (was 0.5)
+  kill_radius_decay: 0.7       # F-ablation: slower descent (was 0.5)
+  reward_normalize: false      # v4 control: F8 disabled
   residual_aim: true
   residual_scale_m: 6.0
   hybrid_fire: true
   decouple_value: true
-  # Tier 1.3: bias fire head toward fire_on at init (logit=+1 → ~73% fire prob).
-  # Combined with Tier 1.2's fire_commitment_weight, lets policy discover
-  # sustained-fire reward within ~2 episodes instead of ~20.
-  fire_init_logit: 1.0
+  # v2 ablation: fire_init_logit=0.0 — kill the "training-before-kill" artifact.
+  fire_init_logit: 0.0
   # F3: floor on commander log_std. -3.0 → σ ≥ 0.05 (~50m at 3km half_map).
   # Prevents the σ ≈ 2.5e-3 collapse that amplifies residual-aim log_prob
   # spikes into NaN crashes (LASER_LEAGUE_NAN_FULL_ANALYSIS §5).
@@ -92,21 +103,25 @@ reward_shaping:
   detect_snr_weight: 0.1
   beam_accuracy_weight: 5.0
   illumination_progress_weight: 1.0
-  kill_bonus: 100.0
+  kill_bonus: 100000.0           # v2: 100→100000 (lower than v4 because shaping suppressed)
   death_penalty: -10.0
   emission_cost: -0.001
   snr_threshold_db: 10.0
   team_reward_weight: 0.1
   team_kill_weight: 1.0
-  beam_guidance_weight: 5.0
-  illum_reward_weight: 50.0
+  beam_guidance_weight: 1.0       # v2: 5→1 (too flat to drive learning)
+  illum_reward_weight: 5.0        # v2: 50→5 (was cumulative 200× kill)
   fire_lock_bonus: 5.0
   misfire_penalty: 0.5
   # Tier 1.2: Fire-commitment reward (attacks "50% Bernoulli fire head never
   # sustains 4 control steps" failure mode).
-  fire_commitment_weight: 8.0
+  fire_commitment_weight: 15.0    # v2 ablation: 8→15 (stronger than v4 to compensate for shaping suppression)
   fire_commitment_cap: 4.0   # 4 control steps × 5 pulses = 20 pulses = 2ms dwell
   fire_commitment_exp: 2.0
+  # v2 ablation: aim-progress reward DOMINANT (50 vs 20 in v4) — dart-board signal
+  # is the primary teacher when shaping is suppressed.
+  aim_progress_weight: 50.0
+  aim_progress_clip_m: 500.0
   # Tier 1.2: Superlinear sustained-dwell exponent (2 = quadratic, 3 = cubic)
   illum_dwell_exp: 2.0
   beam_r_ref_m: 3000.0

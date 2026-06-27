@@ -1,0 +1,185 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 102.0 GB
+FluxPhased League Training
+Config: configs/ablation_f1f8/v3_scaling.yaml
+Device: cuda
+Environment: E=12, R=4, N=625, P=4, bins=64
+State dim: 163783, Action dim: 13753
+[wandb] wandb not available; skipping logging
+Warp 1.10.1 initialized:
+   CUDA Toolkit 12.8, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Workstation Edition" (95 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/ubuntu/.cache/warp/1.10.1
+[League] kill_radius initialized at 50.000m (will anneal toward 0.200m)
+
+============================================================
+PSRO Iteration 0/24
+============================================================
+[League] Iteration 0: Evaluating payoff matrix...
+  [payoff] p0000 vs p0003 (1/9)... Module radar_sim.gpu.vec_channel 6a2afee load on device 'cuda:0' took 0.40 ms  (cached)
+Module radar_sim.gpu.vec_array 0e899e2 load on device 'cuda:0' took 29.44 ms  (cached)
+[fused_sensing] warm-start done: err_x=0.028m err_y=0.014m (track_burnin=120, q=0.02)
+[aim-dbg t=0] aim_z_avg=1.6m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.833
+[fused_sensing] warm-start done: err_x=0.020m err_y=0.016m (track_burnin=120, q=0.02)
+[aim-dbg t=1] aim_z_avg=1.2m  |res_x|=0.001  |res_y|=0.001  fire_logit=1.000
+win_rate=0.62 (6.1s)
+  [payoff] p0000 vs p0004 (2/9)... [fused_sensing] warm-start done: err_x=0.032m err_y=0.018m (track_burnin=120, q=0.02)
+[fused_sensing] warm-start done: err_x=0.035m err_y=0.018m (track_burnin=120, q=0.02)
+[aim-dbg t=1] aim_z_avg=0.5m  |res_x|=0.001  |res_y|=0.001  fire_logit=-0.333
+[aim-dbg t=0] aim_z_avg=1.3m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.000
+[aim-dbg t=1] aim_z_avg=0.6m  |res_x|=0.001  |res_y|=0.001  fire_logit=-0.167
+[aim-dbg t=0] aim_z_avg=1.6m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.000
+    step 100: alive=7 red_wins=1/1 wr_sofar=1.00
+[aim-dbg t=1] aim_z_avg=0.7m  |res_x|=0.001  |res_y|=0.001  fire_logit=-0.167
+[aim-dbg t=0] aim_z_avg=1.3m  |res_x|=0.001  |res_y|=0.001  fire_logit=-0.333
+[aim-dbg t=1] aim_z_avg=0.8m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.000
+[aim-dbg t=0] aim_z_avg=1.7m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.000
+    step 200: alive=7 red_wins=1/1 wr_sofar=1.00
+[aim-dbg t=1] aim_z_avg=0.6m  |res_x|=0.001  |res_y|=0.001  fire_logit=-0.167
+[aim-dbg t=0] aim_z_avg=1.5m  |res_x|=0.001  |res_y|=0.001  fire_logit=-0.333
+[aim-dbg t=1] aim_z_avg=0.5m  |res_x|=0.001  |res_y|=0.002  fire_logit=0.000
+[aim-dbg t=0] aim_z_avg=1.5m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.167
+    step 300: alive=7 red_wins=1/1 wr_sofar=1.00
+[aim-dbg t=1] aim_z_avg=0.5m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.000
+[aim-dbg t=0] aim_z_avg=1.6m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.000
+[aim-dbg t=1] aim_z_avg=0.6m  |res_x|=0.001  |res_y|=0.002  fire_logit=0.167
+[aim-dbg t=0] aim_z_avg=1.7m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.333
+    step 400: alive=7 red_wins=1/1 wr_sofar=1.00
+[aim-dbg t=1] aim_z_avg=0.8m  |res_x|=0.001  |res_y|=0.002  fire_logit=0.000
+[aim-dbg t=0] aim_z_avg=1.5m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.000
+[aim-dbg t=1] aim_z_avg=0.7m  |res_x|=0.001  |res_y|=0.002  fire_logit=0.333
+[aim-dbg t=0] aim_z_avg=1.4m  |res_x|=0.001  |res_y|=0.001  fire_logit=-0.333
+    [p0000 vs p0004] final-step illumination_progress: team0=0.0292 team1=0.0500 (max t0=0.1000 t1=0.4000)
+win_rate=0.69 (117.9s)
+  [payoff] p0000 vs p0005 (3/9)... [fused_sensing] warm-start done: err_x=0.033m err_y=0.020m (track_burnin=120, q=0.02)
+[fused_sensing] warm-start done: err_x=0.031m err_y=0.021m (track_burnin=120, q=0.02)
+[aim-dbg t=1] aim_z_avg=1.0m  |res_x|=0.000  |res_y|=0.001  fire_logit=1.000
+win_rate=0.25 (5.7s)
+  [payoff] p0001 vs p0003 (4/9)... [fused_sensing] warm-start done: err_x=0.037m err_y=0.014m (track_burnin=120, q=0.02)
+[aim-dbg t=0] aim_z_avg=1.2m  |res_x|=0.001  |res_y|=0.002  fire_logit=0.833
+[fused_sensing] warm-start done: err_x=0.040m err_y=0.016m (track_burnin=120, q=0.02)
+[aim-dbg t=1] aim_z_avg=0.8m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.667
+[aim-dbg t=0] aim_z_avg=0.6m  |res_x|=0.001  |res_y|=0.001  fire_logit=1.000
+win_rate=0.88 (16.9s)
+  [payoff] p0001 vs p0004 (5/9)... [fused_sensing] warm-start done: err_x=0.030m err_y=0.011m (track_burnin=120, q=0.02)
+[fused_sensing] warm-start done: err_x=0.032m err_y=0.022m (track_burnin=120, q=0.02)
+[aim-dbg t=1] aim_z_avg=0.5m  |res_x|=0.001  |res_y|=0.001  fire_logit=-0.667
+[aim-dbg t=0] aim_z_avg=0.3m  |res_x|=0.001  |res_y|=0.001  fire_logit=1.000
+[aim-dbg t=1] aim_z_avg=0.8m  |res_x|=0.001  |res_y|=0.002  fire_logit=-0.167
+[aim-dbg t=0] aim_z_avg=0.4m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.833
+    step 100: alive=1 red_wins=7/7 wr_sofar=1.00
+[aim-dbg t=1] aim_z_avg=0.7m  |res_x|=0.001  |res_y|=0.001  fire_logit=-0.500
+[aim-dbg t=0] aim_z_avg=0.4m  |res_x|=0.001  |res_y|=0.001  fire_logit=1.000
+[aim-dbg t=1] aim_z_avg=0.7m  |res_x|=0.001  |res_y|=0.002  fire_logit=-0.167
+[aim-dbg t=0] aim_z_avg=0.4m  |res_x|=0.000  |res_y|=0.001  fire_logit=1.000
+    step 200: alive=1 red_wins=7/7 wr_sofar=1.00
+[aim-dbg t=1] aim_z_avg=0.8m  |res_x|=0.001  |res_y|=0.001  fire_logit=-0.167
+[aim-dbg t=0] aim_z_avg=0.4m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.833
+[aim-dbg t=1] aim_z_avg=0.8m  |res_x|=0.001  |res_y|=0.001  fire_logit=-0.500
+[aim-dbg t=0] aim_z_avg=0.4m  |res_x|=0.001  |res_y|=0.001  fire_logit=1.000
+    step 300: alive=1 red_wins=7/7 wr_sofar=1.00
+[aim-dbg t=1] aim_z_avg=0.7m  |res_x|=0.001  |res_y|=0.001  fire_logit=-0.167
+[aim-dbg t=0] aim_z_avg=0.4m  |res_x|=0.000  |res_y|=0.001  fire_logit=1.000
+[aim-dbg t=1] aim_z_avg=0.8m  |res_x|=0.001  |res_y|=0.001  fire_logit=-0.500
+win_rate=1.00 (88.7s)
+  [payoff] p0001 vs p0005 (6/9)... [fused_sensing] warm-start done: err_x=0.044m err_y=0.022m (track_burnin=120, q=0.02)
+[fused_sensing] warm-start done: err_x=0.033m err_y=0.013m (track_burnin=120, q=0.02)
+win_rate=1.00 (5.6s)
+  [payoff] p0002 vs p0003 (7/9)... [fused_sensing] warm-start done: err_x=0.048m err_y=0.021m (track_burnin=120, q=0.02)
+[aim-dbg t=0] aim_z_avg=1.4m  |res_x|=0.002  |res_y|=0.001  fire_logit=0.500
+[fused_sensing] warm-start done: err_x=0.035m err_y=0.017m (track_burnin=120, q=0.02)
+[aim-dbg t=1] aim_z_avg=0.9m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.500
+[aim-dbg t=0] aim_z_avg=1.5m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.333
+[aim-dbg t=1] aim_z_avg=0.9m  |res_x|=0.002  |res_y|=0.001  fire_logit=0.333
+    step 100: alive=1 red_wins=4/7 wr_sofar=0.57
+[aim-dbg t=0] aim_z_avg=1.5m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.167
+[aim-dbg t=1] aim_z_avg=0.8m  |res_x|=0.002  |res_y|=0.001  fire_logit=0.500
+[aim-dbg t=0] aim_z_avg=1.6m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.500
+[aim-dbg t=1] aim_z_avg=0.9m  |res_x|=0.002  |res_y|=0.001  fire_logit=0.333
+    step 200: alive=1 red_wins=4/7 wr_sofar=0.57
+[aim-dbg t=0] aim_z_avg=1.6m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.500
+[aim-dbg t=1] aim_z_avg=0.9m  |res_x|=0.002  |res_y|=0.001  fire_logit=0.500
+[aim-dbg t=0] aim_z_avg=1.6m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.333
+[aim-dbg t=1] aim_z_avg=0.8m  |res_x|=0.002  |res_y|=0.001  fire_logit=0.333
+    step 300: alive=1 red_wins=4/7 wr_sofar=0.57
+[aim-dbg t=0] aim_z_avg=1.6m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.500
+[aim-dbg t=1] aim_z_avg=0.8m  |res_x|=0.002  |res_y|=0.001  fire_logit=0.333
+[aim-dbg t=0] aim_z_avg=1.5m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.333
+[aim-dbg t=1] aim_z_avg=0.8m  |res_x|=0.002  |res_y|=0.001  fire_logit=0.333
+    step 400: alive=1 red_wins=4/7 wr_sofar=0.57
+[aim-dbg t=0] aim_z_avg=1.5m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.167
+[aim-dbg t=1] aim_z_avg=0.9m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.333
+[aim-dbg t=0] aim_z_avg=1.6m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.500
+[aim-dbg t=1] aim_z_avg=0.8m  |res_x|=0.002  |res_y|=0.001  fire_logit=0.333
+    [p0002 vs p0003] final-step illumination_progress: team0=0.0083 team1=0.0042 (max t0=0.1000 t1=0.0500)
+win_rate=0.56 (117.8s)
+  [payoff] p0002 vs p0004 (8/9)... [fused_sensing] warm-start done: err_x=0.045m err_y=0.023m (track_burnin=120, q=0.02)
+[aim-dbg t=0] aim_z_avg=1.7m  |res_x|=0.002  |res_y|=0.001  fire_logit=-0.167
+[fused_sensing] warm-start done: err_x=0.036m err_y=0.015m (track_burnin=120, q=0.02)
+[aim-dbg t=1] aim_z_avg=1.0m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.000
+[aim-dbg t=0] aim_z_avg=2.2m  |res_x|=0.001  |res_y|=0.001  fire_logit=-0.667
+[aim-dbg t=1] aim_z_avg=0.8m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.167
+    step 100: alive=6 red_wins=1/2 wr_sofar=0.50
+[aim-dbg t=0] aim_z_avg=2.3m  |res_x|=0.001  |res_y|=0.001  fire_logit=-0.833
+[aim-dbg t=1] aim_z_avg=1.0m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.000
+[aim-dbg t=0] aim_z_avg=2.2m  |res_x|=0.001  |res_y|=0.001  fire_logit=-0.667
+[aim-dbg t=1] aim_z_avg=1.1m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.333
+    step 200: alive=6 red_wins=1/2 wr_sofar=0.50
+[aim-dbg t=0] aim_z_avg=2.2m  |res_x|=0.001  |res_y|=0.001  fire_logit=-0.833
+[aim-dbg t=1] aim_z_avg=0.9m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.167
+[aim-dbg t=0] aim_z_avg=2.3m  |res_x|=0.001  |res_y|=0.001  fire_logit=-0.667
+[aim-dbg t=1] aim_z_avg=0.7m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.500
+    step 300: alive=6 red_wins=1/2 wr_sofar=0.50
+[aim-dbg t=0] aim_z_avg=2.3m  |res_x|=0.001  |res_y|=0.001  fire_logit=-0.500
+[aim-dbg t=1] aim_z_avg=0.9m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.333
+[aim-dbg t=0] aim_z_avg=2.3m  |res_x|=0.001  |res_y|=0.001  fire_logit=-0.500
+[aim-dbg t=1] aim_z_avg=0.9m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.000
+    step 400: alive=6 red_wins=1/2 wr_sofar=0.50
+[aim-dbg t=0] aim_z_avg=2.3m  |res_x|=0.001  |res_y|=0.001  fire_logit=-0.667
+[aim-dbg t=1] aim_z_avg=1.0m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.167
+[aim-dbg t=0] aim_z_avg=2.3m  |res_x|=0.001  |res_y|=0.001  fire_logit=-0.667
+[aim-dbg t=1] aim_z_avg=0.9m  |res_x|=0.001  |res_y|=0.001  fire_logit=0.333
+    [p0002 vs p0004] final-step illumination_progress: team0=0.0125 team1=0.0375 (max t0=0.1500 t1=0.1500)
+win_rate=0.38 (118.2s)
+  [payoff] p0002 vs p0005 (9/9)... [fused_sensing] warm-start done: err_x=0.035m err_y=0.018m (track_burnin=120, q=0.02)
+[aim-dbg t=0] aim_z_avg=1.1m  |res_x|=0.002  |res_y|=0.001  fire_logit=0.000
+[fused_sensing] warm-start done: err_x=0.025m err_y=0.020m (track_burnin=120, q=0.02)
+win_rate=0.12 (6.8s)
+  Team 0 sigma=[0. 1. 0.] NashConv=0.0000 H_task=1.386 effK=1.00
+  Team 1 sigma=[1. 0. 0.] NashConv=0.2292 H_task=1.386 effK=1.00
+  Training main (team 0, p0000) against self...
+[reset_episode] trainer=129830355184960 task=laser → resetting kalman_tracker
+[reset_episode] trainer=129830355184960 task=laser → resetting kalman_tracker
+[fused_sensing] warm-start done: err_x=0.032m err_y=0.016m (track_burnin=120, q=0.02)
+[aim-dbg t=0] aim_z_avg=256.1m  |res_x|=0.254  |res_y|=0.194  fire_logit=-0.833
+      [PPO] main-t0 ep0 step43 cmd(pl=-0.0081 vl=7.0439 ent=2.3666) rad(pl=0.0265 vl=56892.5898 ent=321.3444)
+[aim-dbg t=0] aim_z_avg=356.4m  |res_x|=0.349  |res_y|=0.393  fire_logit=0.333
+[aim-dbg t=0] aim_z_avg=313.2m  |res_x|=0.189  |res_y|=0.254  fire_logit=-0.333
+      [PPO] main-t0 ep0 step85 cmd(pl=-0.0044 vl=4.7302 ent=2.3597) rad(pl=0.0180 vl=52076.4303 ent=321.6684)
+[aim-dbg t=0] aim_z_avg=230.2m  |res_x|=0.191  |res_y|=0.280  fire_logit=-0.167
+[aim-dbg t=0] aim_z_avg=299.0m  |res_x|=0.386  |res_y|=0.287  fire_logit=0.833
+      [PPO] main-t0 ep0 step127 cmd(pl=-0.0016 vl=6.2934 ent=2.3540) rad(pl=0.0034 vl=51295.8626 ent=321.7987)
+[aim-dbg t=0] aim_z_avg=350.7m  |res_x|=0.282  |res_y|=0.251  fire_logit=0.000
+[aim-dbg t=0] aim_z_avg=218.7m  |res_x|=0.236  |res_y|=0.248  fire_logit=0.333
+      [PPO] main-t0 ep0 step169 cmd(pl=-0.0045 vl=6.9035 ent=2.3374) rad(pl=-0.0017 vl=48939.0632 ent=321.8569)
+[aim-dbg t=0] aim_z_avg=325.2m  |res_x|=0.263  |res_y|=0.243  fire_logit=-0.333
+      [PPO] main-t0 ep0 step211 cmd(pl=0.0012 vl=7.3457 ent=2.3248) rad(pl=0.0021 vl=47507.1315 ent=321.8850)
+[aim-dbg t=0] aim_z_avg=163.9m  |res_x|=0.208  |res_y|=0.198  fire_logit=-0.167
+[aim-dbg t=0] aim_z_avg=203.9m  |res_x|=0.353  |res_y|=0.204  fire_logit=-0.667
+      [PPO] main-t0 ep0 step253 cmd(pl=-0.0071 vl=6.1271 ent=2.3390) rad(pl=-0.0002 vl=45402.1478 ent=321.8865)
+[aim-dbg t=0] aim_z_avg=355.8m  |res_x|=0.339  |res_y|=0.218  fire_logit=0.167
+[aim-dbg t=0] aim_z_avg=258.0m  |res_x|=0.264  |res_y|=0.274  fire_logit=0.000
+      [PPO] main-t0 ep0 step295 cmd(pl=0.0005 vl=5.3421 ent=2.3525) rad(pl=-0.0024 vl=44136.3158 ent=321.8928)
+[aim-dbg t=0] aim_z_avg=255.7m  |res_x|=0.334  |res_y|=0.287  fire_logit=0.667
+      [PPO] main-t0 ep0 step337 cmd(pl=-0.0008 vl=5.0481 ent=2.3544) rad(pl=-0.0005 vl=42300.6979 ent=321.8251)
+[aim-dbg t=0] aim_z_avg=283.0m  |res_x|=0.233  |res_y|=0.284  fire_logit=0.000
+[aim-dbg t=0] aim_z_avg=268.5m  |res_x|=0.300  |res_y|=0.312  fire_logit=-0.500
+      [PPO] main-t0 ep0 step379 cmd(pl=-0.0003 vl=4.6719 ent=2.3483) rad(pl=-0.0018 vl=40950.3581 ent=321.8267)
+[aim-dbg t=0] aim_z_avg=350.9m  |res_x|=0.331  |res_y|=0.321  fire_logit=-0.333
+[aim-dbg t=0] aim_z_avg=384.6m  |res_x|=0.323  |res_y|=0.277  fire_logit=0.167
+      [PPO] main-t0 ep0 step421 cmd(pl=-0.0004 vl=7.6670 ent=2.3450) rad(pl=-0.0006 vl=39544.6927 ent=321.8345)
+[aim-dbg t=0] aim_z_avg=272.8m  |res_x|=0.172  |res_y|=0.412  fire_logit=0.000

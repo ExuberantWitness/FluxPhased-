@@ -8,6 +8,37 @@ import torch
 import numpy as np
 
 
+class RunningMeanStd:
+    """Numerically stable running mean/var (Welford's algorithm).
+
+    Used by F8 (return-based scaling) to normalize reward magnitudes
+    across batches. Reward scale imbalance (e.g. kill_bonus=100 vs
+    shaping ~20000) collapses value learning without this.
+    """
+
+    def __init__(self, shape=()):
+        self.mean = np.zeros(shape, dtype=np.float64)
+        self.var = np.ones(shape, dtype=np.float64)
+        self.count = 1e-4
+
+    def update(self, x: np.ndarray):
+        batch_mean = np.mean(x)
+        batch_var = np.var(x)
+        batch_count = x.shape[0] if x.ndim > 0 else 1
+        self._update_from_moments(batch_mean, batch_var, batch_count)
+
+    def _update_from_moments(self, bm, bv, bc):
+        delta = bm - self.mean
+        tot = self.count + bc
+        new_mean = self.mean + delta * bc / tot
+        m_a = self.var * self.count
+        m_b = bv * bc
+        M2 = m_a + m_b + np.square(delta) * self.count * bc / tot
+        self.mean = new_mean
+        self.var = M2 / tot
+        self.count = tot
+
+
 class RolloutBuffer:
     """On-policy rollout buffer for PPO training.
 
@@ -23,6 +54,7 @@ class RolloutBuffer:
         gae_lambda: float = 0.95,
         device: str = "cuda",
         privileged_dim: int = 0,
+        reward_normalize: bool = False,  # F8: return-based scaling
     ):
         self.buffer_size = buffer_size
         self.gamma = gamma
@@ -31,6 +63,9 @@ class RolloutBuffer:
         self.obs_dim = obs_dim
         self.act_dim = act_dim
         self.privileged_dim = privileged_dim
+        # F8: running reward stats for return-based scaling
+        self.reward_normalize = reward_normalize
+        self.reward_rms = RunningMeanStd() if reward_normalize else None
 
         self.reset()
 
@@ -114,6 +149,14 @@ class RolloutBuffer:
         """
         if last_privileged_value is None:
             last_privileged_value = last_value
+
+        # F8: return-based scaling — normalize rewards by running std before
+        # GAE so value targets stay O(1). Without this, kill_bonus=100 vs
+        # shaping=20000 produces value_loss ~2-3M and value head never converges.
+        if self.reward_normalize and self.reward_rms is not None and self.ptr > 0:
+            self.reward_rms.update(self.rewards[:self.ptr].numpy())
+            std = float(np.sqrt(self.reward_rms.var + 1e-8))
+            self.rewards[:self.ptr] = self.rewards[:self.ptr] / std
 
         gae = 0.0
         for t in reversed(range(self.ptr)):

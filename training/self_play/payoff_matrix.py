@@ -63,6 +63,13 @@ class PayoffMatrix:
         # a kill (higher progress) wins. Without this, every timeout collapses
         # to 0.5 and the league's payoff matrix becomes uninformative.
         self._last_step_progress = None
+        # F7: periodic re-evaluation of frozen pairs. Without this, PFSP/Elo
+        # priorities ossify at first-observation values — AlphaStar uses
+        # dedicated evaluator workers to keep the matrix current. Set to 0
+        # to disable (legacy behavior); 3 = re-eval every 3 iters.
+        self.re_eval_interval: int = 3
+        self._eval_iter: Dict[Tuple[str, str], int] = {}
+        self._iteration_counter: int = 0
 
     def _accumulate_fingerprint(self, policy_id: str, fp: np.ndarray) -> None:
         """Update running mean of policy_id's task fingerprint with one sample fp [4]."""
@@ -222,14 +229,22 @@ class PayoffMatrix:
 
         total_pairs = len(red_policies) * len(blue_policies)
         n_done = 0
-        # Track the BEST kill_rate across all pairs evaluated this iteration.
-        # For kill_radius curriculum, we tighten when ANY pair demonstrates
-        # the policy can reliably land decisive wins — not the average.
+        # F3: reset iteration-level kill signal at top of evaluate_all so a
+        # zero-kill iter no longer inherits the previous iter's stale value.
         max_kill_rate = 0.0
+        self._iteration_counter += 1
         for r_id in red_policies:
             for b_id in blue_policies:
                 key = (r_id, b_id)
-                if key not in self.matrix:
+                # F7: re-evaluate pairs whose last eval was > re_eval_interval
+                # iters ago, so PFSP priorities don't ossify at first-observation
+                # values. AlphaStar uses dedicated evaluator workers; we approximate.
+                should_eval = key not in self.matrix
+                if not should_eval and self.re_eval_interval > 0:
+                    last_eval_iter = self._eval_iter.get(key, 0)
+                    if self._iteration_counter - last_eval_iter >= self.re_eval_interval:
+                        should_eval = True
+                if should_eval:
                     r_trainer = trainers.get(r_id)
                     b_trainer = trainers.get(b_id)
                     if r_trainer and b_trainer:
@@ -241,10 +256,11 @@ class PayoffMatrix:
                         win_rate = self.matrix.get(key, 0.5)
                         print(f"win_rate={win_rate:.2f} ({elapsed:.1f}s)", flush=True)
                         max_kill_rate = max(max_kill_rate, self.last_kill_rate)
+                        self._eval_iter[key] = self._iteration_counter
                 n_done += 1
-        # Publish the iteration-level kill signal (best pair).
-        if max_kill_rate > 0.0:
-            self.last_kill_rate = max_kill_rate
+        # F3: always update last_kill_rate (was conditional on max > 0,
+        # which made it sticky and triggered spurious annealing decisions).
+        self.last_kill_rate = max_kill_rate
 
     def get_submatrix(self, team: int, exclude_roles: Optional[List[str]] = None) -> np.ndarray:
         """Get payoff submatrix for one team's perspective.

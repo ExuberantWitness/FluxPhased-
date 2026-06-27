@@ -1,0 +1,118 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 102.0 GB
+[config] override training.psro_iterations=4
+[config] override env.num_envs=8
+[config] override league.episodes_per_training=3
+[config] override league.max_steps_per_episode=50
+[config] override league.n_eval_games=4
+[config] override ppo.shared.batch_size=64
+[config] override ppo.shared.buffer_size_radar=128
+[config] override ppo.shared.buffer_size_commander=128
+FluxPhased League Training
+Config: configs/laser_25x25_pro6000_league.yaml
+Device: cuda
+Environment: E=8, R=4, N=625, P=4, bins=64
+State dim: 163783, Action dim: 13753
+[wandb] wandb not available; skipping logging
+Warp 1.10.1 initialized:
+   CUDA Toolkit 12.8, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Workstation Edition" (95 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/ubuntu/.cache/warp/1.10.1
+[League] kill_radius initialized at 50.000m (will anneal toward 0.200m)
+
+============================================================
+PSRO Iteration 0/4
+============================================================
+[League] Iteration 0: Evaluating payoff matrix...
+  [payoff] p0000 vs p0003 (1/9)... Module radar_sim.gpu.vec_channel 6a2afee load on device 'cuda:0' took 0.42 ms  (cached)
+Module radar_sim.gpu.vec_array 0e899e2 load on device 'cuda:0' took 1.23 ms  (cached)
+win_rate=0.50 (37.6s)
+  [payoff] p0000 vs p0004 (2/9)... win_rate=0.50 (37.2s)
+  [payoff] p0000 vs p0005 (3/9)... win_rate=0.50 (37.3s)
+  [payoff] p0001 vs p0003 (4/9)... win_rate=0.50 (37.4s)
+  [payoff] p0001 vs p0004 (5/9)... win_rate=0.50 (37.3s)
+  [payoff] p0001 vs p0005 (6/9)... win_rate=0.50 (37.1s)
+  [payoff] p0002 vs p0003 (7/9)... win_rate=0.50 (37.4s)
+  [payoff] p0002 vs p0004 (8/9)... win_rate=0.50 (37.5s)
+  [payoff] p0002 vs p0005 (9/9)... win_rate=0.50 (37.4s)
+  Team 0 sigma=[1. 0. 0.] NashConv=0.0000 H_task=1.386 effK=1.00
+  Team 1 sigma=[1. 0. 0.] NashConv=0.0000 H_task=1.386 effK=1.00
+  Training main (team 0, p0000) against p0004...
+    ep 1/3  steps=50 timeout  wr=0.00  avg_r=4.4811
+    ep 2/3  steps=50 timeout  wr=0.00  avg_r=6.9858
+    ep 3/3  steps=50 timeout  wr=0.00  avg_r=6.0088
+  Training main_exploiter (team 0, p0001) against p0003...
+    ep 1/3  steps=50 timeout  wr=0.00  avg_r=28.3105
+    ep 2/3  steps=50 timeout  wr=0.00  avg_r=29.5509
+    ep 3/3  steps=50 timeout  wr=0.00  avg_r=27.4163
+  Training league_exploiter (team 0, p0002) against p0005...
+    ep 1/3  steps=50 timeout  wr=0.00  avg_r=50.0310
+    ep 2/3  steps=50 timeout  wr=0.00  avg_r=38.5955
+    ep 3/3  steps=50 timeout  wr=0.00  avg_r=36.3099
+  Training main (team 1, p0003) against p0000...
+    ep 1/3  steps=50 timeout  wr=0.00  avg_r=60.7393
+    ep 2/3  steps=50 timeout  wr=0.00  avg_r=64.5697
+    ep 3/3  steps=50 timeout  wr=0.00  avg_r=56.9750
+  Training main_exploiter (team 1, p0004) against p0006...
+    ep 1/3  steps=50 timeout  wr=0.00  avg_r=70.9866
+    ep 2/3  steps=50 timeout  wr=0.00  avg_r=69.4904
+    ep 3/3  steps=50 timeout  wr=0.00  avg_r=69.8698
+  Training league_exploiter (team 1, p0005) against p0000...
+    ep 1/3  steps=50 timeout  wr=0.00  avg_r=69.7765
+    ep 2/3  steps=50 timeout  wr=0.00  avg_r=70.5311
+    ep 3/3  steps=50 timeout  wr=0.00  avg_r=67.1579
+[League] Iteration 0 complete in 1023.7s
+[League] alpha=0.000 (schedule=linear) beta_kl=0.100
+[League] kill_radius hold at 50.000m (kill_rate=0.00 < 0.5)
+  Checkpoint saved at iteration 0
+
+============================================================
+PSRO Iteration 1/4
+============================================================
+[League] Iteration 1: Evaluating payoff matrix...
+  [payoff] p0000 vs p0009 (4/36)... win_rate=0.50 (37.5s)
+  [payoff] p0000 vs p0010 (5/36)... win_rate=0.50 (37.4s)
+  [payoff] p0000 vs p0011 (6/36)... win_rate=0.50 (37.3s)
+  [payoff] p0001 vs p0009 (10/36)... win_rate=0.50 (37.3s)
+  [payoff] p0001 vs p0010 (11/36)... win_rate=0.50 (37.5s)
+  [payoff] p0001 vs p0011 (12/36)... win_rate=0.50 (37.5s)
+  [payoff] p0002 vs p0009 (16/36)... win_rate=0.50 (37.5s)
+  [payoff] p0002 vs p0010 (17/36)... win_rate=0.50 (37.4s)
+  [payoff] p0002 vs p0011 (18/36)... win_rate=0.50 (37.3s)
+  [payoff] p0006 vs p0003 (19/36)... win_rate=0.50 (37.3s)
+  [payoff] p0006 vs p0004 (20/36)... win_rate=0.50 (37.2s)
+  [payoff] p0006 vs p0005 (21/36)... win_rate=0.50 (37.5s)
+  [payoff] p0006 vs p0009 (22/36)... win_rate=0.50 (37.4s)
+  [payoff] p0006 vs p0010 (23/36)... win_rate=0.50 (37.5s)
+  [payoff] p0006 vs p0011 (24/36)... win_rate=0.50 (37.3s)
+  [payoff] p0007 vs p0003 (25/36)... win_rate=0.50 (37.5s)
+  [payoff] p0007 vs p0004 (26/36)... win_rate=0.50 (37.6s)
+  [payoff] p0007 vs p0005 (27/36)... win_rate=0.50 (37.3s)
+  [payoff] p0007 vs p0009 (28/36)... win_rate=0.50 (37.5s)
+  [payoff] p0007 vs p0010 (29/36)... win_rate=0.50 (37.3s)
+  [payoff] p0007 vs p0011 (30/36)... win_rate=0.50 (37.4s)
+  [payoff] p0008 vs p0003 (31/36)... win_rate=0.50 (37.2s)
+  [payoff] p0008 vs p0004 (32/36)... win_rate=0.50 (37.5s)
+  [payoff] p0008 vs p0005 (33/36)... win_rate=0.50 (37.1s)
+  [payoff] p0008 vs p0009 (34/36)... win_rate=0.50 (37.2s)
+  [payoff] p0008 vs p0010 (35/36)... win_rate=0.50 (37.7s)
+  [payoff] p0008 vs p0011 (36/36)... win_rate=0.50 (37.5s)
+  Team 0 sigma=[1. 0. 0. 0. 0. 0.] NashConv=0.0000 H_task=1.386 effK=1.00
+  Team 1 sigma=[1. 0. 0. 0. 0. 0.] NashConv=0.0000 H_task=1.386 effK=1.00
+  Training main (team 0, p0000) against p0009...
+    ep 1/3  steps=50 timeout  wr=0.00  avg_r=7.3619
+    ep 2/3  steps=50 timeout  wr=0.00  avg_r=7.9720
+    ep 3/3  steps=50 timeout  wr=0.00  avg_r=9.6876
+  Training league_exploiter (team 0, p0002) against p0010...
+    ep 1/3  steps=50 timeout  wr=0.00  avg_r=13.0032
+    ep 2/3  steps=50 timeout  wr=0.00  avg_r=17.7999
+    ep 3/3  steps=50 timeout  wr=0.00  avg_r=21.8133
+  Training main (team 1, p0003) against p0013...
+    ep 1/3  steps=50 timeout  wr=0.00  avg_r=1.2223
+    ep 2/3  steps=50 timeout  wr=0.00  avg_r=3.2479
+    ep 3/3  steps=50 timeout  wr=0.00  avg_r=1.6291
+  Training main_exploiter (team 1, p0004) against p0012...

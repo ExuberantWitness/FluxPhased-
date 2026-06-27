@@ -1,0 +1,86 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 102.0 GB
+FluxPhased League Training
+Config: configs/ablation_f1f8/v5a_big_residual.yaml
+Device: cuda
+Environment: E=12, R=4, N=625, P=4, bins=64
+State dim: 163783, Action dim: 13753
+[wandb] wandb not available; skipping logging
+Warp 1.10.1 initialized:
+   CUDA Toolkit 12.8, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Workstation Edition" (95 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/ubuntu/.cache/warp/1.10.1
+[League] kill_radius initialized at 50.000m (will anneal toward 0.200m)
+
+============================================================
+PSRO Iteration 0/24
+============================================================
+[League] Iteration 0: Evaluating payoff matrix...
+  [payoff] p0000 vs p0003 (1/9)... Module radar_sim.gpu.vec_channel 6a2afee load on device 'cuda:0' took 0.42 ms  (cached)
+Module radar_sim.gpu.vec_array 0e899e2 load on device 'cuda:0' took 29.42 ms  (cached)
+win_rate=0.62 (6.0s)
+  [payoff] p0000 vs p0004 (2/9)...     step 100: alive=7 red_wins=1/1 wr_sofar=1.00
+    step 200: alive=7 red_wins=1/1 wr_sofar=1.00
+    step 300: alive=7 red_wins=1/1 wr_sofar=1.00
+    step 400: alive=7 red_wins=1/1 wr_sofar=1.00
+    [p0000 vs p0004] final-step illumination_progress: team0=0.0292 team1=0.0500 (max t0=0.1000 t1=0.4000)
+win_rate=0.69 (117.7s)
+  [payoff] p0000 vs p0005 (3/9)... win_rate=0.25 (5.6s)
+  [payoff] p0001 vs p0003 (4/9)... win_rate=0.88 (16.9s)
+  [payoff] p0001 vs p0004 (5/9)...     step 100: alive=1 red_wins=7/7 wr_sofar=1.00
+    step 200: alive=1 red_wins=7/7 wr_sofar=1.00
+    step 300: alive=1 red_wins=7/7 wr_sofar=1.00
+win_rate=1.00 (88.8s)
+  [payoff] p0001 vs p0005 (6/9)... win_rate=1.00 (5.6s)
+  [payoff] p0002 vs p0003 (7/9)...     step 100: alive=1 red_wins=4/7 wr_sofar=0.57
+    step 200: alive=1 red_wins=4/7 wr_sofar=0.57
+    step 300: alive=1 red_wins=4/7 wr_sofar=0.57
+    step 400: alive=1 red_wins=4/7 wr_sofar=0.57
+    [p0002 vs p0003] final-step illumination_progress: team0=0.0083 team1=0.0042 (max t0=0.1000 t1=0.0500)
+win_rate=0.56 (117.6s)
+  [payoff] p0002 vs p0004 (8/9)...     step 100: alive=6 red_wins=1/2 wr_sofar=0.50
+    step 200: alive=6 red_wins=1/2 wr_sofar=0.50
+    step 300: alive=6 red_wins=1/2 wr_sofar=0.50
+    step 400: alive=6 red_wins=1/2 wr_sofar=0.50
+    [p0002 vs p0004] final-step illumination_progress: team0=0.0125 team1=0.0375 (max t0=0.1500 t1=0.1500)
+win_rate=0.38 (118.2s)
+  [payoff] p0002 vs p0005 (9/9)... win_rate=0.12 (6.8s)
+  Team 0 sigma=[0. 1. 0.] NashConv=0.0000 H_task=1.386 effK=1.00
+  Team 1 sigma=[1. 0. 0.] NashConv=0.2292 H_task=1.386 effK=1.00
+  Training main (team 0, p0000) against self...
+      [PPO] main-t0 ep0 step43 cmd(pl=-0.0061 vl=6.1691 ent=2.3658) rad(pl=0.0271 vl=57008.9720 ent=321.3482)
+      [PPO] main-t0 ep0 step85 cmd(pl=-0.0018 vl=4.4637 ent=2.3579) rad(pl=0.0164 vl=52236.9961 ent=321.6692)
+      [PPO] main-t0 ep0 step127 cmd(pl=-0.0038 vl=5.7438 ent=2.3495) rad(pl=0.0041 vl=50547.0449 ent=321.7989)
+      [PPO] main-t0 ep0 step169 cmd(pl=-0.0052 vl=6.5601 ent=2.3320) rad(pl=-0.0010 vl=48596.9245 ent=321.8692)
+      [PPO] main-t0 ep0 step211 cmd(pl=0.0002 vl=7.8166 ent=2.3135) rad(pl=0.0034 vl=47546.9069 ent=321.8970)
+      [PPO] main-t0 ep0 step253 cmd(pl=-0.0041 vl=6.0029 ent=2.3140) rad(pl=0.0021 vl=45513.2585 ent=321.8848)
+      [PPO] main-t0 ep0 step295 cmd(pl=-0.0001 vl=5.9622 ent=2.3288) rad(pl=-0.0026 vl=44159.1165 ent=321.9237)
+      [PPO] main-t0 ep0 step337 cmd(pl=-0.0014 vl=4.6571 ent=2.3301) rad(pl=0.0005 vl=42463.7956 ent=321.8880)
+      [PPO] main-t0 ep0 step379 cmd(pl=-0.0013 vl=3.9245 ent=2.3174) rad(pl=-0.0011 vl=40921.8789 ent=321.9093)
+      [PPO] main-t0 ep0 step421 cmd(pl=0.0016 vl=7.9773 ent=2.3179) rad(pl=-0.0008 vl=39688.8262 ent=321.8972)
+      [PPO] main-t0 ep0 step463 cmd(pl=-0.0001 vl=6.3864 ent=2.3193) rad(pl=-0.0005 vl=37745.6035 ent=321.9265)
+    ep 1/10  steps=500 timeout  wr=0.00  avg_r=10297.0549
+      [dart] fire_rate=0.433  min_dist_init=373.78m  final=375.77m  change=+1.99m  min=22.70m
+      [PPO] main-t0 ep1 step43 cmd(pl=-0.0021 vl=7.1827 ent=2.3088) rad(pl=-0.0028 vl=27660.9349 ent=322.1462)
+      [PPO] main-t0 ep1 step85 cmd(pl=-0.0010 vl=6.2896 ent=2.3063) rad(pl=-0.0005 vl=26404.6934 ent=322.2185)
+      [PPO] main-t0 ep1 step127 cmd(pl=-0.0010 vl=7.3768 ent=2.3079) rad(pl=0.0007 vl=25347.3610 ent=322.3131)
+      [PPO] main-t0 ep1 step169 cmd(pl=-0.0024 vl=8.2457 ent=2.3092) rad(pl=-0.0010 vl=24250.5824 ent=322.4089)
+      [PPO] main-t0 ep1 step211 cmd(pl=-0.0007 vl=7.8090 ent=2.3135) rad(pl=-0.0018 vl=22840.1576 ent=322.5088)
+      [PPO] main-t0 ep1 step253 cmd(pl=-0.0054 vl=7.6698 ent=2.3074) rad(pl=0.0016 vl=22147.1911 ent=322.5318)
+      [PPO] main-t0 ep1 step295 cmd(pl=-0.0055 vl=5.1052 ent=2.3131) rad(pl=0.0033 vl=21073.8620 ent=322.6492)
+      [PPO] main-t0 ep1 step337 cmd(pl=-0.0015 vl=4.8204 ent=2.3132) rad(pl=0.0022 vl=19959.4082 ent=322.6939)
+      [PPO] main-t0 ep1 step379 cmd(pl=-0.0054 vl=4.8221 ent=2.3068) rad(pl=-0.0056 vl=19242.7370 ent=322.7383)
+      [PPO] main-t0 ep1 step421 cmd(pl=0.0034 vl=3.9347 ent=2.2986) rad(pl=-0.0016 vl=18253.4222 ent=322.7798)
+      [PPO] main-t0 ep1 step463 cmd(pl=-0.0010 vl=8.4800 ent=2.2938) rad(pl=-0.0001 vl=17531.8574 ent=322.9009)
+    ep 2/10  steps=500 timeout  wr=0.00  avg_r=13130.6860
+      [dart] fire_rate=0.422  min_dist_init=371.83m  final=367.88m  change=-3.95m  min=16.18m
+      [PPO] main-t0 ep2 step43 cmd(pl=-0.0016 vl=8.8029 ent=2.3048) rad(pl=-0.0002 vl=18126.7660 ent=323.1035)
+      [PPO] main-t0 ep2 step85 cmd(pl=0.0000 vl=6.7822 ent=2.3010) rad(pl=0.0009 vl=17063.8105 ent=323.2283)
+      [PPO] main-t0 ep2 step127 cmd(pl=-0.0020 vl=4.4717 ent=2.3002) rad(pl=-0.0010 vl=16481.9471 ent=323.3272)
+      [PPO] main-t0 ep2 step169 cmd(pl=-0.0002 vl=6.0534 ent=2.2912) rad(pl=0.0008 vl=15577.1307 ent=323.4031)
+      [PPO] main-t0 ep2 step211 cmd(pl=-0.0006 vl=5.5780 ent=2.2896) rad(pl=-0.0033 vl=14850.1081 ent=323.5118)
+      [PPO] main-t0 ep2 step253 cmd(pl=0.0006 vl=5.5161 ent=2.2898) rad(pl=-0.0013 vl=13623.0728 ent=323.4930)

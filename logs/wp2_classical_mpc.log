@@ -1,0 +1,10 @@
+--- 2026-06-21 10:44:01 ---
+  red_win_rate = 1.0
+  blue_win_rate = 0.0
+  draw_rate = 0.0
+  red_kill_count = 2
+  blue_kill_count = 2
+  mean_illumination_progress = 0.0
+  n_games = 2
+  elapsed_s = 5.8
+

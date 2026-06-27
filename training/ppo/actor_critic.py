@@ -92,6 +92,8 @@ class CommanderActorCritic(nn.Module):
         privileged_dim: int = 0,
         hybrid_fire: bool = False,
         decouple_value: bool = False,
+        fire_init_logit: float = 0.0,
+        log_std_floor: float = -6.0,
     ):
         super().__init__()
         self.act_dim = act_dim
@@ -102,6 +104,19 @@ class CommanderActorCritic(nn.Module):
         # This gives the fire bit a real policy-gradient signal instead of being a
         # threshold applied outside the distribution (which carries no log-prob).
         self.hybrid_fire = hybrid_fire
+        # Tier 1.3: initial bias for the fire logit (dim 0 of action_head).
+        # =0.0 → 50/50 fire at init (default, backward compat).
+        # >0.0 → biases toward fire_on at init so the policy explores the
+        # sustained-fire reward signal faster (e.g. +1.0 → ~73% fire prob).
+        # Combined with LaserRewardShaper.fire_commitment_weight, this breaks the
+        # "Bernoulli 50% → never 4 consecutive fire_on" failure mode.
+        self.fire_init_logit = float(fire_init_logit)
+        # F3: floor on log_std. log_std is a free learnable Parameter; without a
+        # floor, PPO can drive it very negative, making the Gaussian so narrow
+        # that log_prob becomes hyper-sensitive to mean drift — amplifier for
+        # the F1/F2 residual-aim NaN per LASER_LEAGUE_NAN_FULL_ANALYSIS §5.
+        # Default -6.0 preserves backward compat; laser league uses -3.0.
+        self.log_std_floor = float(log_std_floor)
         # When True, the value head gets its OWN trunk (value_shared) so the value-loss
         # gradient no longer churns the policy trunk — the aim/residual head can then
         # converge its mean to ~0 (sub-meter aim) instead of being perturbed to ~1-2m.
@@ -121,7 +136,8 @@ class CommanderActorCritic(nn.Module):
             )
         self.action_head = nn.Linear(hidden_dim, act_dim)
         self.value_head = nn.Linear(hidden_dim, 1)
-        self.log_std = nn.Parameter(torch.zeros(act_dim) - 1.0)  # init std ≈ 0.37
+        # init std ≈ 0.37; F3 clamp at forward time keeps std ≥ exp(floor).
+        self.log_std = nn.Parameter(torch.zeros(act_dim) - 1.0)
 
         # Optional privileged critic (CTDE) — takes shared features + privileged info
         if privileged_dim > 0:
@@ -155,6 +171,11 @@ class CommanderActorCritic(nn.Module):
             with torch.no_grad():
                 self.action_head.weight[1:].mul_(0.01)
                 self.action_head.bias[1:].zero_()
+                # Tier 1.3: bias fire logit toward fire_on if fire_init_logit != 0.
+                # This gives exploration of the "fire" branch a head start so the
+                # policy discovers the sustained-fire reward signal faster.
+                if self.fire_init_logit != 0.0:
+                    self.action_head.bias[0].fill_(self.fire_init_logit)
 
     def _vfeat(self, obs, features):
         """Features for the value head: a decoupled trunk if enabled (so value-loss
@@ -197,7 +218,7 @@ class CommanderActorCritic(nn.Module):
         if self.hybrid_fire:
             fire_logit = mean[:, 0:1]
             aim_mean = mean[:, 1:]
-            aim_std = torch.exp(self.log_std[1:]).expand_as(aim_mean)
+            aim_std = torch.exp(self.log_std[1:].clamp(min=self.log_std_floor)).expand_as(aim_mean)
             aim_dist = torch.distributions.Normal(aim_mean, aim_std)
             fire_dist = torch.distributions.Bernoulli(logits=fire_logit)
 
@@ -215,7 +236,7 @@ class CommanderActorCritic(nn.Module):
             log_prob += aim_dist.log_prob(aim_raw).sum(dim=-1)
             log_prob -= torch.log(1.0 - aim.pow(2) + 1e-6).sum(dim=-1)
         else:
-            std = torch.exp(self.log_std).expand_as(mean)
+            std = torch.exp(self.log_std.clamp(min=self.log_std_floor)).expand_as(mean)
             dist = torch.distributions.Normal(mean, std)
 
             if deterministic:
@@ -254,13 +275,16 @@ class CommanderActorCritic(nn.Module):
         if self.hybrid_fire:
             fire_logit = mean[:, 0:1]
             aim_mean = mean[:, 1:]
-            aim_std = torch.exp(self.log_std[1:]).expand_as(aim_mean)
+            aim_std = torch.exp(self.log_std[1:].clamp(min=self.log_std_floor)).expand_as(aim_mean)
             aim_dist = torch.distributions.Normal(aim_mean, aim_std)
             fire_dist = torch.distributions.Bernoulli(logits=fire_logit)
 
             # Recover the Bernoulli sample from the stored action (dim 0 ∈ {-1,+1})
             fire = (actions[:, 0:1] > 0.0).float()
-            aim = actions[:, 1:]
+            # F2: clamp aim into open interval (-1+1e-6, 1-1e-6) before atanh.
+            # Without this, aim=±1 (from buffer/storage drift) gives log(0)=-∞ in
+            # the inverse-tanh below — the NaN source per LASER_LEAGUE_NAN_FULL_ANALYSIS §3.2.
+            aim = actions[:, 1:].clamp(-1.0 + 1e-6, 1.0 - 1e-6)
             aim_raw = 0.5 * torch.log((aim + 1.0) / (1.0 - aim + 1e-6).clamp(min=1e-6))
 
             log_prob = fire_dist.log_prob(fire).sum(dim=-1)
@@ -268,14 +292,15 @@ class CommanderActorCritic(nn.Module):
             log_prob -= torch.log(1.0 - aim.pow(2) + 1e-6).sum(dim=-1)
             entropy = fire_dist.entropy().sum(dim=-1) + aim_dist.entropy().sum(dim=-1)
         else:
-            std = torch.exp(self.log_std).expand_as(mean)
+            std = torch.exp(self.log_std.clamp(min=self.log_std_floor)).expand_as(mean)
             dist = torch.distributions.Normal(mean, std)
 
-            # Inverse tanh to get pre-squash action
-            raw_action = 0.5 * torch.log((actions + 1.0) / (1.0 - actions + 1e-6).clamp(min=1e-6))
+            # F2: clamp to open interval before atanh (see hybrid branch above).
+            clamped_actions = actions.clamp(-1.0 + 1e-6, 1.0 - 1e-6)
+            raw_action = 0.5 * torch.log((clamped_actions + 1.0) / (1.0 - clamped_actions + 1e-6).clamp(min=1e-6))
 
             log_prob = dist.log_prob(raw_action).sum(dim=-1)
-            log_prob -= torch.log(1.0 - actions.pow(2) + 1e-6).sum(dim=-1)
+            log_prob -= torch.log(1.0 - clamped_actions.pow(2) + 1e-6).sum(dim=-1)
             entropy = dist.entropy().sum(dim=-1)
 
         vfeat = self._vfeat(obs, features)
@@ -992,6 +1017,8 @@ def create_team_policy(
     commander_privileged_dim: int = 0,
     hybrid_fire: bool = False,
     decouple_value: bool = False,
+    fire_init_logit: float = 0.0,
+    log_std_floor: float = -6.0,
 ) -> dict:
     """Create a full team policy (commander + shared radar).
 
@@ -1005,6 +1032,12 @@ def create_team_policy(
         decouple_value: If True, give value head its own trunk so value-loss
                        gradient doesn't churn policy trunk (needed for aim-head
                        convergence under PPO).
+        fire_init_logit: Initial bias for fire head (dim 0). =0.0 → 50/50 fire
+                        at init; >0 → biases toward fire_on so policy discovers
+                        sustained-fire reward faster. Only used with hybrid_fire.
+        log_std_floor: Floor on commander log_std. Default -6.0 (backward compat);
+                      laser league should pass -3.0 to prevent σ from collapsing
+                      to ~2.5e-3 which amplifies residual-aim log_prob spikes.
     Returns:
         dict with "commander" and "radar" actor-critic modules.
     """
@@ -1015,6 +1048,8 @@ def create_team_policy(
         privileged_dim=commander_privileged_dim,
         hybrid_fire=hybrid_fire,
         decouple_value=decouple_value,
+        fire_init_logit=fire_init_logit,
+        log_std_floor=log_std_floor,
     ).to(device)
 
     if sub_array_size > 0:

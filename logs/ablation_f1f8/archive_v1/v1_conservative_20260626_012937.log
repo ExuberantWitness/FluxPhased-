@@ -1,0 +1,206 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 102.0 GB
+FluxPhased League Training
+Config: configs/ablation_f1f8/v1_conservative.yaml
+Device: cuda
+Environment: E=12, R=4, N=625, P=4, bins=64
+State dim: 163783, Action dim: 13753
+[wandb] wandb not available; skipping logging
+Warp 1.10.1 initialized:
+   CUDA Toolkit 12.8, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Workstation Edition" (95 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/ubuntu/.cache/warp/1.10.1
+[League] kill_radius initialized at 50.000m (will anneal toward 0.200m)
+
+============================================================
+PSRO Iteration 0/24
+============================================================
+[League] Iteration 0: Evaluating payoff matrix...
+  [payoff] p0000 vs p0003 (1/9)... Module radar_sim.gpu.vec_channel 6a2afee load on device 'cuda:0' took 0.41 ms  (cached)
+Module radar_sim.gpu.vec_array 0e899e2 load on device 'cuda:0' took 29.39 ms  (cached)
+win_rate=1.00 (6.0s)
+  [payoff] p0000 vs p0004 (2/9)... win_rate=1.00 (5.6s)
+  [payoff] p0000 vs p0005 (3/9)... win_rate=1.00 (5.6s)
+  [payoff] p0001 vs p0003 (4/9)... win_rate=1.00 (5.5s)
+  [payoff] p0001 vs p0004 (5/9)... win_rate=1.00 (5.5s)
+  [payoff] p0001 vs p0005 (6/9)... win_rate=1.00 (5.5s)
+  [payoff] p0002 vs p0003 (7/9)... win_rate=1.00 (5.6s)
+  [payoff] p0002 vs p0004 (8/9)... win_rate=1.00 (5.5s)
+  [payoff] p0002 vs p0005 (9/9)... win_rate=1.00 (5.5s)
+  Team 0 sigma=[1. 0. 0.] NashConv=0.0000 H_task=1.386 effK=1.00
+  Team 1 sigma=[1. 0. 0.] NashConv=0.0000 H_task=1.386 effK=1.00
+  Training main (team 0, p0000) against self...
+      [PPO] main-t0 ep0 step43 cmd(pl=-0.0042 vl=1651686.9375 ent=2.2490) rad(pl=0.0678 vl=18985.5723 ent=321.9371)
+      [PPO] main-t0 ep0 step85 cmd(pl=-0.0010 vl=1751955.0208 ent=2.2660) rad(pl=0.0315 vl=37092.7539 ent=322.3808)
+      [PPO] main-t0 ep0 step127 cmd(pl=-0.0012 vl=1635462.8750 ent=2.2614) rad(pl=0.0281 vl=54941.2246 ent=322.6107)
+      [PPO] main-t0 ep0 step169 cmd(pl=-0.0008 vl=1636600.3958 ent=2.2559) rad(pl=0.0050 vl=79651.0846 ent=322.6214)
+      [PPO] main-t0 ep0 step211 cmd(pl=-0.0017 vl=1690989.4375 ent=2.2595) rad(pl=0.0078 vl=109690.7370 ent=322.5701)
+      [PPO] main-t0 ep0 step253 cmd(pl=-0.0040 vl=1822207.7500 ent=2.2622) rad(pl=0.0002 vl=146875.9818 ent=322.5899)
+      [PPO] main-t0 ep0 step295 cmd(pl=-0.0023 vl=1670783.0625 ent=2.2703) rad(pl=-0.0005 vl=169189.6250 ent=322.6598)
+      [PPO] main-t0 ep0 step337 cmd(pl=-0.0017 vl=1747884.3542 ent=2.2862) rad(pl=0.0006 vl=205590.1953 ent=322.7299)
+      [PPO] main-t0 ep0 step379 cmd(pl=0.0006 vl=1584293.7083 ent=2.3006) rad(pl=-0.0000 vl=224874.4974 ent=322.7706)
+      [PPO] main-t0 ep0 step421 cmd(pl=-0.0011 vl=1680785.7083 ent=2.3095) rad(pl=0.0008 vl=261385.4115 ent=322.8004)
+      [PPO] main-t0 ep0 step463 cmd(pl=-0.0013 vl=1838395.2292 ent=2.3103) rad(pl=-0.0004 vl=302220.0260 ent=322.8354)
+    ep 1/10  steps=498 kill  wr=0.00  avg_r=19874.8876
+      [PPO] main-t0 ep1 step43 cmd(pl=-0.0018 vl=1742521.3333 ent=2.3026) rad(pl=-0.0010 vl=489166.3333 ent=322.8976)
+      [PPO] main-t0 ep1 step85 cmd(pl=0.0004 vl=1643426.7292 ent=2.3008) rad(pl=-0.0004 vl=533393.5104 ent=322.9374)
+      [PPO] main-t0 ep1 step127 cmd(pl=-0.0005 vl=1511725.7500 ent=2.2982) rad(pl=-0.0024 vl=630510.2500 ent=322.9818)
+      [PPO] main-t0 ep1 step169 cmd(pl=-0.0012 vl=1648116.4167 ent=2.2976) rad(pl=-0.0007 vl=822902.6458 ent=323.0277)
+      [PPO] main-t0 ep1 step211 cmd(pl=-0.0000 vl=1625294.1458 ent=2.2979) rad(pl=0.0018 vl=1109810.1250 ent=323.0647)
+      [PPO] main-t0 ep1 step253 cmd(pl=-0.0000 vl=1668107.7917 ent=2.2967) rad(pl=0.0002 vl=1597282.6875 ent=323.0850)
+    ep 2/10  steps=280 kill  wr=0.00  avg_r=15415.3260
+      [PPO] main-t0 ep2 step43 cmd(pl=-0.0004 vl=1702410.3542 ent=2.3050) rad(pl=-0.0008 vl=1526238.7500 ent=323.1041)
+      [PPO] main-t0 ep2 step85 cmd(pl=-0.0002 vl=1807120.7917 ent=2.3090) rad(pl=0.0006 vl=1330120.6667 ent=323.1082)
+      [PPO] main-t0 ep2 step127 cmd(pl=-0.0008 vl=1769497.1250 ent=2.3117) rad(pl=0.0002 vl=1458709.5833 ent=323.1220)
+      [PPO] main-t0 ep2 step169 cmd(pl=-0.0010 vl=1758973.4583 ent=2.3141) rad(pl=-0.0009 vl=1758188.2292 ent=323.1458)
+      [PPO] main-t0 ep2 step211 cmd(pl=0.0001 vl=1645097.7083 ent=2.3174) rad(pl=-0.0000 vl=2154712.1250 ent=323.1685)
+      [PPO] main-t0 ep2 step253 cmd(pl=-0.0002 vl=1585158.7500 ent=2.3179) rad(pl=0.0003 vl=2636335.2917 ent=323.1825)
+      [PPO] main-t0 ep2 step295 cmd(pl=-0.0005 vl=1692516.6042 ent=2.3197) rad(pl=0.0002 vl=3194270.4167 ent=323.1944)
+      [PPO] main-t0 ep2 step337 cmd(pl=0.0000 vl=1561088.4167 ent=2.3204) rad(pl=0.0002 vl=3749269.0417 ent=323.2129)
+      [PPO] main-t0 ep2 step379 cmd(pl=-0.0001 vl=1707463.6875 ent=2.3205) rad(pl=-0.0000 vl=4348787.1667 ent=323.2294)
+      [PPO] main-t0 ep2 step421 cmd(pl=-0.0004 vl=1616122.4375 ent=2.3202) rad(pl=0.0005 vl=4909638.3333 ent=323.2444)
+      [PPO] main-t0 ep2 step463 cmd(pl=-0.0002 vl=1613928.5000 ent=2.3200) rad(pl=0.0006 vl=5436804.6667 ent=323.2564)
+    ep 3/10  steps=500 timeout  wr=0.00  avg_r=16931.8141
+  Training main (team 0, p0000) against p0004...
+      [PPO] main-t0 ep0 step43 cmd(pl=-0.0006 vl=1456312.8750 ent=2.3212) rad(pl=-0.0006 vl=7088560.5000 ent=323.2654)
+      [PPO] main-t0 ep0 step85 cmd(pl=0.0001 vl=1649136.0417 ent=2.3205) rad(pl=-0.0002 vl=7085626.5000 ent=323.2682)
+      [PPO] main-t0 ep0 step127 cmd(pl=-0.0005 vl=1537609.2500 ent=2.3197) rad(pl=-0.0001 vl=7595904.8333 ent=323.2719)
+      [PPO] main-t0 ep0 step169 cmd(pl=-0.0003 vl=1546441.0625 ent=2.3205) rad(pl=-0.0000 vl=7978223.4167 ent=323.2725)
+      [PPO] main-t0 ep0 step211 cmd(pl=-0.0003 vl=1566335.7500 ent=2.3214) rad(pl=-0.0001 vl=8210834.5833 ent=323.2715)
+      [PPO] main-t0 ep0 step253 cmd(pl=0.0002 vl=1536791.0833 ent=2.3222) rad(pl=0.0005 vl=8361437.0833 ent=323.2723)
+      [PPO] main-t0 ep0 step295 cmd(pl=-0.0001 vl=1669317.6042 ent=2.3217) rad(pl=-0.0000 vl=8481625.5000 ent=323.2756)
+      [PPO] main-t0 ep0 step337 cmd(pl=-0.0002 vl=1583147.0833 ent=2.3219) rad(pl=-0.0005 vl=8584303.5000 ent=323.2793)
+      [PPO] main-t0 ep0 step379 cmd(pl=-0.0004 vl=1534850.1667 ent=2.3207) rad(pl=-0.0008 vl=8611627.5000 ent=323.2830)
+      [PPO] main-t0 ep0 step421 cmd(pl=-0.0001 vl=1544724.9375 ent=2.3209) rad(pl=0.0008 vl=8616182.0000 ent=323.2885)
+      [PPO] main-t0 ep0 step463 cmd(pl=-0.0001 vl=1542702.7083 ent=2.3217) rad(pl=-0.0005 vl=8620280.1667 ent=323.2951)
+    ep 1/10  steps=500 timeout  wr=0.00  avg_r=19492.1961
+      [PPO] main-t0 ep1 step43 cmd(pl=-0.0000 vl=1506519.8333 ent=2.3245) rad(pl=-0.0005 vl=8528369.8333 ent=323.3094)
+      [PPO] main-t0 ep1 step85 cmd(pl=-0.0001 vl=1438459.7917 ent=2.3263) rad(pl=-0.0002 vl=8246974.4167 ent=323.3195)
+      [PPO] main-t0 ep1 step127 cmd(pl=0.0000 vl=1486756.2500 ent=2.3239) rad(pl=-0.0004 vl=8148957.7500 ent=323.3303)
+      [PPO] main-t0 ep1 step169 cmd(pl=-0.0003 vl=1548455.3542 ent=2.3245) rad(pl=-0.0003 vl=8116696.5833 ent=323.3441)
+      [PPO] main-t0 ep1 step211 cmd(pl=-0.0003 vl=1515849.8333 ent=2.3237) rad(pl=-0.0006 vl=8097029.6667 ent=323.3572)
+      [PPO] main-t0 ep1 step253 cmd(pl=-0.0000 vl=1418066.1667 ent=2.3261) rad(pl=0.0004 vl=8018491.1667 ent=323.3694)
+      [PPO] main-t0 ep1 step295 cmd(pl=0.0001 vl=1549317.0625 ent=2.3251) rad(pl=-0.0002 vl=7959851.5833 ent=323.3811)
+      [PPO] main-t0 ep1 step337 cmd(pl=-0.0002 vl=1544038.0417 ent=2.3250) rad(pl=-0.0006 vl=7935864.5000 ent=323.3916)
+      [PPO] main-t0 ep1 step379 cmd(pl=0.0000 vl=1401103.4167 ent=2.3243) rad(pl=-0.0001 vl=7854192.0000 ent=323.4044)
+      [PPO] main-t0 ep1 step421 cmd(pl=-0.0000 vl=1675929.8125 ent=2.3241) rad(pl=-0.0005 vl=7861246.2500 ent=323.4175)
+      [PPO] main-t0 ep1 step463 cmd(pl=-0.0001 vl=1495215.3958 ent=2.3253) rad(pl=-0.0001 vl=7859322.4167 ent=323.4301)
+    ep 2/10  steps=500 timeout  wr=0.00  avg_r=19471.4382
+      [PPO] main-t0 ep2 step43 cmd(pl=-0.0001 vl=1579830.1250 ent=2.3240) rad(pl=-0.0025 vl=8344715.6667 ent=323.4532)
+      [PPO] main-t0 ep2 step85 cmd(pl=-0.0001 vl=1391127.8333 ent=2.3244) rad(pl=0.0002 vl=8215766.4167 ent=323.4643)
+      [PPO] main-t0 ep2 step127 cmd(pl=-0.0004 vl=1538366.8958 ent=2.3242) rad(pl=-0.0004 vl=8183925.5000 ent=323.4765)
+      [PPO] main-t0 ep2 step169 cmd(pl=-0.0002 vl=1420717.3750 ent=2.3240) rad(pl=-0.0006 vl=8095024.9167 ent=323.4898)
+      [PPO] main-t0 ep2 step211 cmd(pl=-0.0001 vl=1465001.9167 ent=2.3226) rad(pl=0.0006 vl=8091771.2500 ent=323.4989)
+      [PPO] main-t0 ep2 step253 cmd(pl=0.0000 vl=1458090.4167 ent=2.3255) rad(pl=-0.0006 vl=8054971.5833 ent=323.5061)
+      [PPO] main-t0 ep2 step295 cmd(pl=-0.0002 vl=1440577.6250 ent=2.3237) rad(pl=-0.0001 vl=8068526.1667 ent=323.5131)
+      [PPO] main-t0 ep2 step337 cmd(pl=-0.0002 vl=1464367.6042 ent=2.3234) rad(pl=0.0004 vl=8063596.4167 ent=323.5208)
+      [PPO] main-t0 ep2 step379 cmd(pl=-0.0001 vl=1528225.6667 ent=2.3217) rad(pl=-0.0005 vl=8113498.2500 ent=323.5293)
+      [PPO] main-t0 ep2 step421 cmd(pl=-0.0001 vl=1495815.3750 ent=2.3222) rad(pl=0.0004 vl=8135349.3333 ent=323.5359)
+      [PPO] main-t0 ep2 step463 cmd(pl=-0.0002 vl=1417529.9375 ent=2.3226) rad(pl=0.0006 vl=8144226.3333 ent=323.5426)
+    ep 3/10  steps=500 timeout  wr=0.00  avg_r=19520.6258
+  Training main (team 0, p0000) against p0005...
+      [PPO] main-t0 ep0 step43 cmd(pl=-0.0000 vl=1387349.7083 ent=2.3179) rad(pl=0.0001 vl=7324041.3333 ent=323.5625)
+      [PPO] main-t0 ep0 step85 cmd(pl=-0.0001 vl=1474997.4167 ent=2.3179) rad(pl=-0.0001 vl=7304220.6667 ent=323.5720)
+      [PPO] main-t0 ep0 step127 cmd(pl=-0.0001 vl=1473093.5625 ent=2.3179) rad(pl=-0.0001 vl=7313555.9167 ent=323.5816)
+      [PPO] main-t0 ep0 step169 cmd(pl=-0.0000 vl=1438049.2083 ent=2.3187) rad(pl=0.0000 vl=7300026.4167 ent=323.5925)
+      [PPO] main-t0 ep0 step211 cmd(pl=-0.0002 vl=1394599.1667 ent=2.3174) rad(pl=0.0000 vl=7238144.0833 ent=323.6028)
+      [PPO] main-t0 ep0 step253 cmd(pl=0.0000 vl=1548797.8750 ent=2.3176) rad(pl=0.0002 vl=7246671.5000 ent=323.6113)
+      [PPO] main-t0 ep0 step295 cmd(pl=-0.0002 vl=1292206.9375 ent=2.3186) rad(pl=-0.0001 vl=7191132.9167 ent=323.6179)
+      [PPO] main-t0 ep0 step337 cmd(pl=-0.0000 vl=1435192.2500 ent=2.3194) rad(pl=-0.0003 vl=7170867.5833 ent=323.6233)
+      [PPO] main-t0 ep0 step379 cmd(pl=-0.0000 vl=1373316.3958 ent=2.3184) rad(pl=0.0002 vl=7146374.3333 ent=323.6339)
+      [PPO] main-t0 ep0 step421 cmd(pl=-0.0000 vl=1466645.5208 ent=2.3186) rad(pl=-0.0001 vl=7166803.5000 ent=323.6444)
+      [PPO] main-t0 ep0 step463 cmd(pl=-0.0001 vl=1363421.3125 ent=2.3182) rad(pl=-0.0003 vl=7135954.1667 ent=323.6518)
+    ep 1/10  steps=500 timeout  wr=0.00  avg_r=19716.1863
+      [PPO] main-t0 ep1 step43 cmd(pl=-0.0001 vl=1306821.6458 ent=2.3172) rad(pl=-0.0001 vl=7401999.1667 ent=323.6619)
+      [PPO] main-t0 ep1 step85 cmd(pl=-0.0001 vl=1306960.2708 ent=2.3173) rad(pl=-0.0007 vl=7381959.4167 ent=323.6705)
+      [PPO] main-t0 ep1 step127 cmd(pl=-0.0000 vl=1374541.4792 ent=2.3176) rad(pl=-0.0002 vl=7378066.0000 ent=323.6792)
+      [PPO] main-t0 ep1 step169 cmd(pl=-0.0000 vl=1326321.9583 ent=2.3164) rad(pl=0.0006 vl=7371573.5833 ent=323.6866)
+      [PPO] main-t0 ep1 step211 cmd(pl=-0.0001 vl=1252904.0833 ent=2.3174) rad(pl=-0.0003 vl=7341101.8333 ent=323.6960)
+      [PPO] main-t0 ep1 step253 cmd(pl=-0.0000 vl=1329806.8750 ent=2.3173) rad(pl=-0.0004 vl=7323830.6667 ent=323.7046)
+      [PPO] main-t0 ep1 step295 cmd(pl=0.0001 vl=1476528.5833 ent=2.3169) rad(pl=-0.0002 vl=7384253.0833 ent=323.7145)
+      [PPO] main-t0 ep1 step337 cmd(pl=-0.0001 vl=1292207.6042 ent=2.3195) rad(pl=0.0009 vl=7381760.6667 ent=323.7289)
+      [PPO] main-t0 ep1 step379 cmd(pl=-0.0001 vl=1409693.5208 ent=2.3198) rad(pl=0.0005 vl=7449288.8333 ent=323.7434)
+      [PPO] main-t0 ep1 step421 cmd(pl=-0.0001 vl=1217622.3750 ent=2.3198) rad(pl=0.0013 vl=7371218.3333 ent=323.7555)
+      [PPO] main-t0 ep1 step463 cmd(pl=-0.0001 vl=1375305.2708 ent=2.3188) rad(pl=0.0001 vl=7420999.8333 ent=323.7627)
+    ep 2/10  steps=500 timeout  wr=0.00  avg_r=19727.1584
+      [PPO] main-t0 ep2 step43 cmd(pl=-0.0000 vl=1250338.0208 ent=2.3190) rad(pl=-0.0021 vl=7710351.6667 ent=323.7712)
+      [PPO] main-t0 ep2 step85 cmd(pl=-0.0001 vl=1438355.4167 ent=2.3220) rad(pl=-0.0002 vl=7827308.6667 ent=323.7666)
+      [PPO] main-t0 ep2 step127 cmd(pl=-0.0001 vl=1369786.1667 ent=2.3211) rad(pl=0.0013 vl=7938259.5000 ent=323.7653)
+      [PPO] main-t0 ep2 step169 cmd(pl=-0.0000 vl=1215860.0417 ent=2.3205) rad(pl=0.0006 vl=7961539.0833 ent=323.7701)
+      [PPO] main-t0 ep2 step211 cmd(pl=-0.0002 vl=1215147.9167 ent=2.3211) rad(pl=-0.0006 vl=7978118.5833 ent=323.7781)
+      [PPO] main-t0 ep2 step253 cmd(pl=-0.0001 vl=1243426.6667 ent=2.3215) rad(pl=-0.0008 vl=7968733.2500 ent=323.7864)
+      [PPO] main-t0 ep2 step295 cmd(pl=-0.0000 vl=1140951.3542 ent=2.3200) rad(pl=-0.0009 vl=7896937.4167 ent=323.7966)
+      [PPO] main-t0 ep2 step337 cmd(pl=-0.0000 vl=1209378.8125 ent=2.3211) rad(pl=-0.0001 vl=7876299.4167 ent=323.8070)
+      [PPO] main-t0 ep2 step379 cmd(pl=-0.0001 vl=1187306.9375 ent=2.3209) rad(pl=-0.0005 vl=7813911.3333 ent=323.8150)
+      [PPO] main-t0 ep2 step421 cmd(pl=-0.0000 vl=1223702.5833 ent=2.3205) rad(pl=-0.0008 vl=7780742.4167 ent=323.8251)
+      [PPO] main-t0 ep2 step463 cmd(pl=-0.0001 vl=1261151.2500 ent=2.3199) rad(pl=-0.0003 vl=7779718.9167 ent=323.8371)
+    ep 3/10  steps=500 timeout  wr=0.00  avg_r=19690.1246
+  Training main_exploiter (team 0, p0001) against p0003...
+      [PPO] main-t0 ep0 step43 cmd(pl=-0.0077 vl=1746155.3333 ent=2.2402) rad(pl=0.0247 vl=16960.4990 ent=321.7425)
+      [PPO] main-t0 ep0 step85 cmd(pl=-0.0011 vl=1764124.9583 ent=2.2336) rad(pl=0.0292 vl=25893.1260 ent=322.1499)
+      [PPO] main-t0 ep0 step127 cmd(pl=-0.0015 vl=1850687.4167 ent=2.2395) rad(pl=0.0304 vl=50440.3385 ent=322.4321)
+      [PPO] main-t0 ep0 step169 cmd(pl=0.0009 vl=1731652.8958 ent=2.2254) rad(pl=0.0375 vl=75280.1406 ent=322.5249)
+      [PPO] main-t0 ep0 step211 cmd(pl=-0.0010 vl=1725560.5000 ent=2.2193) rad(pl=0.0153 vl=106618.0156 ent=322.3937)
+      [PPO] main-t0 ep0 step253 cmd(pl=-0.0006 vl=1870155.8125 ent=2.2146) rad(pl=0.0039 vl=146422.1198 ent=322.4308)
+      [PPO] main-t0 ep0 step295 cmd(pl=-0.0020 vl=1913650.7500 ent=2.2145) rad(pl=0.0088 vl=182210.2266 ent=322.4886)
+      [PPO] main-t0 ep0 step337 cmd(pl=-0.0004 vl=1902135.6042 ent=2.2057) rad(pl=0.0000 vl=215686.4271 ent=322.5014)
+      [PPO] main-t0 ep0 step379 cmd(pl=0.0005 vl=1985833.0833 ent=2.2037) rad(pl=0.0035 vl=256255.4740 ent=322.5325)
+      [PPO] main-t0 ep0 step421 cmd(pl=-0.0006 vl=1828592.5833 ent=2.2001) rad(pl=-0.0009 vl=280815.9479 ent=322.5685)
+      [PPO] main-t0 ep0 step463 cmd(pl=-0.0005 vl=1973711.9792 ent=2.1999) rad(pl=0.0007 vl=329906.2448 ent=322.6506)
+    ep 1/10  steps=500 timeout  wr=0.00  avg_r=20874.0567
+      [PPO] main-t0 ep1 step43 cmd(pl=-0.0000 vl=1816302.2500 ent=2.2076) rad(pl=-0.0033 vl=322011.2188 ent=322.7873)
+      [PPO] main-t0 ep1 step85 cmd(pl=0.0000 vl=1815102.7083 ent=2.2132) rad(pl=-0.0029 vl=367405.0885 ent=322.8713)
+      [PPO] main-t0 ep1 step127 cmd(pl=-0.0006 vl=1714811.6667 ent=2.2156) rad(pl=0.0002 vl=424837.8594 ent=322.9731)
+      [PPO] main-t0 ep1 step169 cmd(pl=-0.0001 vl=1953091.9583 ent=2.2222) rad(pl=0.0006 vl=558357.7708 ent=323.0580)
+      [PPO] main-t0 ep1 step211 cmd(pl=-0.0006 vl=1825440.7917 ent=2.2245) rad(pl=0.0014 vl=741168.0000 ent=323.1033)
+      [PPO] main-t0 ep1 step253 cmd(pl=-0.0002 vl=1927464.3750 ent=2.2262) rad(pl=0.0008 vl=1076687.2083 ent=323.1165)
+      [PPO] main-t0 ep1 step295 cmd(pl=-0.0003 vl=1881557.8125 ent=2.2262) rad(pl=-0.0029 vl=1518572.1875 ent=323.1341)
+      [PPO] main-t0 ep1 step337 cmd(pl=-0.0000 vl=1821095.8542 ent=2.2283) rad(pl=-0.0014 vl=2012617.8125 ent=323.1427)
+      [PPO] main-t0 ep1 step379 cmd(pl=-0.0002 vl=1698858.5208 ent=2.2293) rad(pl=-0.0009 vl=2524941.2083 ent=323.1442)
+      [PPO] main-t0 ep1 step421 cmd(pl=0.0000 vl=1715435.1667 ent=2.2315) rad(pl=0.0014 vl=3032962.5417 ent=323.1484)
+      [PPO] main-t0 ep1 step463 cmd(pl=-0.0000 vl=1804391.0000 ent=2.2327) rad(pl=0.0007 vl=3572051.9167 ent=323.1623)
+    ep 2/10  steps=500 timeout  wr=0.00  avg_r=20791.3358
+      [PPO] main-t0 ep2 step43 cmd(pl=-0.0001 vl=1581510.7500 ent=2.2311) rad(pl=0.0009 vl=4660533.5000 ent=323.1979)
+      [PPO] main-t0 ep2 step85 cmd(pl=-0.0002 vl=1692987.4583 ent=2.2292) rad(pl=-0.0004 vl=3414579.4583 ent=323.2319)
+      [PPO] main-t0 ep2 step127 cmd(pl=-0.0001 vl=1883840.8958 ent=2.2322) rad(pl=0.0002 vl=3914936.0417 ent=323.2761)
+      [PPO] main-t0 ep2 step169 cmd(pl=-0.0002 vl=1710937.6667 ent=2.2303) rad(pl=0.0009 vl=4550471.8333 ent=323.3083)
+      [PPO] main-t0 ep2 step211 cmd(pl=-0.0001 vl=1874326.5417 ent=2.2307) rad(pl=-0.0004 vl=5076616.8333 ent=323.3280)
+      [PPO] main-t0 ep2 step253 cmd(pl=-0.0001 vl=1782574.3750 ent=2.2299) rad(pl=-0.0005 vl=5617270.3333 ent=323.3541)
+      [PPO] main-t0 ep2 step295 cmd(pl=-0.0001 vl=1729302.5208 ent=2.2290) rad(pl=0.0012 vl=6069011.0000 ent=323.3844)
+      [PPO] main-t0 ep2 step337 cmd(pl=-0.0001 vl=1841680.3333 ent=2.2319) rad(pl=-0.0002 vl=6522568.4167 ent=323.4068)
+      [PPO] main-t0 ep2 step379 cmd(pl=-0.0002 vl=1789577.4375 ent=2.2325) rad(pl=0.0012 vl=6927411.0000 ent=323.4142)
+      [PPO] main-t0 ep2 step421 cmd(pl=-0.0001 vl=1649452.4792 ent=2.2354) rad(pl=-0.0004 vl=7222972.2500 ent=323.4178)
+      [PPO] main-t0 ep2 step463 cmd(pl=-0.0000 vl=1778513.5208 ent=2.2355) rad(pl=0.0026 vl=7499117.0000 ent=323.4252)
+    ep 3/10  steps=500 timeout  wr=0.00  avg_r=20717.2303
+      [PPO] main-t0 ep3 step43 cmd(pl=-0.0002 vl=1728220.7292 ent=2.2309) rad(pl=0.0004 vl=7323131.2500 ent=323.4531)
+      [PPO] main-t0 ep3 step85 cmd(pl=-0.0001 vl=1641829.1458 ent=2.2333) rad(pl=-0.0014 vl=6165560.7500 ent=323.4671)
+      [PPO] main-t0 ep3 step127 cmd(pl=-0.0002 vl=1686911.8750 ent=2.2315) rad(pl=-0.0011 vl=6348973.7500 ent=323.4895)
+      [PPO] main-t0 ep3 step169 cmd(pl=-0.0002 vl=1867995.6042 ent=2.2297) rad(pl=-0.0010 vl=6760861.9167 ent=323.5193)
+      [PPO] main-t0 ep3 step211 cmd(pl=-0.0002 vl=1805963.2083 ent=2.2305) rad(pl=0.0008 vl=7060299.5833 ent=323.5460)
+      [PPO] main-t0 ep3 step253 cmd(pl=-0.0000 vl=1650965.4583 ent=2.2295) rad(pl=0.0002 vl=7299307.0833 ent=323.5638)
+      [PPO] main-t0 ep3 step295 cmd(pl=-0.0000 vl=1797485.6875 ent=2.2323) rad(pl=-0.0000 vl=7486119.7500 ent=323.5764)
+      [PPO] main-t0 ep3 step337 cmd(pl=-0.0000 vl=1673585.5417 ent=2.2320) rad(pl=0.0004 vl=7657490.5833 ent=323.5862)
+      [PPO] main-t0 ep3 step379 cmd(pl=-0.0001 vl=1722683.6667 ent=2.2338) rad(pl=0.0000 vl=7785665.0833 ent=323.5930)
+      [PPO] main-t0 ep3 step421 cmd(pl=-0.0001 vl=1710662.6042 ent=2.2357) rad(pl=0.0006 vl=7887591.0000 ent=323.6013)
+      [PPO] main-t0 ep3 step463 cmd(pl=-0.0002 vl=1761885.1458 ent=2.2355) rad(pl=-0.0001 vl=7990582.1667 ent=323.6096)
+    ep 4/10  steps=500 timeout  wr=0.00  avg_r=20682.9658
+      [PPO] main-t0 ep4 step43 cmd(pl=0.0001 vl=1709859.3750 ent=2.2350) rad(pl=-0.0000 vl=8305758.9167 ent=323.6211)
+      [PPO] main-t0 ep4 step85 cmd(pl=-0.0001 vl=1698282.1250 ent=2.2343) rad(pl=-0.0013 vl=7525441.3333 ent=323.6319)
+      [PPO] main-t0 ep4 step127 cmd(pl=-0.0001 vl=1790459.2917 ent=2.2353) rad(pl=0.0002 vl=7706873.8333 ent=323.6472)
+      [PPO] main-t0 ep4 step169 cmd(pl=0.0000 vl=1746262.7708 ent=2.2357) rad(pl=0.0006 vl=7865569.9167 ent=323.6593)
+      [PPO] main-t0 ep4 step211 cmd(pl=-0.0000 vl=1664393.5625 ent=2.2338) rad(pl=0.0003 vl=7968780.2500 ent=323.6703)
+      [PPO] main-t0 ep4 step253 cmd(pl=-0.0001 vl=1738190.0625 ent=2.2349) rad(pl=-0.0001 vl=8067028.6667 ent=323.6817)
+      [PPO] main-t0 ep4 step295 cmd(pl=-0.0001 vl=1500123.7500 ent=2.2325) rad(pl=0.0001 vl=8079293.1667 ent=323.6899)
+      [PPO] main-t0 ep4 step337 cmd(pl=-0.0001 vl=1603166.9375 ent=2.2320) rad(pl=0.0001 vl=8064389.0833 ent=323.6927)
+      [PPO] main-t0 ep4 step379 cmd(pl=0.0000 vl=1585016.8958 ent=2.2322) rad(pl=-0.0001 vl=8086704.1667 ent=323.6963)
+      [PPO] main-t0 ep4 step421 cmd(pl=-0.0001 vl=1667319.5625 ent=2.2332) rad(pl=0.0003 vl=8146999.7500 ent=323.7026)
+      [PPO] main-t0 ep4 step463 cmd(pl=-0.0000 vl=1570879.5208 ent=2.2324) rad(pl=0.0001 vl=8185567.5833 ent=323.7136)
+    ep 5/10  steps=500 timeout  wr=0.00  avg_r=20659.5745
+    ── ep 5/10  wr=0.00  avg_r=20659.5745
+      [PPO] main-t0 ep5 step43 cmd(pl=0.0000 vl=1605085.3542 ent=2.2277) rad(pl=-0.0003 vl=8648079.0000 ent=323.7312)
+      [PPO] main-t0 ep5 step85 cmd(pl=-0.0001 vl=1739444.2500 ent=2.2277) rad(pl=-0.0010 vl=8387260.5833 ent=323.7454)
+      [PPO] main-t0 ep5 step127 cmd(pl=-0.0002 vl=1707024.5833 ent=2.2263) rad(pl=-0.0008 vl=8581590.5000 ent=323.7673)

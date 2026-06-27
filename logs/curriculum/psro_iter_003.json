@@ -1,0 +1,67 @@
+{
+  "iteration": 3,
+  "p0022_train": {
+    "episodes": 10,
+    "win_rate": 0.3,
+    "avg_reward": 98.42899684906006
+  },
+  "p0023_train": {
+    "episodes": 10,
+    "win_rate": 0.7,
+    "avg_reward": -850.925074672699
+  },
+  "p0024_train": {
+    "episodes": 2,
+    "win_rate": 0.0,
+    "avg_reward": 818.1642913818359
+  },
+  "p0025_train": {
+    "episodes": 3,
+    "win_rate": 0.3333333333333333,
+    "avg_reward": -189.56320444742838
+  },
+  "p0026_train": {
+    "episodes": 10,
+    "win_rate": 0.5,
+    "avg_reward": 12.05528621673584
+  },
+  "p0027_train": {
+    "episodes": 10,
+    "win_rate": 0.2,
+    "avg_reward": 284.48275260925294
+  },
+  "p0028_train": {
+    "episodes": 3,
+    "win_rate": 0.6666666666666666,
+    "avg_reward": 2587.450350443522
+  },
+  "p0029_train": {
+    "episodes": 10,
+    "win_rate": 0.3,
+    "avg_reward": 425.06009941101075
+  },
+  "p0030_train": {
+    "episodes": 10,
+    "win_rate": 0.6,
+    "avg_reward": -381.4558084487915
+  },
+  "p0031_train": {
+    "episodes": 3,
+    "win_rate": 0.3333333333333333,
+    "avg_reward": -71.40831883748372
+  },
+  "p0032_train": {
+    "episodes": 10,
+    "win_rate": 0.2,
+    "avg_reward": 50.97094039916992
+  },
+  "p0033_train": {
+    "episodes": 10,
+    "win_rate": 0.5,
+    "avg_reward": -43.69745807647705
+  },
+  "elapsed_s": 15178.469096422195,
+  "alpha": 0.25,
+  "beta_kl": 0.08750000000000001,
+  "alpha_schedule": "linear"
+}

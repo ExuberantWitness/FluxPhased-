@@ -1,0 +1,28 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 102.0 GB
+[kr-auto] training log wp1_gate_seed42_attempt1.log shows kr=100.0m (config says 0.2m). Using 100.0m.
+Loading team-0 policy: checkpoints/wp1_gate_seed42/main_team0_gen1.pt
+Loading team-1 policy: checkpoints/wp1_gate_seed42/main_team1_gen1.pt
+========================================================================
+WP3.2 Robustness Sweep Evaluator
+========================================================================
+Checkpoint dir : checkpoints/wp1_gate_seed42
+Baseline config: configs/wp1_gate.yaml
+Cells          : ['wp3_clutter_weibull_neg10', 'wp3_multipath_2ray', 'wp3_bias_5m_delay_3step', 'wp3_slew_limit_60degs', 'wp3_comm_rate_1kbps']
+Eval           : 50 games × 500 steps each
+PASS threshold : kill_rate retention ≥ 0.70
+Environment    : E=4, N=625, R=4, bins=64
+
+
+--- Baseline (no damage) ---
+Warp 1.10.1 initialized:
+   CUDA Toolkit 12.8, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Workstation Edition" (95 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/ubuntu/.cache/warp/1.10.1
+[baseline] 12 batches × 4 envs = 48 games, 500 steps each
+Module radar_sim.gpu.vec_channel 6a2afee load on device 'cuda:0' took 3.74 ms  (cached)
+Module radar_sim.gpu.vec_array 0e899e2 load on device 'cuda:0' took 2.16 ms  (cached)

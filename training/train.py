@@ -123,9 +123,13 @@ def create_league(config: dict, env_params: dict) -> FluxLeague:
         n_eval_games=league_cfg.get("n_eval_games", 50),
         meta_solver=league_cfg.get("meta_solver", "nash"),
         pfsp_temperature=league_cfg.get("pfsp_temperature", 1.0),
+        pfsp_hardness_p=league_cfg.get("pfsp_hardness_p", 1.0),
         exploiter_reset_prob=league_cfg.get("exploiter_reset_prob", 0.1),
+        self_play_prob_ma=league_cfg.get("self_play_prob_ma", 0.0),
+        n_opponents_per_cycle_ma=league_cfg.get("n_opponents_per_cycle_ma", 1),
         episodes_per_training=league_cfg.get("episodes_per_training", 1000),
         max_steps_per_episode=league_cfg.get("max_steps_per_episode", 1000),
+        psro_iterations=config.get("training", {}).get("psro_iterations", 30),  # F4
         checkpoint_dir=league_cfg.get("checkpoint_dir", "checkpoints/league"),
         device=env_params["device"],
         sub_array_size=config.get("sub_array_size", 0),
@@ -155,6 +159,7 @@ def create_league(config: dict, env_params: dict) -> FluxLeague:
         mutation_config=league_cfg.get("mutation", {}),
         task_type=config.get("task_type", "generic"),
         pulses_per_control=config.get("env", {}).get("pulses_per_control", 5),
+        reward_normalize=config.get("training", {}).get("reward_normalize", False),  # F8
         laser_cfg={
             "kill_radius_init": config.get("training", {}).get("kill_radius_init", 50.0),
             "kill_radius_final": config["env"].get("kill_radius_m", 0.2),
@@ -164,6 +169,9 @@ def create_league(config: dict, env_params: dict) -> FluxLeague:
             "reward_shaping": config.get("reward_shaping", {}),
             "hybrid_fire": config.get("training", {}).get("hybrid_fire", False),
             "decouple_value": config.get("training", {}).get("decouple_value", False),
+            # Tier 1.3: fire head initial bias — biases toward fire_on at init.
+            # Set to +1.0 in laser config to break "50% Bernoulli → no commits".
+            "fire_init_logit": float(config.get("training", {}).get("fire_init_logit", 0.0)),
             # Critical: without residual_aim=True, aim is not anchored to enemy
             # obs → hybrid_fire's zero-init aim-head is meaningless. Without
             # min_radar_baseline_m, enforce_radar_baseline is a no-op → near-collinear
@@ -171,6 +179,9 @@ def create_league(config: dict, env_params: dict) -> FluxLeague:
             # clamped to map corner → kill_radius never met → progress=0 → 0.5.
             "residual_aim": config.get("training", {}).get("residual_aim", False),
             "min_radar_baseline_m": config.get("env", {}).get("min_radar_baseline_m", 0.0),
+            # F8: return-based scaling flag (consumed by LaserRewardShaper init
+            # is wrong; it's actually consumed by RolloutBuffer via TeamPPOTrainer)
+            "reward_normalize": config.get("training", {}).get("reward_normalize", False),
         },
         sensing_cfg={
             **config.get("sensing_noise", {}),

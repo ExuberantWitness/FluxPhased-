@@ -1,0 +1,112 @@
+# ============================================================
+# wp4_ew_exposure.yaml — auto-generated WP4 OOD test config
+# OOD: home-on-jam exposure game (jam_gain=1.0, exposure_gain=1.0)
+# Base: configs/wp1_gate.yaml
+# ============================================================
+
+task_type: laser
+sub_array_size: 5
+league:
+  population_cap: 12
+  n_eval_games: 50
+  meta_solver: nash
+  pfsp_temperature: 1.0
+  exploiter_reset_prob: 0.1
+  episodes_per_training: 10
+  max_steps_per_episode: 500
+  checkpoint_dir: checkpoints/wp1_gate_seed42
+  use_elo_band: true
+  elo_band_init: 400.0
+  elo_band_final: 100.0
+  elo_anneal_iters: 18
+  alpha_schedule: linear
+  team_critic_enabled: true
+  tcdams_lambda: 0.3
+  mutation:
+    enabled: true
+    epsilon: 0.05
+    n_mutants_per_policy: 2
+    n_top_policies: 1
+    win_rate_threshold: 0.55
+ppo:
+  commander:
+    lr: 0.0003
+    clip_range: 0.2
+    entropy_coef: 0.01
+  radar:
+    lr: 0.0001
+    clip_range: 0.1
+    entropy_coef: 0.02
+  shared:
+    gamma: 0.999
+    gae_lambda: 0.99
+    n_epochs: 3
+    batch_size: 256
+    buffer_size: 2048
+    buffer_size_commander: 2048
+    buffer_size_radar: 512
+    value_coef: 1.0
+    vf_clip_range: 10.0
+    max_grad_norm: 0.5
+training:
+  psro_iterations: 30
+  kill_radius_init: 100.0
+  kill_rate_threshold: 0.7
+  kill_radius_decay: 0.7
+  residual_aim: true
+  residual_scale_m: 6.0
+  hybrid_fire: true
+  decouple_value: true
+  warmup_episodes: 0
+  critic_pretrain_episodes: 0
+  bc_pretrain_epochs: 0
+reward_shaping:
+  detect_snr_weight: 0.1
+  beam_accuracy_weight: 5.0
+  illumination_progress_weight: 1.0
+  kill_bonus: 100.0
+  death_penalty: -10.0
+  emission_cost: -0.001
+  snr_threshold_db: 10.0
+  team_reward_weight: 0.1
+  team_kill_weight: 1.0
+  beam_guidance_weight: 5.0
+  illum_reward_weight: 50.0
+  fire_lock_bonus: 5.0
+  misfire_penalty: 0.5
+  beam_r_ref_m: 3000.0
+  beam_r_floor_m: 0.2
+  beam_reward_weight: 5.0
+  beam_hit_radius_m: 500.0
+  beam_spatial_cap: 1000.0
+  beam_temporal_epsilon: 0.05
+env:
+  min_radar_baseline_m: 5000.0
+  rows: 25
+  cols: 25
+  num_envs: 12
+  n_radars: 4
+  n_teams: 2
+  pulses_per_cpi: 4
+  fft_size: 64
+  device: cuda
+  tx_power_w: 1.0
+  prf: 10000.0
+  pulses_per_control: 5
+  bandwidth: 200000000.0
+  vehicle_speed_ms: 20.0
+  kill_radius_m: 0.2
+  illumination_time_s: 0.002
+  drone_altitude_m: 3000.0
+  map_size:
+  - 20000.0
+  - 20000.0
+sensing_noise:
+  mode: tracked
+  track_q_m: 0.02
+  track_burnin: 120
+  acq_baseline_m: 0.0
+  range_sigma_m: 0.05
+  crossrange_factor: 7.4e-05
+  jam_gain: 1.0
+  exposure_gain: 1.0
