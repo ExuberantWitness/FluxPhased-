@@ -334,28 +334,16 @@ class TeamPPOTrainer:
             self._laser_env_attached = True
 
     def reset_episode(self):
-        """Reset all per-episode state at the start of a new episode.
+        """No-op: LaserEpisodeRunner.reset() already resets KalmanTracker and
+        LaserRewardShaper state per episode (episode.py:168-176).
 
-        Critical fix: the KalmanTracker and LaserRewardShaper both hold per-episode
-        state that MUST be cleared when env.reset() spawns new enemies. Without
-        this, the KF carries the previous episode's enemy position as its prior,
-        producing anchor biases of 2-3 km on ep 2+ (verified by test_kalman_bias).
+        Kept as a hook for future per-episode reset needs (and to avoid breaking
+        any caller that already invokes it). Originally added under the
+        mistaken belief that the Kalman tracker wasn't being reset; that turned
+        out to be wrong — see V5_DARTBOARD_REPORT.md §"Correction after deeper
+        audit" for the actual root cause (aim_z drift, not Kalman bias).
         """
-        if self.task_type != "laser":
-            return
-        if self.kalman_tracker is not None:
-            self.kalman_tracker.reset()
-        # Reset reward shaper per-episode state. Skip on first episode (env not
-        # attached yet — shaper's lazy __call__ guard handles initial alloc).
-        # IMPORTANT: don't null _jam_level — update_jam() runs BEFORE __call__
-        # and would crash on None assignment. Call the shaper's reset_episode
-        # directly, which zero-inits all four per-ep tensors with right shape.
-        shaper = self.reward_shaper
-        if (shaper is not None and hasattr(shaper, "reset_episode")
-                and getattr(shaper, "env", None) is not None):
-            E = shaper.env.num_envs
-            n_teams = shaper.env.n_teams
-            shaper.reset_episode(E, n_teams)
+        return
 
     def _apply_laser_sensing(self, cmd_obs: torch.Tensor, env) -> torch.Tensor:
         """Replace exact enemy_xy in cmd_obs[..., 68:72] with Kalman-fused multi-radar estimate.
@@ -409,6 +397,12 @@ class TeamPPOTrainer:
         The returned env-action uses a soft ±(1−1e-4) clamp so downstream
         consumers (env.step, sensing) never see exactly ±1 (which would
         re-introduce the atanh singularity via S4 nan_to_num posinf=1.0).
+
+        aim_z fix: env scales action[3] by 1000m (vec_drone.py:195), but laser
+        targets are ground radars at z=0. Untrained policy samples action[3] ~
+        N(0, 0.37²) → aim_z ~ 300m avg → completely overshoots kill_radius.
+        Force env_action[3]=0 to eliminate this DoF (it's reserved for future
+        air targets; not needed for the current ground-target task).
         """
         if not self.residual_aim:
             return cmd_action
@@ -430,6 +424,7 @@ class TeamPPOTrainer:
         env_action = cmd_action.clone()
         env_action[..., 1] = aim_x
         env_action[..., 2] = aim_y
+        env_action[..., 3] = 0.0  # aim_z=0 (ground targets only)
         return env_action
 
     def init_buffers(self, env_state_dim: int, env_action_dim: int,
