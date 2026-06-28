@@ -64,6 +64,7 @@ class PPOTrainer:
         total_value_loss = 0.0
         total_privileged_value_loss = 0.0
         total_team_value_loss = 0.0
+        total_team_adv_std = 0.0   # P2 §1 mechanism instrumentation
         total_kl_penalty = 0.0
         total_entropy = 0.0
         total_nan_skips = 0
@@ -88,6 +89,10 @@ class PPOTrainer:
                 if team_critic is not None and alpha > 0 and team_states is not None:
                     team_value = team_critic(team_states)  # [B, 1]
                     team_adv = team_returns.unsqueeze(-1) - team_value.detach()
+                    # P2 §1 mechanism instrumentation: track pre-norm team_adv
+                    # std. F1 broken → ~0 (noise amplified to unit by L92); F1
+                    # fixed → O(1) (true team advantage signal).
+                    total_team_adv_std += float(team_adv.std().item())
                     # F2: deleted the per-batch team_adv normalization here.
                     # L107 below already normalizes the blended advantage once;
                     # double-normalizing team_adv forced raw noise to unit scale
@@ -188,6 +193,12 @@ class PPOTrainer:
         }
         if total_team_value_loss > 0:
             metrics["team_value_loss"] = total_team_value_loss / max(n_updates, 1)
+            metrics["team_adv_std"] = total_team_adv_std / max(n_updates, 1)
+            # P2 §1.2 mechanism dashboard — print per-update so we can compare
+            # A baseline (broken F1+F2 → team_value_loss百万级, team_adv_std趋0)
+            # vs B (F1+F2 ON → team_value_loss~10万级, team_adv_std O(1))
+            print(f"      [mech] team_value_loss={metrics['team_value_loss']:.3e}  "
+                  f"team_adv_std={metrics['team_adv_std']:.3e}", flush=True)
         if total_kl_penalty > 0:
             metrics["kl_penalty"] = total_kl_penalty / max(n_updates, 1)
         return metrics
@@ -478,6 +489,16 @@ class TeamPPOTrainer:
             privileged_dim=privileged_dim,
             reward_normalize=self.reward_normalize,  # F8
         )
+        # P2 §3: wire ablation switches from laser_cfg so A baseline config
+        # can disable F1 (cross-ep 800-step) and F2 (team_adv double-norm)
+        # without code changes. Default False = F1+F2 ON (current behavior).
+        if self.task_type == "laser":
+            f1_off = bool(self.laser_cfg.get("f1_disable", False))
+            f2_off = bool(self.laser_cfg.get("f2_disable", False))
+            self.commander_buffer.f1_disable = f1_off
+            self.radar_buffer.f1_disable = f1_off
+            self.commander_trainer.f2_disable = f2_off
+            self.radar_trainer.f2_disable = f2_off
         # F1 ablation switch propagation (f1_disable attribute on buffer)
         if hasattr(self, 'f1_disable'):
             self.commander_buffer.f1_disable = self.f1_disable

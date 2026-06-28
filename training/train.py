@@ -182,6 +182,10 @@ def create_league(config: dict, env_params: dict) -> FluxLeague:
             # F8: return-based scaling flag (consumed by LaserRewardShaper init
             # is wrong; it's actually consumed by RolloutBuffer via TeamPPOTrainer)
             "reward_normalize": config.get("training", {}).get("reward_normalize", False),
+            # P2 §3: ablation switches for A baseline (F1+F2 OFF) vs B (F1+F2 ON).
+            # Read by TeamPPOTrainer.init_buffers → buffer.f1_disable + trainer.f2_disable.
+            "f1_disable": config.get("training", {}).get("f1_disable", False),
+            "f2_disable": config.get("training", {}).get("f2_disable", False),
         },
         sensing_cfg={
             **config.get("sensing_noise", {}),
