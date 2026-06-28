@@ -66,6 +66,13 @@ class RolloutBuffer:
         # F8: running reward stats for return-based scaling
         self.reward_normalize = reward_normalize
         self.reward_rms = RunningMeanStd() if reward_normalize else None
+        # F1: team-path running reward stats (mirrors F8 for team_returns so
+        # kill_bonus spikes don't keep team_value_loss in the millions).
+        self.team_reward_rms = RunningMeanStd() if reward_normalize else None
+        # Ablation switch: f1_disable=True skips team reward normalization +
+        # done-mask (reverts to old cross-episode 800-step accumulation
+        # behavior). For快速遍历 isolating F1's contribution.
+        self.f1_disable = False
 
         self.reset()
 
@@ -217,35 +224,81 @@ class RolloutBuffer:
         # Advantages = returns - values
         self.advantages = self.returns - self.values
 
-    def compute_team_n_step_returns(self, n_steps: int = 800, last_value: float = 0.0):
-        """Compute N-step truncated returns for team rewards.
+    def compute_team_returns(self):
+        """F1: team value targets = reward-normalized, done-masked discounted return.
 
-        TeamCritic uses a longer horizon (N=800) than per-agent critics
-        (N=400) because kill events have ~600-step latency that requires
-        longer credit propagation.  Uses team_rewards instead of agent
-        rewards for the discounted sum.
+        Replaces the buggy compute_team_n_step_returns (3 bugs: cross-episode
+        accumulation A, wrong agent-value bootstrap B, no reward normalization C).
+        Mirrors the agent GAE's reward normalization + episode-boundary handling;
+        produces O(1) value targets so team_value_loss actually descends.
 
-        G_t = Σ_{k=0}^{N-1} γ^k team_reward_{t+k}  +  γ^N V_team(s_{t+N})
+        Uses λ=1 MC return: episode=500, kill at ~10 steps, γ=0.999 → in-ep
+        coverage is sufficient; done mask guarantees no cross-episode leak.
+
+        Ablation: f1_disable=True reverts to OLD cross-episode 800-step
+        accumulation (Bug A active, no normalization) for baseline comparison.
         """
         n = self.ptr
-        gamma_n = self.gamma ** n_steps
+        if n == 0:
+            return
 
-        for t in range(n):
-            end = min(t + n_steps, n)
-            discounted_sum = 0.0
-            g_pow = 1.0
-            for k in range(t, end):
-                discounted_sum += g_pow * self.team_rewards[k]
-                g_pow *= self.gamma
+        if getattr(self, 'f1_disable', False):
+            # OLD buggy path: 800-step cross-episode accumulation, no done-mask,
+            # no reward normalization. Used for A/B baseline comparison.
+            n_steps = 800
+            gamma_n = self.gamma ** n_steps
+            for t in range(n):
+                end = min(t + n_steps, n)
+                discounted_sum = 0.0
+                g_pow = 1.0
+                for k in range(t, end):
+                    discounted_sum += g_pow * self.team_rewards[k]
+                    g_pow *= self.gamma
+                if end < n:
+                    bootstrap_val = self.values[end]
+                    bootstrap_scale = g_pow * (1.0 - self.dones[end])
+                else:
+                    bootstrap_val = 0.0
+                    bootstrap_scale = gamma_n
+                self.team_returns[t] = discounted_sum + bootstrap_scale * bootstrap_val
+            return
 
-            if end < n:
-                bootstrap_val = self.values[end]
-                bootstrap_scale = g_pow * (1.0 - self.dones[end])
-            else:
-                bootstrap_val = last_value
-                bootstrap_scale = gamma_n
+        # (C fix) normalize team rewards → O(1) value targets
+        if self.reward_normalize and self.team_reward_rms is not None:
+            self.team_reward_rms.update(self.team_rewards[:n].numpy())
+            tstd = float(np.sqrt(self.team_reward_rms.var + 1e-8))
+            tr = self.team_rewards[:n] / tstd
+        else:
+            tr = self.team_rewards[:n]
+        # (A fix) done-masked discounted return; ret resets at episode boundary
+        ret = 0.0
+        for t in reversed(range(n)):
+            nonterminal = 1.0 - self.dones[t]
+            ret = tr[t] + self.gamma * nonterminal * ret
+            self.team_returns[t] = ret
+        # (B fix) no agent-value bootstrap; team_adv = team_returns - team_critic(team_states)
+        #         is computed in ppo_trainer.update where team_critic is available.
 
-            self.team_returns[t] = discounted_sum + bootstrap_scale * bootstrap_val
+        # S0: one-shot reward-magnitude diagnostic (10-min verification per
+        # 修改建议 §5). Confirms kill_bonus / shaping actual magnitudes vs
+        # ALPHA_COLLAPSE_REPORT.md claims.
+        if not getattr(self, '_s0_printed', False):
+            self._s0_printed = True
+            raw = self.team_rewards[:n]
+            post = self.team_returns[:n]
+            print(f"[S0] team_rewards raw: max={float(raw.max()):.2f} "
+                  f"mean={float(raw.mean()):.2f} std={float(raw.std()):.2f} "
+                  f"|min|={float(raw.abs().min()):.4f}", flush=True)
+            print(f"[S0] team_returns (post-norm): max={float(post.max()):.2f} "
+                  f"mean={float(post.mean()):.2f} std={float(post.std()):.2f}",
+                  flush=True)
+            print(f"[S0] normalize={'ON' if (self.reward_normalize and self.team_reward_rms is not None) else 'OFF'}, "
+                  f"n={n}, gamma={self.gamma}", flush=True)
+
+    # Backward-compat alias: old callers passing (n_steps, last_value) keep working.
+    def compute_team_n_step_returns(self, n_steps: int = 800, last_value: float = 0.0):
+        """Deprecated alias — use compute_team_returns(). F1 fix."""
+        self.compute_team_returns()
 
     def get_minibatches(self, batch_size: int):
         """Yield minibatches for PPO update.

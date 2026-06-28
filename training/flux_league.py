@@ -227,7 +227,8 @@ class FluxLeague:
         # Alpha/beta scheduling for league training
         self.alpha = 0.0          # team advantage weight (0→1)
         self.beta_kl = 0.1        # KL penalty weight (1→0)
-        self.alpha_schedule = "linear"  # "linear" | "log" | "adaptive"
+        self.alpha_schedule = "linear"  # "linear" | "log" | "adaptive" | "constant"
+        self.alpha_constant = 0.0  # used when alpha_schedule == "constant"
 
         os.makedirs(checkpoint_dir, exist_ok=True)
 
@@ -496,6 +497,11 @@ class FluxLeague:
                     if payoffs:
                         max_team_wr = max(max_team_wr, float(np.mean(payoffs)))
                 self.alpha = min(1.0, max_team_wr * 2.0) if max_team_wr > 0 else min(1.0, t / 0.5)
+            elif self.alpha_schedule == "constant":
+                # 修改建议 P1: fixed alpha — drops directly into the collapse
+                # zone (alpha>0.5) to isolate the F1+F2 fix from curriculum
+                # confounds (kill_radius annealing, etc).
+                self.alpha = float(self.alpha_constant)
             else:
                 self.alpha = min(1.0, t / 0.5)  # fallback linear
         else:

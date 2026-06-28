@@ -88,8 +88,18 @@ class PPOTrainer:
                 if team_critic is not None and alpha > 0 and team_states is not None:
                     team_value = team_critic(team_states)  # [B, 1]
                     team_adv = team_returns.unsqueeze(-1) - team_value.detach()
-                    # Normalize team advantage within batch
-                    team_adv = (team_adv - team_adv.mean()) / (team_adv.std() + 1e-8)
+                    # F2: deleted the per-batch team_adv normalization here.
+                    # L107 below already normalizes the blended advantage once;
+                    # double-normalizing team_adv forced raw noise to unit scale
+                    # and let it dominate A_agent once α>0.5. With F1 producing
+                    # O(1) team_returns, team_adv has reasonable magnitude and
+                    # the single normalization at L107 is sufficient.
+                    #
+                    # Ablation: f2_disable=True restores the OLD double
+                    # normalization (team_adv standardized to unit variance
+                    # before blend) for A/B baseline comparison.
+                    if getattr(self, 'f2_disable', False):
+                        team_adv = (team_adv - team_adv.mean()) / (team_adv.std() + 1e-8)
                     advantages = (1.0 - alpha) * advantages.unsqueeze(-1) + alpha * team_adv
                     advantages = advantages.squeeze(-1)
                     # TeamCritic value loss (trained alongside agent critics)
@@ -313,6 +323,14 @@ class TeamPPOTrainer:
             # is in metres, scaled to normalized [-1,1] space at apply time.
             self.anchor_noise_std_m = float(self.laser_cfg.get("anchor_noise_std_m", 0.0))
             self.min_radar_baseline_m = self.laser_cfg.get("min_radar_baseline_m", 0.0)
+            # F1/F2 ablation switches (修改建议 §6 P1 A/B/C/D matrix).
+            # Defaults: False = FIX ACTIVE (production behavior).
+            # Set True in config to revert each fix for isolation testing.
+            self.f1_disable = bool(self.laser_cfg.get("f1_disable", False))
+            self.f2_disable = bool(self.laser_cfg.get("f2_disable", False))
+            # Propagate F2 to inner PPOTrainers (commander + radar)
+            self.commander_trainer.f2_disable = self.f2_disable
+            self.radar_trainer.f2_disable = self.f2_disable
             self._laser_env_attached = False
         else:
             self.kalman_tracker = None
@@ -460,6 +478,10 @@ class TeamPPOTrainer:
             privileged_dim=privileged_dim,
             reward_normalize=self.reward_normalize,  # F8
         )
+        # F1 ablation switch propagation (f1_disable attribute on buffer)
+        if hasattr(self, 'f1_disable'):
+            self.commander_buffer.f1_disable = self.f1_disable
+            self.radar_buffer.f1_disable = self.f1_disable
 
     def set_bc_pretrained(self):
         """Snapshot current actors as BC-pretrained reference for KL penalty.
@@ -812,10 +834,9 @@ class TeamPPOTrainer:
                 last_v = (self.commander_buffer.values[self.commander_buffer.ptr - 1].item()
                           if self.commander_buffer.ptr > 0 else 0.0)
                 self.commander_buffer.compute_n_step_returns(n_steps=n_step, last_value=last_v)
-                # Team returns: longer horizon for kill credit
-                self.commander_buffer.compute_team_n_step_returns(
-                    n_steps=n_step_team, last_value=last_v,
-                )
+                # F1: team returns — done-masked discounted return + reward
+                # normalization (was: 800-step cross-episode accumulation).
+                self.commander_buffer.compute_team_returns()
             else:
                 # C1 fix: pass last_value (deployment) so the GAE bootstrap at
                 # the buffer's final step isn't biased toward 0. The commander
@@ -827,6 +848,10 @@ class TeamPPOTrainer:
                 self.commander_buffer.compute_returns(
                     last_value=last_v, last_privileged_value=last_v,
                 )
+                # F1: also compute team returns in GAE path (was missing —
+                # without this, n_step=0 configs had team_returns=0 forever,
+                # making team_adv = -team_value and F1 had no effect).
+                self.commander_buffer.compute_team_returns()
             cmd_metrics = self.commander_trainer.update(
                 self.commander_buffer, team_critic=team_critic,
                 alpha=alpha, beta_kl=beta_kl,
@@ -842,12 +867,13 @@ class TeamPPOTrainer:
                 last_v = (self.radar_buffer.values[self.radar_buffer.ptr - 1].item()
                           if self.radar_buffer.ptr > 0 else 0.0)
                 self.radar_buffer.compute_n_step_returns(n_steps=n_step, last_value=last_v)
-                # Team returns: longer horizon for kill credit
-                self.radar_buffer.compute_team_n_step_returns(
-                    n_steps=n_step_team, last_value=last_v,
-                )
+                # F1: team returns — done-masked discounted return + reward
+                # normalization (was: 800-step cross-episode accumulation).
+                self.radar_buffer.compute_team_returns()
             else:
                 self.radar_buffer.compute_returns(last_privileged_value=last_pv)
+                # F1: also compute team returns in GAE path (see commander side).
+                self.radar_buffer.compute_team_returns()
             radar_metrics = self.radar_trainer.update(
                 self.radar_buffer, team_critic=team_critic,
                 alpha=alpha, beta_kl=beta_kl,

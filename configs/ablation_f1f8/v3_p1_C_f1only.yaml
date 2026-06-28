@@ -1,0 +1,121 @@
+# P1 ablation: C_f1only — F1 only (no team_adv normalization removal)
+# Compare vs B (v3_p1_f1f2_alpha07.yaml, F1+F2 enabled). 3 iter × 15min = 45min.
+# Same as B except: f1_disable=false, f2_disable=true, psro_iterations=3, checkpoint_dir.
+
+task_type: laser
+sub_array_size: 5
+
+league:
+  population_cap: 12
+  n_eval_games: 8
+  meta_solver: "nash"
+  pfsp_temperature: 1.0
+  pfsp_hardness_p: 1.0
+  self_play_prob_ma: 0.5
+  n_opponents_per_cycle_ma: 4
+  exploiter_reset_prob: 0.1
+  episodes_per_training: 10
+  max_steps_per_episode: 500
+  checkpoint_dir: "checkpoints/laser_pro6000_league_v3_p1_C_f1only"
+  use_elo_band: false
+  elo_band_init: 400.0
+  elo_band_final: 100.0
+  elo_anneal_iters: 18
+  alpha_schedule: constant
+  alpha_constant: 0.7
+  team_critic_enabled: true
+  tcdams_lambda: 0.3
+  mutation:
+    enabled: true
+    epsilon: 0.05
+    n_mutants_per_policy: 2
+    n_top_policies: 1
+    win_rate_threshold: 0.55
+
+ppo:
+  commander: {lr: 3.0e-4, clip_range: 0.2, entropy_coef: 0.01}
+  radar:     {lr: 1.0e-4, clip_range: 0.1, entropy_coef: 0.02}
+  shared:
+    gamma: 0.999
+    gae_lambda: 0.99
+    n_epochs: 3
+    batch_size: 256
+    buffer_size: 2048
+    buffer_size_commander: 2048
+    buffer_size_radar: 512
+    value_coef: 1.0
+    vf_clip_range: 10.0
+    max_grad_norm: 0.5
+
+training:
+  psro_iterations: 3
+  kill_radius_init: 24.5
+  kill_rate_threshold: 99.0
+  kill_radius_decay: 0.7
+  reward_normalize: true
+  residual_aim: true
+  residual_scale_m: 6.0
+  hybrid_fire: true
+  decouple_value: true
+  fire_init_logit: 0.0
+  log_std_floor: -3.0
+  warmup_episodes: 0
+  critic_pretrain_episodes: 0
+  bc_pretrain_epochs: 0
+  f1_disable: false
+  f2_disable: true
+
+reward_shaping:
+  detect_snr_weight: 0.1
+  beam_accuracy_weight: 5.0
+  illumination_progress_weight: 1.0
+  kill_bonus: 100000.0
+  death_penalty: -10.0
+  emission_cost: -0.001
+  snr_threshold_db: 10.0
+  team_reward_weight: 0.1
+  team_kill_weight: 1.0
+  beam_guidance_weight: 5.0
+  illum_reward_weight: 50.0
+  fire_lock_bonus: 5.0
+  misfire_penalty: 0.5
+  fire_commitment_weight: 10.0
+  fire_commitment_cap: 4.0
+  fire_commitment_exp: 2.0
+  aim_progress_weight: 20.0
+  aim_progress_clip_m: 500.0
+  illum_dwell_exp: 2.0
+  beam_r_ref_m: 3000.0
+  beam_r_floor_m: 0.2
+  beam_reward_weight: 5.0
+  beam_hit_radius_m: 500.0
+  beam_spatial_cap: 1000.0
+  beam_temporal_epsilon: 0.05
+
+env:
+  min_radar_baseline_m: 5000.0
+  rows: 25
+  cols: 25
+  num_envs: 12
+  n_radars: 4
+  n_teams: 2
+  pulses_per_cpi: 4
+  fft_size: 64
+  device: "cuda"
+  tx_power_w: 1.0
+  prf: 10000.0
+  pulses_per_control: 5
+  bandwidth: 200000000.0
+  vehicle_speed_ms: 20.0
+  kill_radius_m: 0.2
+  illumination_time_s: 0.002
+  drone_altitude_m: 3000.0
+  map_size: [20000.0, 20000.0]
+
+sensing_noise:
+  mode: tracked
+  track_q_m: 0.02
+  track_burnin: 120
+  acq_baseline_m: 0.0
+  range_sigma_m: 0.05
+  crossrange_factor: 7.4e-5

@@ -8,7 +8,7 @@
   "p0001_train": {
     "episodes": 10,
     "win_rate": 0.6,
-    "avg_reward": -564.0400466918945
+    "avg_reward": -564.2725463867188
   },
   "p0002_train": {
     "episodes": 10,
@@ -30,9 +30,9 @@
     "win_rate": 0.8,
     "avg_reward": -1201.3944355010985
   },
-  "elapsed_s": 888.3319454193115,
-  "alpha": 0.0,
+  "elapsed_s": 890.6251311302185,
+  "alpha": 0.7,
   "beta_kl": 0.1,
-  "alpha_schedule": "linear",
+  "alpha_schedule": "constant",
   "mutants_generated": 2
 }

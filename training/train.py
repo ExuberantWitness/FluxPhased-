@@ -113,7 +113,7 @@ def create_league(config: dict, env_params: dict) -> FluxLeague:
     cmd = ppo_cfg.get("commander", {})
     radar = ppo_cfg.get("radar", {})
 
-    return FluxLeague(
+    league = FluxLeague(
         n_elem=env_params["n_elem"],
         n_pulses=env_params["n_pulses"],
         n_bins=env_params["n_bins"],
@@ -194,6 +194,7 @@ def create_league(config: dict, env_params: dict) -> FluxLeague:
     # ── TeamCritic toggle (Config C disables for ablation) ──
     league.team_critic_enabled = league_cfg.get("team_critic_enabled", True)
     league.alpha_schedule = league_cfg.get("alpha_schedule", "linear")
+    league.alpha_constant = float(league_cfg.get("alpha_constant", 0.0))
     rsc = config.get("reward_shaping", {})
     league.team_reward_weight = rsc.get("team_reward_weight", 0.1)
     league.team_kill_weight = rsc.get("team_kill_weight", 1.0)
