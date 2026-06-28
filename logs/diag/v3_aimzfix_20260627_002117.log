@@ -3527,3 +3527,4 @@ win_rate=0.31 (512.2s)
     [p0088 vs p0093] final-step illumination_progress: team0=0.0000 team1=0.0000 (max t0=0.0000 t1=0.0000)
 win_rate=0.50 (513.5s)
   [payoff] p0089 vs p0082 (17/32)...     step 100: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=8 red_wins=0/0 wr_sofar=0.00
