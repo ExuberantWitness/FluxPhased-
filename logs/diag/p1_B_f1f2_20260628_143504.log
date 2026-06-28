@@ -1,0 +1,659 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 102.0 GB
+FluxPhased League Training
+Config: configs/ablation_f1f8/v3_p1_f1f2_alpha07.yaml
+Device: cuda
+Environment: E=12, R=4, N=625, P=4, bins=64
+State dim: 163783, Action dim: 13753
+[wandb] wandb not available; skipping logging
+Warp 1.10.1 initialized:
+   CUDA Toolkit 12.8, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Workstation Edition" (95 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/ubuntu/.cache/warp/1.10.1
+[League] kill_radius initialized at 24.500m (will anneal toward 0.200m)
+
+============================================================
+PSRO Iteration 0/3
+============================================================
+[League] Iteration 0: Evaluating payoff matrix...
+  [payoff] p0000 vs p0003 (1/9)... Module radar_sim.gpu.vec_channel 6a2afee load on device 'cuda:0' took 0.40 ms  (cached)
+Module radar_sim.gpu.vec_array 0e899e2 load on device 'cuda:0' took 29.28 ms  (cached)
+win_rate=0.62 (6.0s)
+  [payoff] p0000 vs p0004 (2/9)...     step 100: alive=7 red_wins=1/1 wr_sofar=1.00
+    step 200: alive=7 red_wins=1/1 wr_sofar=1.00
+    step 300: alive=7 red_wins=1/1 wr_sofar=1.00
+    step 400: alive=7 red_wins=1/1 wr_sofar=1.00
+    [p0000 vs p0004] final-step illumination_progress: team0=0.0292 team1=0.0500 (max t0=0.1000 t1=0.4000)
+win_rate=0.69 (117.9s)
+  [payoff] p0000 vs p0005 (3/9)... win_rate=0.25 (5.6s)
+  [payoff] p0001 vs p0003 (4/9)... win_rate=0.88 (16.9s)
+  [payoff] p0001 vs p0004 (5/9)...     step 100: alive=1 red_wins=7/7 wr_sofar=1.00
+    step 200: alive=1 red_wins=7/7 wr_sofar=1.00
+    step 300: alive=1 red_wins=7/7 wr_sofar=1.00
+win_rate=1.00 (88.7s)
+  [payoff] p0001 vs p0005 (6/9)... win_rate=1.00 (5.6s)
+  [payoff] p0002 vs p0003 (7/9)...     step 100: alive=1 red_wins=4/7 wr_sofar=0.57
+    step 200: alive=1 red_wins=4/7 wr_sofar=0.57
+    step 300: alive=1 red_wins=4/7 wr_sofar=0.57
+    step 400: alive=1 red_wins=4/7 wr_sofar=0.57
+    [p0002 vs p0003] final-step illumination_progress: team0=0.0083 team1=0.0042 (max t0=0.1000 t1=0.0500)
+win_rate=0.56 (117.8s)
+  [payoff] p0002 vs p0004 (8/9)...     step 100: alive=6 red_wins=1/2 wr_sofar=0.50
+    step 200: alive=6 red_wins=1/2 wr_sofar=0.50
+    step 300: alive=6 red_wins=1/2 wr_sofar=0.50
+    step 400: alive=6 red_wins=1/2 wr_sofar=0.50
+    [p0002 vs p0004] final-step illumination_progress: team0=0.0125 team1=0.0375 (max t0=0.1500 t1=0.1500)
+win_rate=0.38 (118.1s)
+  [payoff] p0002 vs p0005 (9/9)... win_rate=0.12 (6.8s)
+  Team 0 sigma=[0. 1. 0.] NashConv=0.0000 H_task=1.386 effK=1.00
+  Team 1 sigma=[1. 0. 0.] NashConv=0.2292 H_task=1.386 effK=1.00
+  Training main (team 0, p0000) against self...
+    ep 1/10  steps=8 kill  wr=2.00  avg_r=-1272.7763
+      [dart] fire_rate=0.542  min_dist_init=63.89m  final=nanm  change=+nanm  min=0.24m
+    ep 2/10  steps=7 kill  wr=1.50  avg_r=-1333.9547
+      [dart] fire_rate=0.535  min_dist_init=44.34m  final=nanm  change=+nanm  min=0.41m
+    ep 3/10  steps=8 kill  wr=1.33  avg_r=-664.5781
+      [dart] fire_rate=0.500  min_dist_init=37.07m  final=nanm  change=+nanm  min=0.10m
+    ep 4/10  steps=8 kill  wr=1.25  avg_r=-821.1371
+      [dart] fire_rate=0.542  min_dist_init=32.27m  final=nanm  change=+nanm  min=0.24m
+[S0] team_rewards raw: max=90.85 mean=1.80 std=11.17 |min|=0.0004
+[S0] team_returns (post-norm): max=10.33 mean=8.96 std=1.77
+[S0] normalize=ON, n=324, gamma=0.999
+[S0] team_rewards raw: max=90.85 mean=1.80 std=11.17 |min|=0.0004
+[S0] team_returns (post-norm): max=10.33 mean=8.96 std=1.77
+[S0] normalize=ON, n=324, gamma=0.999
+    ep 5/10  steps=7 kill  wr=1.20  avg_r=-946.8458
+      [dart] fire_rate=0.576  min_dist_init=37.08m  final=nanm  change=+nanm  min=0.36m
+    ── ep 5/10  wr=1.20  avg_r=-946.8458
+  Training main (team 0, p0000) against p0005...
+    ep 1/10  steps=6 kill  wr=0.00  avg_r=499.7649
+      [dart] fire_rate=0.433  min_dist_init=62.06m  final=nanm  change=+nanm  min=0.40m
+    ep 2/10  steps=6 kill  wr=0.50  avg_r=-498.6594
+      [dart] fire_rate=0.508  min_dist_init=44.13m  final=nanm  change=+nanm  min=0.30m
+    ep 3/10  steps=6 kill  wr=0.67  avg_r=-849.4131
+      [dart] fire_rate=0.525  min_dist_init=94.49m  final=nanm  change=+nanm  min=0.05m
+    ep 4/10  steps=6 kill  wr=0.75  avg_r=-1018.5444
+      [dart] fire_rate=0.592  min_dist_init=85.87m  final=nanm  change=+nanm  min=0.24m
+    ep 5/10  steps=6 kill  wr=0.60  avg_r=-720.8214
+      [dart] fire_rate=0.475  min_dist_init=44.26m  final=nanm  change=+nanm  min=0.24m
+    ── ep 5/10  wr=0.60  avg_r=-720.8214
+  Training main_exploiter (team 0, p0001) against p0003...
+    ep 1/10  steps=16 kill  wr=0.00  avg_r=1446.4421
+      [dart] fire_rate=0.478  min_dist_init=16.39m  final=nanm  change=+nanm  min=0.10m
+    ep 2/10  steps=9 kill  wr=0.50  avg_r=103.3791
+      [dart] fire_rate=0.526  min_dist_init=28.69m  final=nanm  change=+nanm  min=0.23m
+[S0] team_rewards raw: max=90.85 mean=1.03 std=7.69 |min|=0.0004
+[S0] team_returns (post-norm): max=17.42 mean=13.99 std=3.25
+[S0] normalize=ON, n=276, gamma=0.999
+[S0] team_rewards raw: max=90.85 mean=1.03 std=7.69 |min|=0.0004
+[S0] team_returns (post-norm): max=17.42 mean=13.99 std=3.25
+[S0] normalize=ON, n=276, gamma=0.999
+    ep 3/10  steps=6 kill  wr=0.67  avg_r=-419.5457
+      [dart] fire_rate=0.425  min_dist_init=128.33m  final=nanm  change=+nanm  min=0.17m
+    ep 4/10  steps=6 kill  wr=0.75  avg_r=-703.9487
+      [dart] fire_rate=0.417  min_dist_init=44.17m  final=nanm  change=+nanm  min=0.12m
+    ep 5/10  steps=6 kill  wr=0.60  avg_r=-472.8091
+      [dart] fire_rate=0.492  min_dist_init=85.82m  final=nanm  change=+nanm  min=0.40m
+    ── ep 5/10  wr=0.60  avg_r=-472.8091
+    ep 6/10  steps=7 kill  wr=0.83  avg_r=-964.0437
+      [dart] fire_rate=0.424  min_dist_init=71.93m  final=nanm  change=+nanm  min=0.32m
+    ep 7/10  steps=6 kill  wr=0.71  avg_r=-749.2681
+      [dart] fire_rate=0.550  min_dist_init=45.80m  final=nanm  change=+nanm  min=0.09m
+    ep 8/10  steps=6 kill  wr=0.62  avg_r=-603.0593
+      [dart] fire_rate=0.558  min_dist_init=85.94m  final=nanm  change=+nanm  min=0.18m
+    ep 9/10  steps=6 kill  wr=0.67  avg_r=-702.3545
+      [dart] fire_rate=0.525  min_dist_init=91.87m  final=nanm  change=+nanm  min=0.24m
+    ep 10/10  steps=8 kill  wr=0.60  avg_r=-564.2725
+      [dart] fire_rate=0.470  min_dist_init=37.03m  final=nanm  change=+nanm  min=0.17m
+    ── ep 10/10  wr=0.60  avg_r=-564.2725
+  Training league_exploiter (team 0, p0002) against p0005...
+    ep 1/10  steps=13 kill  wr=0.00  avg_r=1136.1904
+      [dart] fire_rate=0.490  min_dist_init=40.82m  final=nanm  change=+nanm  min=0.08m
+    ep 2/10  steps=6 kill  wr=0.50  avg_r=-195.4801
+      [dart] fire_rate=0.633  min_dist_init=64.44m  final=nanm  change=+nanm  min=0.26m
+    ep 3/10  steps=10 kill  wr=0.33  avg_r=166.8730
+      [dart] fire_rate=0.551  min_dist_init=33.29m  final=nanm  change=+nanm  min=0.20m
+[S0] team_rewards raw: max=90.85 mean=1.58 std=10.19 |min|=0.0004
+[S0] team_returns (post-norm): max=12.60 mean=10.36 std=1.95
+[S0] normalize=ON, n=312, gamma=0.999
+[S0] team_rewards raw: max=90.85 mean=1.58 std=10.19 |min|=0.0004
+[S0] team_returns (post-norm): max=12.60 mean=10.36 std=1.95
+[S0] normalize=ON, n=312, gamma=0.999
+    ep 4/10  steps=10 kill  wr=0.25  avg_r=328.7160
+      [dart] fire_rate=0.523  min_dist_init=25.85m  final=nanm  change=+nanm  min=0.17m
+    ep 5/10  steps=6 kill  wr=0.20  avg_r=362.6894
+      [dart] fire_rate=0.517  min_dist_init=44.20m  final=nanm  change=+nanm  min=0.47m
+    ── ep 5/10  wr=0.20  avg_r=362.6894
+    ep 6/10  steps=6 kill  wr=0.17  avg_r=379.6053
+      [dart] fire_rate=0.483  min_dist_init=85.85m  final=nanm  change=+nanm  min=0.48m
+    ep 7/10  steps=6 kill  wr=0.14  avg_r=391.3435
+      [dart] fire_rate=0.483  min_dist_init=44.18m  final=nanm  change=+nanm  min=0.21m
+    ep 8/10  steps=6 kill  wr=0.12  avg_r=405.1028
+      [dart] fire_rate=0.492  min_dist_init=127.33m  final=nanm  change=+nanm  min=0.15m
+    ep 9/10  steps=6 kill  wr=0.11  avg_r=411.6840
+      [dart] fire_rate=0.450  min_dist_init=44.34m  final=nanm  change=+nanm  min=0.20m
+    ep 10/10  steps=13 kill  wr=0.10  avg_r=483.8584
+      [dart] fire_rate=0.451  min_dist_init=19.89m  final=nanm  change=+nanm  min=0.13m
+    ── ep 10/10  wr=0.10  avg_r=483.8584
+  Training main (team 1, p0003) against self...
+    ep 1/10  steps=9 kill  wr=1.00  avg_r=-1217.2930
+      [dart] fire_rate=0.536  min_dist_init=37.65m  final=nanm  change=+nanm  min=0.25m
+    ep 2/10  steps=9 kill  wr=1.00  avg_r=-1238.8596
+      [dart] fire_rate=0.510  min_dist_init=28.55m  final=nanm  change=+nanm  min=0.20m
+  Training main (team 1, p0003) against p0000...
+    ep 1/10  steps=6 kill  wr=1.00  avg_r=-1509.9559
+      [dart] fire_rate=0.475  min_dist_init=54.58m  final=nanm  change=+nanm  min=0.17m
+    ep 2/10  steps=9 kill  wr=1.00  avg_r=-1385.1821
+      [dart] fire_rate=0.526  min_dist_init=28.54m  final=nanm  change=+nanm  min=0.14m
+[S0] team_rewards raw: max=91.35 mean=1.43 std=9.67 |min|=0.0004
+[S0] team_returns (post-norm): max=12.69 mean=10.58 std=1.93
+[S0] normalize=ON, n=348, gamma=0.999
+[S0] team_rewards raw: max=91.35 mean=1.43 std=9.67 |min|=0.0004
+[S0] team_returns (post-norm): max=12.69 mean=10.58 std=1.93
+[S0] normalize=ON, n=348, gamma=0.999
+  Training main (team 1, p0003) against p0002...
+    ep 1/10  steps=6 kill  wr=0.00  avg_r=497.7608
+      [dart] fire_rate=0.617  min_dist_init=44.17m  final=nanm  change=+nanm  min=0.17m
+    ep 2/10  steps=6 kill  wr=0.00  avg_r=472.8540
+      [dart] fire_rate=0.608  min_dist_init=140.98m  final=nanm  change=+nanm  min=0.26m
+  Training main (team 1, p0003) against p0008...
+    ep 1/10  steps=6 kill  wr=2.00  avg_r=-3503.9246
+      [dart] fire_rate=0.550  min_dist_init=85.85m  final=nanm  change=+nanm  min=0.21m
+    ep 2/10  steps=6 kill  wr=1.00  avg_r=-1520.9421
+      [dart] fire_rate=0.533  min_dist_init=44.36m  final=nanm  change=+nanm  min=0.25m
+  Resetting p0004 to anchor p0009 (role=main, gen=1)
+  Training main_exploiter (team 1, p0004) against p0006...
+    ep 1/10  steps=6 kill  wr=1.00  avg_r=-1540.3923
+      [dart] fire_rate=0.550  min_dist_init=44.12m  final=nanm  change=+nanm  min=0.18m
+    ep 2/10  steps=6 kill  wr=0.50  avg_r=-547.5728
+      [dart] fire_rate=0.558  min_dist_init=127.61m  final=nanm  change=+nanm  min=0.05m
+    ep 3/10  steps=8 kill  wr=0.33  avg_r=-152.5895
+      [dart] fire_rate=0.512  min_dist_init=32.20m  final=nanm  change=+nanm  min=0.10m
+    ep 4/10  steps=6 kill  wr=0.25  avg_r=14.6533
+      [dart] fire_rate=0.500  min_dist_init=88.34m  final=nanm  change=+nanm  min=0.42m
+[S0] team_rewards raw: max=91.10 mean=2.77 std=14.57 |min|=0.0004
+[S0] team_returns (post-norm): max=7.79 mean=6.86 std=0.60
+[S0] normalize=ON, n=264, gamma=0.999
+[S0] team_rewards raw: max=91.10 mean=2.77 std=14.57 |min|=0.0004
+[S0] team_returns (post-norm): max=7.79 mean=6.86 std=0.60
+[S0] normalize=ON, n=264, gamma=0.999
+    ep 5/10  steps=7 kill  wr=0.20  avg_r=117.0380
+      [dart] fire_rate=0.521  min_dist_init=40.58m  final=nanm  change=+nanm  min=0.45m
+    ── ep 5/10  wr=0.20  avg_r=117.0380
+    ep 6/10  steps=6 kill  wr=0.17  avg_r=179.4355
+      [dart] fire_rate=0.558  min_dist_init=85.86m  final=nanm  change=+nanm  min=0.22m
+    ep 7/10  steps=6 kill  wr=0.14  avg_r=221.5252
+      [dart] fire_rate=0.558  min_dist_init=44.20m  final=nanm  change=+nanm  min=0.27m
+    ep 8/10  steps=6 kill  wr=0.12  avg_r=245.7338
+      [dart] fire_rate=0.433  min_dist_init=44.13m  final=nanm  change=+nanm  min=0.07m
+    ep 9/10  steps=7 kill  wr=0.11  avg_r=284.0005
+      [dart] fire_rate=0.486  min_dist_init=37.23m  final=nanm  change=+nanm  min=0.20m
+    ep 10/10  steps=6 kill  wr=0.20  avg_r=100.2133
+      [dart] fire_rate=0.525  min_dist_init=44.23m  final=nanm  change=+nanm  min=0.47m
+    ── ep 10/10  wr=0.20  avg_r=100.2133
+  Training league_exploiter (team 1, p0005) against p0007...
+    ep 1/10  steps=6 kill  wr=1.00  avg_r=-1539.5631
+      [dart] fire_rate=0.483  min_dist_init=44.28m  final=nanm  change=+nanm  min=0.33m
+    ep 2/10  steps=9 kill  wr=1.00  avg_r=-1372.3909
+      [dart] fire_rate=0.542  min_dist_init=28.69m  final=nanm  change=+nanm  min=0.20m
+    ep 3/10  steps=6 kill  wr=1.00  avg_r=-1416.0694
+      [dart] fire_rate=0.542  min_dist_init=85.90m  final=nanm  change=+nanm  min=0.14m
+    ep 4/10  steps=8 kill  wr=0.75  avg_r=-1395.7415
+      [dart] fire_rate=0.500  min_dist_init=62.01m  final=nanm  change=+nanm  min=0.58m
+[S0] team_rewards raw: max=181.60 mean=2.20 std=14.70 |min|=0.0004
+[S0] team_returns (post-norm): max=13.50 mean=8.63 std=2.85
+[S0] normalize=ON, n=300, gamma=0.999
+[S0] team_rewards raw: max=181.60 mean=2.20 std=14.70 |min|=0.0004
+[S0] team_returns (post-norm): max=13.50 mean=8.63 std=2.85
+[S0] normalize=ON, n=300, gamma=0.999
+    ep 5/10  steps=6 kill  wr=1.00  avg_r=-1817.2824
+      [dart] fire_rate=0.625  min_dist_init=127.47m  final=nanm  change=+nanm  min=0.12m
+    ── ep 5/10  wr=1.00  avg_r=-1817.2824
+    ep 6/10  steps=6 kill  wr=0.83  avg_r=-1442.8190
+      [dart] fire_rate=0.558  min_dist_init=44.09m  final=nanm  change=+nanm  min=0.16m
+    ep 7/10  steps=6 kill  wr=0.86  avg_r=-1458.5536
+      [dart] fire_rate=0.567  min_dist_init=45.82m  final=nanm  change=+nanm  min=0.21m
+    ep 8/10  steps=6 kill  wr=0.75  avg_r=-1221.2355
+      [dart] fire_rate=0.542  min_dist_init=85.78m  final=nanm  change=+nanm  min=0.19m
+    ep 9/10  steps=12 kill  wr=0.78  avg_r=-1188.4808
+      [dart] fire_rate=0.523  min_dist_init=26.55m  final=nanm  change=+nanm  min=0.09m
+    ep 10/10  steps=8 kill  wr=0.80  avg_r=-1201.3944
+      [dart] fire_rate=0.512  min_dist_init=61.94m  final=nanm  change=+nanm  min=0.28m
+    ── ep 10/10  wr=0.80  avg_r=-1201.3944
+[League] Iteration 0 complete in 890.6s
+[League] alpha=0.700 (schedule=constant) beta_kl=0.100
+  [mutant] Created p0012 from p0001 (team=0, wr=0.729, eps=0.05, 1/2)
+  [mutant] Created p0013 from p0001 (team=0, wr=0.729, eps=0.05, 2/2)
+[League] Generated 2 mutant policies in iteration 0
+[League] kill_radius hold at 24.500m (kill_rate=1.00 < 99.0)
+  Checkpoint saved at iteration 0
+
+============================================================
+PSRO Iteration 1/3
+============================================================
+[League] Iteration 1: Evaluating payoff matrix...
+  [payoff] p0000 vs p0009 (4/36)...     step 100: alive=6 red_wins=0/2 wr_sofar=0.00
+    step 200: alive=6 red_wins=0/2 wr_sofar=0.00
+    step 300: alive=6 red_wins=0/2 wr_sofar=0.00
+    step 400: alive=6 red_wins=0/2 wr_sofar=0.00
+    [p0000 vs p0009] final-step illumination_progress: team0=0.0000 team1=0.0208 (max t0=0.0000 t1=0.2500)
+win_rate=0.31 (116.9s)
+  [payoff] p0000 vs p0010 (5/36)...     step 100: alive=3 red_wins=0/5 wr_sofar=0.00
+    step 200: alive=3 red_wins=0/5 wr_sofar=0.00
+    step 300: alive=3 red_wins=0/5 wr_sofar=0.00
+    step 400: alive=3 red_wins=0/5 wr_sofar=0.00
+    [p0000 vs p0010] final-step illumination_progress: team0=0.0000 team1=0.0125 (max t0=0.0000 t1=0.0500)
+win_rate=0.00 (118.1s)
+  [payoff] p0000 vs p0011 (6/36)...     step 100: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=8 red_wins=0/0 wr_sofar=0.00
+    [p0000 vs p0011] final-step illumination_progress: team0=0.0000 team1=0.0000 (max t0=0.0000 t1=0.0000)
+win_rate=0.50 (516.8s)
+  [payoff] p0006 vs p0003 (7/36)...     step 100: alive=4 red_wins=0/4 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/4 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/4 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/4 wr_sofar=0.00
+    [p0006 vs p0003] final-step illumination_progress: team0=0.0000 team1=0.0667 (max t0=0.0000 t1=0.5500)
+win_rate=0.12 (117.3s)
+  [payoff] p0006 vs p0004 (8/36)...     step 100: alive=3 red_wins=0/5 wr_sofar=0.00
+    step 200: alive=3 red_wins=0/5 wr_sofar=0.00
+    step 300: alive=3 red_wins=0/5 wr_sofar=0.00
+    step 400: alive=3 red_wins=0/5 wr_sofar=0.00
+    [p0006 vs p0004] final-step illumination_progress: team0=0.0000 team1=0.0000 (max t0=0.0000 t1=0.0000)
+win_rate=0.19 (117.9s)
+  [payoff] p0006 vs p0005 (9/36)...     step 100: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=8 red_wins=0/0 wr_sofar=0.00
+    [p0006 vs p0005] final-step illumination_progress: team0=0.0000 team1=0.0208 (max t0=0.0000 t1=0.2500)
+win_rate=0.44 (514.2s)
+  [payoff] p0006 vs p0009 (10/36)...     step 100: alive=5 red_wins=0/3 wr_sofar=0.00
+    step 200: alive=5 red_wins=0/3 wr_sofar=0.00
+    step 300: alive=5 red_wins=0/3 wr_sofar=0.00
+    step 400: alive=5 red_wins=0/3 wr_sofar=0.00
+    [p0006 vs p0009] final-step illumination_progress: team0=0.0000 team1=0.0167 (max t0=0.0000 t1=0.2000)
+win_rate=0.25 (117.9s)
+  [payoff] p0006 vs p0010 (11/36)...     step 100: alive=4 red_wins=0/4 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/4 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/4 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/4 wr_sofar=0.00
+    [p0006 vs p0010] final-step illumination_progress: team0=0.0000 team1=0.0042 (max t0=0.0000 t1=0.0500)
+win_rate=0.25 (117.4s)
+  [payoff] p0006 vs p0011 (12/36)...     step 100: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=8 red_wins=0/0 wr_sofar=0.00
+    [p0006 vs p0011] final-step illumination_progress: team0=0.0000 team1=0.0208 (max t0=0.0000 t1=0.2500)
+win_rate=0.44 (513.3s)
+  [payoff] p0007 vs p0003 (13/36)...     step 100: alive=5 red_wins=2/3 wr_sofar=0.67
+    step 200: alive=5 red_wins=2/3 wr_sofar=0.67
+    step 300: alive=4 red_wins=2/4 wr_sofar=0.50
+    step 400: alive=4 red_wins=2/4 wr_sofar=0.50
+    [p0007 vs p0003] final-step illumination_progress: team0=0.0000 team1=0.0667 (max t0=0.0000 t1=0.5500)
+win_rate=0.38 (117.7s)
+  [payoff] p0007 vs p0004 (14/36)... win_rate=0.38 (6.8s)
+  [payoff] p0007 vs p0005 (15/36)...     step 100: alive=3 red_wins=5/5 wr_sofar=1.00
+    step 200: alive=3 red_wins=5/5 wr_sofar=1.00
+    step 300: alive=3 red_wins=5/5 wr_sofar=1.00
+    step 400: alive=3 red_wins=5/5 wr_sofar=1.00
+    [p0007 vs p0005] final-step illumination_progress: team0=0.0042 team1=0.0042 (max t0=0.0500 t1=0.0500)
+win_rate=0.88 (118.3s)
+  [payoff] p0007 vs p0009 (16/36)...     step 100: alive=5 red_wins=3/3 wr_sofar=1.00
+    step 200: alive=5 red_wins=3/3 wr_sofar=1.00
+    step 300: alive=5 red_wins=3/3 wr_sofar=1.00
+    step 400: alive=5 red_wins=3/3 wr_sofar=1.00
+    [p0007 vs p0009] final-step illumination_progress: team0=0.0000 team1=0.0000 (max t0=0.0000 t1=0.0000)
+win_rate=0.69 (118.2s)
+  [payoff] p0007 vs p0010 (17/36)... win_rate=0.62 (7.9s)
+  [payoff] p0007 vs p0011 (18/36)...     step 100: alive=6 red_wins=2/2 wr_sofar=1.00
+    step 200: alive=6 red_wins=2/2 wr_sofar=1.00
+    step 300: alive=6 red_wins=2/2 wr_sofar=1.00
+    step 400: alive=6 red_wins=2/2 wr_sofar=1.00
+    [p0007 vs p0011] final-step illumination_progress: team0=0.0083 team1=0.0042 (max t0=0.0500 t1=0.0500)
+win_rate=0.62 (118.1s)
+  [payoff] p0008 vs p0003 (19/36)...     step 100: alive=4 red_wins=0/4 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/4 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/4 wr_sofar=0.00
+    step 400: alive=4 red_wins=0/4 wr_sofar=0.00
+    [p0008 vs p0003] final-step illumination_progress: team0=0.0000 team1=0.0167 (max t0=0.0000 t1=0.2000)
+win_rate=0.25 (117.8s)
+  [payoff] p0008 vs p0004 (20/36)...     step 100: alive=3 red_wins=0/5 wr_sofar=0.00
+    step 200: alive=3 red_wins=0/5 wr_sofar=0.00
+    step 300: alive=3 red_wins=0/5 wr_sofar=0.00
+    step 400: alive=3 red_wins=0/5 wr_sofar=0.00
+    [p0008 vs p0004] final-step illumination_progress: team0=0.0000 team1=0.0125 (max t0=0.0000 t1=0.1500)
+win_rate=0.12 (118.8s)
+  [payoff] p0008 vs p0005 (21/36)...     step 100: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=8 red_wins=0/0 wr_sofar=0.00
+    [p0008 vs p0005] final-step illumination_progress: team0=0.0000 team1=0.0208 (max t0=0.0000 t1=0.2500)
+win_rate=0.44 (515.3s)
+  [payoff] p0008 vs p0009 (22/36)...     step 100: alive=4 red_wins=0/4 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/4 wr_sofar=0.00
+    step 300: alive=3 red_wins=0/5 wr_sofar=0.00
+    step 400: alive=3 red_wins=0/5 wr_sofar=0.00
+    [p0008 vs p0009] final-step illumination_progress: team0=0.0000 team1=0.0000 (max t0=0.0000 t1=0.0000)
+win_rate=0.19 (118.4s)
+  [payoff] p0008 vs p0010 (23/36)...     step 100: alive=6 red_wins=0/2 wr_sofar=0.00
+    step 200: alive=6 red_wins=0/2 wr_sofar=0.00
+    step 300: alive=6 red_wins=0/2 wr_sofar=0.00
+    step 400: alive=6 red_wins=0/2 wr_sofar=0.00
+    [p0008 vs p0010] final-step illumination_progress: team0=0.0000 team1=0.0125 (max t0=0.0000 t1=0.0500)
+win_rate=0.25 (118.1s)
+  [payoff] p0008 vs p0011 (24/36)...     step 100: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=8 red_wins=0/0 wr_sofar=0.00
+    [p0008 vs p0011] final-step illumination_progress: team0=0.0000 team1=0.0417 (max t0=0.0000 t1=0.2500)
+win_rate=0.44 (513.6s)
+  [payoff] p0012 vs p0003 (25/36)...     step 100: alive=6 red_wins=0/2 wr_sofar=0.00
+    step 200: alive=6 red_wins=0/2 wr_sofar=0.00
+    step 300: alive=6 red_wins=0/2 wr_sofar=0.00
+    step 400: alive=6 red_wins=0/2 wr_sofar=0.00
+    [p0012 vs p0003] final-step illumination_progress: team0=0.0000 team1=0.0042 (max t0=0.0000 t1=0.0500)
+win_rate=0.31 (117.6s)
+  [payoff] p0012 vs p0004 (26/36)...     step 100: alive=2 red_wins=0/6 wr_sofar=0.00
+    step 200: alive=2 red_wins=0/6 wr_sofar=0.00
+    step 300: alive=2 red_wins=0/6 wr_sofar=0.00
+    step 400: alive=2 red_wins=0/6 wr_sofar=0.00
+    [p0012 vs p0004] final-step illumination_progress: team0=0.0000 team1=0.0083 (max t0=0.0000 t1=0.0500)
+win_rate=0.06 (116.4s)
+  [payoff] p0012 vs p0005 (27/36)...     step 100: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=8 red_wins=0/0 wr_sofar=0.00
+    [p0012 vs p0005] final-step illumination_progress: team0=0.0000 team1=0.0417 (max t0=0.0000 t1=0.2500)
+win_rate=0.44 (512.3s)
+  [payoff] p0012 vs p0009 (28/36)...     step 100: alive=4 red_wins=0/4 wr_sofar=0.00
+    step 200: alive=4 red_wins=0/4 wr_sofar=0.00
+    step 300: alive=4 red_wins=0/4 wr_sofar=0.00
+    step 400: alive=3 red_wins=0/5 wr_sofar=0.00
+    [p0012 vs p0009] final-step illumination_progress: team0=0.0000 team1=0.0083 (max t0=0.0000 t1=0.0500)
+win_rate=0.12 (116.9s)
+  [payoff] p0012 vs p0010 (29/36)...     step 100: alive=2 red_wins=0/6 wr_sofar=0.00
+    step 200: alive=2 red_wins=0/6 wr_sofar=0.00
+    step 300: alive=2 red_wins=0/6 wr_sofar=0.00
+    step 400: alive=2 red_wins=0/6 wr_sofar=0.00
+    [p0012 vs p0010] final-step illumination_progress: team0=0.0000 team1=0.0083 (max t0=0.0000 t1=0.0500)
+win_rate=0.06 (117.5s)
+  [payoff] p0012 vs p0011 (30/36)...     step 100: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=7 red_wins=0/1 wr_sofar=0.00
+    [p0012 vs p0011] final-step illumination_progress: team0=0.0000 team1=0.0000 (max t0=0.0000 t1=0.0000)
+win_rate=0.44 (376.7s)
+  [payoff] p0013 vs p0003 (31/36)...     step 100: alive=5 red_wins=0/3 wr_sofar=0.00
+    step 200: alive=5 red_wins=0/3 wr_sofar=0.00
+    step 300: alive=5 red_wins=0/3 wr_sofar=0.00
+    step 400: alive=5 red_wins=0/3 wr_sofar=0.00
+    [p0013 vs p0003] final-step illumination_progress: team0=0.0000 team1=0.0000 (max t0=0.0000 t1=0.0000)
+win_rate=0.31 (117.6s)
+  [payoff] p0013 vs p0004 (32/36)...     step 100: alive=1 red_wins=0/7 wr_sofar=0.00
+    step 200: alive=1 red_wins=0/7 wr_sofar=0.00
+    step 300: alive=1 red_wins=0/7 wr_sofar=0.00
+    step 400: alive=1 red_wins=0/7 wr_sofar=0.00
+    [p0013 vs p0004] final-step illumination_progress: team0=0.0000 team1=0.0292 (max t0=0.0000 t1=0.3500)
+win_rate=0.00 (117.3s)
+  [payoff] p0013 vs p0005 (33/36)...     step 100: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=8 red_wins=0/0 wr_sofar=0.00
+    [p0013 vs p0005] final-step illumination_progress: team0=0.0000 team1=0.0833 (max t0=0.0000 t1=0.7500)
+win_rate=0.44 (513.7s)
+  [payoff] p0013 vs p0009 (34/36)...     step 100: alive=7 red_wins=0/1 wr_sofar=0.00
+    step 200: alive=6 red_wins=0/2 wr_sofar=0.00
+    step 300: alive=5 red_wins=0/3 wr_sofar=0.00
+    step 400: alive=5 red_wins=0/3 wr_sofar=0.00
+    [p0013 vs p0009] final-step illumination_progress: team0=0.0000 team1=0.0000 (max t0=0.0000 t1=0.0000)
+win_rate=0.31 (117.8s)
+  [payoff] p0013 vs p0010 (35/36)...     step 100: alive=4 red_wins=0/4 wr_sofar=0.00
+    step 200: alive=3 red_wins=0/5 wr_sofar=0.00
+    step 300: alive=3 red_wins=0/5 wr_sofar=0.00
+    step 400: alive=3 red_wins=0/5 wr_sofar=0.00
+    [p0013 vs p0010] final-step illumination_progress: team0=0.0000 team1=0.0000 (max t0=0.0000 t1=0.0000)
+win_rate=0.19 (117.0s)
+  [payoff] p0013 vs p0011 (36/36)...     step 100: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=8 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=8 red_wins=0/0 wr_sofar=0.00
+    [p0013 vs p0011] final-step illumination_progress: team0=0.0000 team1=0.0208 (max t0=0.0000 t1=0.2500)
+win_rate=0.44 (511.4s)
+  Team 0 sigma=[0.286 0.    0.714 0.   ] NashConv=0.0565 H_task=1.386 effK=1.82
+  Team 1 sigma=[0.714 0.    0.    0.    0.286 0.   ] NashConv=0.0446 H_task=1.386 effK=1.82
+  Training main (team 0, p0000) against self...
+    ep 1/10  steps=8 kill  wr=1.00  avg_r=-1268.3975
+      [dart] fire_rate=0.524  min_dist_init=32.11m  final=nanm  change=+nanm  min=0.17m
+    ep 2/10  steps=10 kill  wr=2.00  avg_r=-224.0863
+      [dart] fire_rate=0.472  min_dist_init=77.31m  final=nanm  change=+nanm  min=0.18m
+  Training main (team 0, p0000) against p0005...
+    ep 1/10  steps=6 kill  wr=0.00  avg_r=426.2875
+      [dart] fire_rate=0.417  min_dist_init=44.12m  final=nanm  change=+nanm  min=0.06m
+    ep 2/10  steps=6 kill  wr=0.50  avg_r=-548.2690
+      [dart] fire_rate=0.417  min_dist_init=61.60m  final=nanm  change=+nanm  min=0.12m
+  Training main (team 0, p0000) against p0010...
+    ep 1/10  steps=7 kill  wr=0.00  avg_r=555.9535
+      [dart] fire_rate=0.417  min_dist_init=38.39m  final=nanm  change=+nanm  min=0.35m
+    ep 2/10  steps=6 kill  wr=0.00  avg_r=487.9035
+      [dart] fire_rate=0.467  min_dist_init=47.47m  final=nanm  change=+nanm  min=0.42m
+  Training main (team 0, p0000) against p0011...
+    ep 1/10  steps=6 kill  wr=0.00  avg_r=467.9774
+      [dart] fire_rate=0.442  min_dist_init=44.06m  final=nanm  change=+nanm  min=0.18m
+    ep 2/10  steps=10 kill  wr=0.00  avg_r=652.0947
+      [dart] fire_rate=0.407  min_dist_init=25.58m  final=nanm  change=+nanm  min=0.22m
+  Training main (team 1, p0003) against self...
+    ep 1/10  steps=6 kill  wr=1.00  avg_r=497.9811
+      [dart] fire_rate=0.583  min_dist_init=44.30m  final=nanm  change=+nanm  min=0.33m
+    ep 2/10  steps=6 kill  wr=1.00  avg_r=-515.0428
+      [dart] fire_rate=0.575  min_dist_init=49.19m  final=nanm  change=+nanm  min=0.42m
+    ep 3/10  steps=6 kill  wr=1.00  avg_r=-187.8598
+      [dart] fire_rate=0.467  min_dist_init=44.09m  final=nanm  change=+nanm  min=0.33m
+  Training main (team 1, p0003) against p0014...
+    ep 1/10  steps=6 kill  wr=1.00  avg_r=-1517.9336
+      [dart] fire_rate=0.583  min_dist_init=85.62m  final=nanm  change=+nanm  min=0.10m
+    ep 2/10  steps=7 kill  wr=0.50  avg_r=-497.8218
+      [dart] fire_rate=0.410  min_dist_init=37.26m  final=nanm  change=+nanm  min=0.06m
+    ep 3/10  steps=8 kill  wr=0.33  avg_r=-118.8531
+      [dart] fire_rate=0.482  min_dist_init=32.42m  final=nanm  change=+nanm  min=0.45m
+  Training main (team 1, p0003) against p0008...
+    ep 1/10  steps=6 kill  wr=1.00  avg_r=-1508.5431
+      [dart] fire_rate=0.492  min_dist_init=44.30m  final=nanm  change=+nanm  min=0.24m
+    ep 2/10  steps=14 kill  wr=0.50  avg_r=-171.4587
+      [dart] fire_rate=0.433  min_dist_init=18.69m  final=nanm  change=+nanm  min=0.22m
+    ep 3/10  steps=9 kill  wr=1.00  avg_r=-1196.8477
+      [dart] fire_rate=0.422  min_dist_init=54.44m  final=nanm  change=+nanm  min=0.28m
+  Training main_exploiter (team 1, p0004) against p0014...
+    ep 1/10  steps=7 kill  wr=0.00  avg_r=563.0383
+      [dart] fire_rate=0.486  min_dist_init=37.21m  final=nanm  change=+nanm  min=0.34m
+    ep 2/10  steps=6 kill  wr=0.50  avg_r=-487.6332
+      [dart] fire_rate=0.533  min_dist_init=44.04m  final=nanm  change=+nanm  min=0.18m
+    ep 3/10  steps=6 kill  wr=0.67  avg_r=-830.1331
+      [dart] fire_rate=0.550  min_dist_init=53.22m  final=nanm  change=+nanm  min=0.11m
+    ep 4/10  steps=6 kill  wr=0.75  avg_r=-1006.2928
+      [dart] fire_rate=0.533  min_dist_init=138.52m  final=nanm  change=+nanm  min=0.32m
+    ep 5/10  steps=6 kill  wr=0.60  avg_r=-713.4926
+      [dart] fire_rate=0.567  min_dist_init=44.39m  final=nanm  change=+nanm  min=0.36m
+    ── ep 5/10  wr=0.60  avg_r=-713.4926
+    ep 6/10  steps=6 kill  wr=0.50  avg_r=-519.6279
+      [dart] fire_rate=0.550  min_dist_init=86.00m  final=nanm  change=+nanm  min=0.25m
+    ep 7/10  steps=9 kill  wr=0.43  avg_r=-337.5233
+      [dart] fire_rate=0.536  min_dist_init=30.40m  final=nanm  change=+nanm  min=0.07m
+    ep 8/10  steps=6 kill  wr=0.38  avg_r=-235.1438
+      [dart] fire_rate=0.450  min_dist_init=44.27m  final=nanm  change=+nanm  min=0.35m
+    ep 9/10  steps=6 kill  wr=0.44  avg_r=-375.8622
+      [dart] fire_rate=0.550  min_dist_init=55.71m  final=nanm  change=+nanm  min=0.32m
+    ep 10/10  steps=9 kill  wr=0.50  avg_r=-466.4617
+      [dart] fire_rate=0.427  min_dist_init=28.73m  final=nanm  change=+nanm  min=0.15m
+    ── ep 10/10  wr=0.50  avg_r=-466.4617
+  Training league_exploiter (team 1, p0005) against p0007...
+    ep 1/10  steps=6 kill  wr=0.00  avg_r=474.2250
+      [dart] fire_rate=0.525  min_dist_init=45.73m  final=nanm  change=+nanm  min=0.27m
+    ep 2/10  steps=6 kill  wr=0.50  avg_r=-504.5476
+      [dart] fire_rate=0.492  min_dist_init=44.22m  final=nanm  change=+nanm  min=0.32m
+    ep 3/10  steps=6 kill  wr=0.67  avg_r=-844.8337
+      [dart] fire_rate=0.492  min_dist_init=61.10m  final=nanm  change=+nanm  min=0.12m
+    ep 4/10  steps=6 kill  wr=0.75  avg_r=-1013.9422
+      [dart] fire_rate=0.508  min_dist_init=47.05m  final=nanm  change=+nanm  min=0.16m
+    ep 5/10  steps=9 kill  wr=0.80  avg_r=-1063.8113
+      [dart] fire_rate=0.484  min_dist_init=28.63m  final=nanm  change=+nanm  min=0.35m
+    ── ep 5/10  wr=0.80  avg_r=-1063.8113
+    ep 6/10  steps=6 kill  wr=0.83  avg_r=-1139.4093
+      [dart] fire_rate=0.542  min_dist_init=85.93m  final=nanm  change=+nanm  min=0.32m
+    ep 7/10  steps=11 kill  wr=0.86  avg_r=-1121.3872
+      [dart] fire_rate=0.504  min_dist_init=23.33m  final=nanm  change=+nanm  min=0.28m
+    ep 8/10  steps=6 kill  wr=0.75  avg_r=-921.4781
+      [dart] fire_rate=0.492  min_dist_init=86.01m  final=nanm  change=+nanm  min=0.29m
+    ep 9/10  steps=7 kill  wr=0.67  avg_r=-755.9459
+      [dart] fire_rate=0.444  min_dist_init=40.76m  final=nanm  change=+nanm  min=0.43m
+    ep 10/10  steps=9 kill  wr=0.60  avg_r=-607.0009
+      [dart] fire_rate=0.438  min_dist_init=28.37m  final=nanm  change=+nanm  min=0.25m
+    ── ep 10/10  wr=0.60  avg_r=-607.0009
+  Training main (team 0, p0006) against self...
+    ep 1/10  steps=14 kill  wr=1.00  avg_r=1178.7643
+      [dart] fire_rate=0.378  min_dist_init=18.56m  final=nanm  change=+nanm  min=0.25m
+    ep 2/10  steps=6 kill  wr=1.00  avg_r=822.8250
+      [dart] fire_rate=0.383  min_dist_init=58.44m  final=nanm  change=+nanm  min=0.30m
+    ep 3/10  steps=6 kill  wr=2.00  avg_r=701.7646
+      [dart] fire_rate=0.483  min_dist_init=192.10m  final=nanm  change=+nanm  min=0.14m
+  Training main (team 0, p0006) against p0011...
+    ep 1/10  steps=6 kill  wr=0.00  avg_r=471.0106
+      [dart] fire_rate=0.450  min_dist_init=44.21m  final=nanm  change=+nanm  min=0.22m
+    ep 2/10  steps=8 kill  wr=0.00  avg_r=565.0540
+      [dart] fire_rate=0.381  min_dist_init=32.35m  final=nanm  change=+nanm  min=0.30m
+    ep 3/10  steps=8 kill  wr=0.33  avg_r=-62.0011
+      [dart] fire_rate=0.393  min_dist_init=40.86m  final=nanm  change=+nanm  min=0.10m
+  Training main (team 0, p0006) against p0017...
+    ep 1/10  steps=15 kill  wr=0.00  avg_r=1280.0241
+      [dart] fire_rate=0.387  min_dist_init=17.53m  final=nanm  change=+nanm  min=0.10m
+    ep 2/10  steps=7 kill  wr=0.00  avg_r=899.6233
+      [dart] fire_rate=0.458  min_dist_init=44.94m  final=nanm  change=+nanm  min=0.09m
+    ep 3/10  steps=10 kill  wr=0.00  avg_r=863.0971
+      [dart] fire_rate=0.403  min_dist_init=25.82m  final=nanm  change=+nanm  min=0.41m
+  Training main_exploiter (team 0, p0007) against p0015...
+    ep 1/10  steps=6 kill  wr=1.00  avg_r=-1523.8151
+      [dart] fire_rate=0.442  min_dist_init=44.28m  final=nanm  change=+nanm  min=0.25m
+    ep 2/10  steps=6 kill  wr=0.50  avg_r=-509.8941
+      [dart] fire_rate=0.458  min_dist_init=44.25m  final=nanm  change=+nanm  min=0.12m
+    ep 3/10  steps=6 kill  wr=0.67  avg_r=-857.4950
+      [dart] fire_rate=0.375  min_dist_init=44.34m  final=nanm  change=+nanm  min=0.44m
+    ep 4/10  steps=9 kill  wr=0.75  avg_r=-964.6834
+      [dart] fire_rate=0.385  min_dist_init=28.66m  final=nanm  change=+nanm  min=0.22m
+    ep 5/10  steps=17 kill  wr=0.80  avg_r=-873.9169
+      [dart] fire_rate=0.391  min_dist_init=15.53m  final=nanm  change=+nanm  min=0.07m
+    ── ep 5/10  wr=0.80  avg_r=-873.9169
+    ep 6/10  steps=8 kill  wr=0.67  avg_r=-621.8075
+      [dart] fire_rate=0.339  min_dist_init=32.35m  final=nanm  change=+nanm  min=0.37m
+    ep 7/10  steps=15 kill  wr=0.71  avg_r=-630.3447
+      [dart] fire_rate=0.369  min_dist_init=17.51m  final=nanm  change=+nanm  min=0.17m
+    ep 8/10  steps=7 kill  wr=0.75  avg_r=-735.7814
+      [dart] fire_rate=0.438  min_dist_init=72.00m  final=nanm  change=+nanm  min=0.15m
+    ep 9/10  steps=7 kill  wr=0.67  avg_r=-597.9329
+      [dart] fire_rate=0.493  min_dist_init=37.08m  final=nanm  change=+nanm  min=0.02m
+    ep 10/10  steps=6 kill  wr=0.60  avg_r=-491.3211
+      [dart] fire_rate=0.383  min_dist_init=52.59m  final=nanm  change=+nanm  min=0.27m
+    ── ep 10/10  wr=0.60  avg_r=-491.3211
+  Training league_exploiter (team 0, p0008) against p0017...
+    ep 1/10  steps=16 kill  wr=1.00  avg_r=-581.2568
+      [dart] fire_rate=0.369  min_dist_init=16.56m  final=nanm  change=+nanm  min=0.22m
+    ep 2/10  steps=8 kill  wr=1.50  avg_r=-1965.7700
+      [dart] fire_rate=0.512  min_dist_init=110.10m  final=nanm  change=+nanm  min=0.23m
+    ep 3/10  steps=12 kill  wr=1.00  avg_r=-965.5373
+      [dart] fire_rate=0.375  min_dist_init=36.97m  final=nanm  change=+nanm  min=0.12m
+    ep 4/10  steps=8 kill  wr=1.00  avg_r=-1056.5818
+      [dart] fire_rate=0.423  min_dist_init=61.93m  final=nanm  change=+nanm  min=0.28m
+    ep 5/10  steps=9 kill  wr=1.00  avg_r=-1080.4806
+      [dart] fire_rate=0.443  min_dist_init=28.65m  final=nanm  change=+nanm  min=0.23m
+    ── ep 5/10  wr=1.00  avg_r=-1080.4806
+    ep 6/10  steps=12 kill  wr=1.17  avg_r=-1387.4915
+      [dart] fire_rate=0.417  min_dist_init=43.89m  final=nanm  change=+nanm  min=0.20m
+    ep 7/10  steps=8 kill  wr=1.00  avg_r=-1093.2325
+      [dart] fire_rate=0.411  min_dist_init=36.27m  final=nanm  change=+nanm  min=0.19m
+    ep 8/10  steps=6 kill  wr=1.00  avg_r=-1146.9863
+      [dart] fire_rate=0.508  min_dist_init=50.32m  final=nanm  change=+nanm  min=0.39m
+    ep 9/10  steps=7 kill  wr=0.89  avg_r=-960.9836
+      [dart] fire_rate=0.465  min_dist_init=37.36m  final=nanm  change=+nanm  min=0.20m
+    ep 10/10  steps=10 kill  wr=0.80  avg_r=-776.6388
+      [dart] fire_rate=0.463  min_dist_init=49.05m  final=nanm  change=+nanm  min=0.12m
+    ── ep 10/10  wr=0.80  avg_r=-776.6388
+  Training main (team 1, p0009) against self...
+    ep 1/10  steps=6 kill  wr=1.00  avg_r=439.2678
+      [dart] fire_rate=0.433  min_dist_init=44.27m  final=nanm  change=+nanm  min=0.14m
+    ep 2/10  steps=6 kill  wr=1.00  avg_r=428.6798
+      [dart] fire_rate=0.433  min_dist_init=44.45m  final=nanm  change=+nanm  min=0.32m
+    ep 3/10  steps=8 kill  wr=1.00  avg_r=-155.5163
+      [dart] fire_rate=0.440  min_dist_init=32.34m  final=nanm  change=+nanm  min=0.22m
+  Training main (team 1, p0009) against p0020...
+    ep 1/10  steps=8 kill  wr=0.00  avg_r=680.6685
+      [dart] fire_rate=0.452  min_dist_init=37.90m  final=nanm  change=+nanm  min=0.41m
+    ep 2/10  steps=8 kill  wr=0.50  avg_r=-296.8638
+      [dart] fire_rate=0.530  min_dist_init=32.16m  final=nanm  change=+nanm  min=0.08m
+    ep 3/10  steps=7 kill  wr=0.67  avg_r=-671.4434
+      [dart] fire_rate=0.444  min_dist_init=37.15m  final=nanm  change=+nanm  min=0.26m
+  Training main (team 1, p0009) against p0019...
+    ep 1/10  steps=6 kill  wr=0.00  avg_r=444.5292
+      [dart] fire_rate=0.508  min_dist_init=44.05m  final=nanm  change=+nanm  min=0.26m
+    ep 2/10  steps=6 kill  wr=0.50  avg_r=-533.6148
+      [dart] fire_rate=0.467  min_dist_init=44.22m  final=nanm  change=+nanm  min=0.51m
+    ep 3/10  steps=9 kill  wr=0.33  avg_r=-96.9843
+      [dart] fire_rate=0.547  min_dist_init=36.85m  final=nanm  change=+nanm  min=0.09m
+  Resetting p0010 to anchor p0015 (role=main, gen=2)
+  Training main_exploiter (team 1, p0010) against p0014...
+    ep 1/10  steps=6 kill  wr=1.00  avg_r=-1501.7828
+      [dart] fire_rate=0.500  min_dist_init=91.32m  final=nanm  change=+nanm  min=0.36m
+    ep 2/10  steps=6 kill  wr=0.50  avg_r=-517.5873
+      [dart] fire_rate=0.467  min_dist_init=48.25m  final=nanm  change=+nanm  min=0.09m
+    ep 3/10  steps=6 kill  wr=0.33  avg_r=-185.5633
+      [dart] fire_rate=0.500  min_dist_init=44.19m  final=nanm  change=+nanm  min=0.32m
+    ep 4/10  steps=6 kill  wr=0.50  avg_r=-515.9410
+      [dart] fire_rate=0.575  min_dist_init=44.23m  final=nanm  change=+nanm  min=0.47m
+    ep 5/10  steps=10 kill  wr=0.60  avg_r=-639.5143
+      [dart] fire_rate=0.542  min_dist_init=25.65m  final=nanm  change=+nanm  min=0.20m
+    ── ep 5/10  wr=0.60  avg_r=-639.5143
+    ep 6/10  steps=8 kill  wr=0.67  avg_r=-759.4896
+      [dart] fire_rate=0.548  min_dist_init=32.35m  final=nanm  change=+nanm  min=0.19m
+    ep 7/10  steps=6 kill  wr=0.57  avg_r=-585.7669
+      [dart] fire_rate=0.592  min_dist_init=50.92m  final=nanm  change=+nanm  min=0.09m
+    ep 8/10  steps=7 kill  wr=0.62  avg_r=-686.9123
+      [dart] fire_rate=0.438  min_dist_init=49.51m  final=nanm  change=+nanm  min=0.19m
+    ep 9/10  steps=6 kill  wr=0.56  avg_r=-556.5915
+      [dart] fire_rate=0.575  min_dist_init=53.45m  final=nanm  change=+nanm  min=0.10m
+    ep 10/10  steps=6 kill  wr=0.50  avg_r=-456.2049
+      [dart] fire_rate=0.550  min_dist_init=44.21m  final=nanm  change=+nanm  min=0.13m
+    ── ep 10/10  wr=0.50  avg_r=-456.2049
+  Training league_exploiter (team 1, p0011) against p0020...
+    ep 1/10  steps=7 kill  wr=0.00  avg_r=569.7591
+      [dart] fire_rate=0.424  min_dist_init=37.31m  final=nanm  change=+nanm  min=0.25m
+    ep 2/10  steps=6 kill  wr=0.00  avg_r=516.1836
+      [dart] fire_rate=0.442  min_dist_init=44.13m  final=nanm  change=+nanm  min=0.25m
+    ep 3/10  steps=17 kill  wr=0.33  avg_r=188.6987
+      [dart] fire_rate=0.474  min_dist_init=15.52m  final=nanm  change=+nanm  min=0.23m
+    ep 4/10  steps=6 kill  wr=0.50  avg_r=-243.4965
+      [dart] fire_rate=0.500  min_dist_init=55.18m  final=nanm  change=+nanm  min=0.24m
+    ep 5/10  steps=7 kill  wr=0.60  avg_r=-479.9498
+      [dart] fire_rate=0.458  min_dist_init=37.33m  final=nanm  change=+nanm  min=0.41m
+    ── ep 5/10  wr=0.60  avg_r=-479.9498
+    ep 6/10  steps=6 kill  wr=0.67  avg_r=-652.1038
+      [dart] fire_rate=0.483  min_dist_init=44.15m  final=nanm  change=+nanm  min=0.37m
+    ep 7/10  steps=7 kill  wr=0.57  avg_r=-481.4500
+      [dart] fire_rate=0.486  min_dist_init=37.30m  final=nanm  change=+nanm  min=0.19m
+    ep 8/10  steps=8 kill  wr=0.62  avg_r=-585.4114
+      [dart] fire_rate=0.494  min_dist_init=32.49m  final=nanm  change=+nanm  min=0.27m
+    ep 9/10  steps=6 kill  wr=0.56  avg_r=-470.4422
+      [dart] fire_rate=0.508  min_dist_init=44.17m  final=nanm  change=+nanm  min=0.24m
+    ep 10/10  steps=6 kill  wr=0.50  avg_r=-374.1068
+      [dart] fire_rate=0.467  min_dist_init=56.86m  final=nanm  change=+nanm  min=0.19m
+    ── ep 10/10  wr=0.50  avg_r=-374.1068
+[League] Iteration 1 complete in 7809.1s
+[League] alpha=0.700 (schedule=constant) beta_kl=0.067
+[League] kill_radius hold at 24.500m (kill_rate=1.00 < 99.0)
+
+============================================================
+PSRO Iteration 2/3
+============================================================
+[League] Iteration 2: Evaluating payoff matrix...
+  [payoff] p0012 vs p0015 (1/36)... 

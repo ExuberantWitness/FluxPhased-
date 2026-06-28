@@ -1,0 +1,22 @@
+=== B (F1+F2 + alpha=0.7) iter 1 完成于 Sun Jun 28 05:00:14 PM CST 2026 ===
+
+--- alpha & kill_rate ---
+[League] alpha=0.700 (schedule=constant) beta_kl=0.100
+[League] kill_radius hold at 24.500m (kill_rate=1.00 < 99.0)
+[League] alpha=0.700 (schedule=constant) beta_kl=0.067
+[League] kill_radius hold at 24.500m (kill_rate=1.00 < 99.0)
+
+--- S0 reward 量级 ---
+[S0] team_returns (post-norm): max=13.50 mean=8.63 std=2.85
+[S0] normalize=ON, n=300, gamma=0.999
+[S0] team_rewards raw: max=181.60 mean=2.20 std=14.70 |min|=0.0004
+[S0] team_returns (post-norm): max=13.50 mean=8.63 std=2.85
+[S0] normalize=ON, n=300, gamma=0.999
+
+--- mutant 生成 ---
+  [mutant] Created p0012 from p0001 (team=0, wr=0.729, eps=0.05, 1/2)
+  [mutant] Created p0013 from p0001 (team=0, wr=0.729, eps=0.05, 2/2)
+
+--- 训练耗时 ---
+[League] Iteration 0 complete in 890.6s
+[League] Iteration 1 complete in 7809.1s

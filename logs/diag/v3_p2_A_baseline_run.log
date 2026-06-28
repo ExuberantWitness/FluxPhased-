@@ -1,0 +1,364 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 102.0 GB
+FluxPhased League Training
+Config: configs/ablation_f1f8/v3_p2_A_baseline.yaml
+Device: cuda
+Environment: E=12, R=4, N=625, P=4, bins=64
+State dim: 163783, Action dim: 13753
+[wandb] wandb not available; skipping logging
+Warp 1.10.1 initialized:
+   CUDA Toolkit 12.8, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Workstation Edition" (95 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/ubuntu/.cache/warp/1.10.1
+[League] kill_radius initialized at 24.500m (will anneal toward 0.200m)
+
+============================================================
+PSRO Iteration 0/3
+============================================================
+[League] Iteration 0: Evaluating payoff matrix...
+  [payoff] p0000 vs p0003 (1/9)... Module radar_sim.gpu.vec_channel 6a2afee load on device 'cuda:0' took 0.39 ms  (cached)
+Module radar_sim.gpu.vec_array 0e899e2 load on device 'cuda:0' took 29.41 ms  (cached)
+win_rate=1.00 (6.0s)
+  [payoff] p0000 vs p0004 (2/9)...     step 100: alive=2 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=2 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=2 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=2 red_wins=0/0 wr_sofar=0.00
+    [p0000 vs p0004] final-step illumination_progress: team0=0.0292 team1=0.0500 (max t0=0.1000 t1=0.4000)
+win_rate=0.75 (117.9s)
+  [payoff] p0000 vs p0005 (3/9)... win_rate=0.50 (5.7s)
+  [payoff] p0001 vs p0003 (4/9)... win_rate=1.00 (5.6s)
+  [payoff] p0001 vs p0004 (5/9)... win_rate=1.00 (5.6s)
+  [payoff] p0001 vs p0005 (6/9)... win_rate=1.00 (5.6s)
+  [payoff] p0002 vs p0003 (7/9)... win_rate=0.00 (5.6s)
+  [payoff] p0002 vs p0004 (8/9)...     step 100: alive=2 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=2 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=2 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=2 red_wins=0/0 wr_sofar=0.00
+    [p0002 vs p0004] final-step illumination_progress: team0=0.0125 team1=0.0167 (max t0=0.1000 t1=0.0500)
+win_rate=0.50 (117.9s)
+  [payoff] p0002 vs p0005 (9/9)... win_rate=0.50 (5.6s)
+  Team 0 sigma=[0. 1. 0.] NashConv=0.0000 H_task=1.386 effK=1.00
+  Team 1 sigma=[1. 0. 0.] NashConv=0.0000 H_task=1.386 effK=1.00
+  Training main (team 0, p0000) against self...
+    ep 1/8  steps=7 kill  wr=1.00  avg_r=-1430.9990
+      [dart] fire_rate=0.507  min_dist_init=37.06m  final=nanm  change=+nanm  min=0.02m
+    ep 2/8  steps=11 kill  wr=1.50  avg_r=-1239.3099
+      [dart] fire_rate=0.500  min_dist_init=44.31m  final=nanm  change=+nanm  min=0.12m
+  Training main (team 0, p0000) against p0004...
+    ep 1/8  steps=6 kill  wr=1.00  avg_r=-1488.4772
+      [dart] fire_rate=0.542  min_dist_init=46.09m  final=nanm  change=+nanm  min=0.20m
+    ep 2/8  steps=6 kill  wr=1.50  avg_r=-2500.5339
+      [dart] fire_rate=0.558  min_dist_init=85.87m  final=nanm  change=+nanm  min=0.41m
+  Training main (team 0, p0000) against p0005...
+    ep 1/8  steps=9 kill  wr=0.00  avg_r=796.3369
+      [dart] fire_rate=0.557  min_dist_init=28.57m  final=nanm  change=+nanm  min=0.14m
+    ep 2/8  steps=6 kill  wr=0.50  avg_r=-369.7988
+      [dart] fire_rate=0.517  min_dist_init=85.92m  final=nanm  change=+nanm  min=0.24m
+  Training league_exploiter (team 0, p0002) against p0003...
+    ep 1/8  steps=7 kill  wr=1.00  avg_r=-1471.6515
+      [dart] fire_rate=0.451  min_dist_init=37.47m  final=nanm  change=+nanm  min=0.50m
+    ep 2/8  steps=6 kill  wr=1.00  avg_r=-1487.2501
+      [dart] fire_rate=0.558  min_dist_init=85.77m  final=nanm  change=+nanm  min=0.34m
+    ep 3/8  steps=7 kill  wr=1.00  avg_r=-1466.4051
+      [dart] fire_rate=0.493  min_dist_init=72.00m  final=nanm  change=+nanm  min=0.38m
+    ep 4/8  steps=8 kill  wr=1.00  avg_r=-1404.3968
+      [dart] fire_rate=0.494  min_dist_init=33.50m  final=nanm  change=+nanm  min=0.23m
+    ep 5/8  steps=6 kill  wr=1.00  avg_r=-1423.5341
+      [dart] fire_rate=0.525  min_dist_init=53.14m  final=nanm  change=+nanm  min=0.43m
+    ── ep 5/8  wr=1.00  avg_r=-1423.5341
+    ep 6/8  steps=6 kill  wr=0.83  avg_r=-1098.6530
+      [dart] fire_rate=0.492  min_dist_init=44.16m  final=nanm  change=+nanm  min=0.31m
+    ep 7/8  steps=8 kill  wr=0.71  avg_r=-840.8179
+      [dart] fire_rate=0.500  min_dist_init=32.05m  final=nanm  change=+nanm  min=0.22m
+    ep 8/8  steps=6 kill  wr=0.88  avg_r=-1169.2320
+      [dart] fire_rate=0.542  min_dist_init=85.80m  final=nanm  change=+nanm  min=0.24m
+  Training main (team 1, p0003) against self...
+    ep 1/8  steps=9 kill  wr=1.00  avg_r=-1193.1612
+      [dart] fire_rate=0.542  min_dist_init=38.60m  final=nanm  change=+nanm  min=0.24m
+    ep 2/8  steps=6 kill  wr=1.00  avg_r=-364.5569
+      [dart] fire_rate=0.517  min_dist_init=45.32m  final=nanm  change=+nanm  min=0.05m
+  Training main (team 1, p0003) against p0006...
+    ep 1/8  steps=6 kill  wr=1.00  avg_r=-1547.5086
+      [dart] fire_rate=0.442  min_dist_init=85.96m  final=nanm  change=+nanm  min=0.28m
+    ep 2/8  steps=6 kill  wr=0.50  avg_r=-519.3380
+      [dart] fire_rate=0.542  min_dist_init=65.73m  final=nanm  change=+nanm  min=0.13m
+  Training main (team 1, p0003) against p0000...
+    ep 1/8  steps=7 kill  wr=1.00  avg_r=-1454.4002
+      [dart] fire_rate=0.535  min_dist_init=53.19m  final=nanm  change=+nanm  min=0.34m
+    ep 2/8  steps=6 kill  wr=1.00  avg_r=-1490.7035
+      [dart] fire_rate=0.600  min_dist_init=85.79m  final=nanm  change=+nanm  min=0.08m
+  Training main (team 1, p0003) against p0007...
+    ep 1/8  steps=6 kill  wr=0.00  avg_r=428.8694
+      [dart] fire_rate=0.467  min_dist_init=44.09m  final=nanm  change=+nanm  min=0.50m
+    ep 2/8  steps=6 kill  wr=0.00  avg_r=440.0441
+      [dart] fire_rate=0.500  min_dist_init=44.09m  final=nanm  change=+nanm  min=0.48m
+  Training league_exploiter (team 1, p0005) against p0006...
+    ep 1/8  steps=7 kill  wr=1.00  avg_r=-1415.3722
+      [dart] fire_rate=0.576  min_dist_init=72.03m  final=nanm  change=+nanm  min=0.19m
+    ep 2/8  steps=10 kill  wr=0.50  avg_r=-280.9780
+      [dart] fire_rate=0.514  min_dist_init=25.49m  final=nanm  change=+nanm  min=0.22m
+    ep 3/8  steps=6 kill  wr=0.67  avg_r=-684.4932
+      [dart] fire_rate=0.542  min_dist_init=48.96m  final=nanm  change=+nanm  min=0.22m
+    ep 4/8  steps=6 kill  wr=0.75  avg_r=-894.7587
+      [dart] fire_rate=0.583  min_dist_init=44.16m  final=nanm  change=+nanm  min=0.24m
+    ep 5/8  steps=6 kill  wr=0.80  avg_r=-1012.0244
+      [dart] fire_rate=0.542  min_dist_init=44.37m  final=nanm  change=+nanm  min=0.57m
+    ── ep 5/8  wr=0.80  avg_r=-1012.0244
+    ep 6/8  steps=7 kill  wr=1.17  avg_r=-1741.8574
+      [dart] fire_rate=0.493  min_dist_init=106.58m  final=nanm  change=+nanm  min=0.12m
+    ep 7/8  steps=6 kill  wr=1.00  avg_r=-1427.6265
+      [dart] fire_rate=0.492  min_dist_init=44.14m  final=nanm  change=+nanm  min=0.31m
+    ep 8/8  steps=6 kill  wr=1.00  avg_r=-1438.2990
+      [dart] fire_rate=0.542  min_dist_init=44.24m  final=nanm  change=+nanm  min=0.03m
+[League] Iteration 0 complete in 473.2s
+[League] alpha=0.700 (schedule=constant) beta_kl=0.100
+  [mutant] Created p0010 from p0000 (team=0, wr=0.667, eps=0.05, 1/2)
+  [mutant] Created p0011 from p0000 (team=0, wr=0.667, eps=0.05, 2/2)
+[League] Generated 2 mutant policies in iteration 0
+[League] kill_radius hold at 24.500m (kill_rate=1.00 < 99.0)
+  Checkpoint saved at iteration 0
+
+============================================================
+PSRO Iteration 1/3
+============================================================
+[League] Iteration 1: Evaluating payoff matrix...
+  [payoff] p0000 vs p0008 (2/8)...     step 100: alive=1 red_wins=1/1 wr_sofar=1.00
+    step 200: alive=1 red_wins=1/1 wr_sofar=1.00
+    step 300: alive=1 red_wins=1/1 wr_sofar=1.00
+    step 400: alive=1 red_wins=1/1 wr_sofar=1.00
+    [p0000 vs p0008] final-step illumination_progress: team0=0.0042 team1=0.0000 (max t0=0.0500 t1=0.0000)
+win_rate=1.00 (117.7s)
+  [payoff] p0006 vs p0003 (3/8)... win_rate=1.00 (5.6s)
+  [payoff] p0006 vs p0008 (4/8)... win_rate=1.00 (5.6s)
+  [payoff] p0010 vs p0003 (5/8)...     step 100: alive=2 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=2 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=2 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=2 red_wins=0/0 wr_sofar=0.00
+    [p0010 vs p0003] final-step illumination_progress: team0=0.0000 team1=0.0000 (max t0=0.0000 t1=0.0000)
+win_rate=0.50 (116.5s)
+  [payoff] p0010 vs p0008 (6/8)...     step 100: alive=2 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=2 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=2 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=2 red_wins=0/0 wr_sofar=0.00
+    [p0010 vs p0008] final-step illumination_progress: team0=0.0000 team1=0.0167 (max t0=0.0000 t1=0.2000)
+win_rate=0.25 (117.2s)
+  [payoff] p0011 vs p0003 (7/8)...     step 100: alive=1 red_wins=0/1 wr_sofar=0.00
+    step 200: alive=1 red_wins=0/1 wr_sofar=0.00
+    step 300: alive=1 red_wins=0/1 wr_sofar=0.00
+    step 400: alive=1 red_wins=0/1 wr_sofar=0.00
+    [p0011 vs p0003] final-step illumination_progress: team0=0.0000 team1=0.0000 (max t0=0.0000 t1=0.0000)
+win_rate=0.25 (116.7s)
+  [payoff] p0011 vs p0008 (8/8)...     step 100: alive=2 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=2 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=2 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=2 red_wins=0/0 wr_sofar=0.00
+    [p0011 vs p0008] final-step illumination_progress: team0=0.0000 team1=0.0000 (max t0=0.0000 t1=0.0000)
+win_rate=0.50 (512.6s)
+  Team 0 sigma=[1. 0.] NashConv=0.0000 H_task=1.386 effK=1.00
+  Team 1 sigma=[0. 1.] NashConv=0.0000 H_task=1.386 effK=1.00
+  Training main (team 0, p0000) against self...
+    ep 1/8  steps=7 kill  wr=2.00  avg_r=613.6032
+      [dart] fire_rate=0.465  min_dist_init=72.13m  final=nanm  change=+nanm  min=0.25m
+    ep 2/8  steps=6 kill  wr=2.50  avg_r=-1427.0037
+      [dart] fire_rate=0.617  min_dist_init=136.41m  final=nanm  change=+nanm  min=0.17m
+      [mech] team_value_loss=3.138e+05  team_adv_std=1.817e+02
+      [mech] team_value_loss=2.994e+05  team_adv_std=1.790e+02
+  Training main (team 0, p0000) against p0003...
+    ep 1/8  steps=9 kill  wr=0.00  avg_r=777.2953
+      [dart] fire_rate=0.474  min_dist_init=28.74m  final=nanm  change=+nanm  min=0.22m
+    ep 2/8  steps=6 kill  wr=0.00  avg_r=624.8035
+      [dart] fire_rate=0.492  min_dist_init=44.32m  final=nanm  change=+nanm  min=0.12m
+  Training main (team 0, p0000) against p0008...
+    ep 1/8  steps=6 kill  wr=1.00  avg_r=-1488.0608
+      [dart] fire_rate=0.575  min_dist_init=86.59m  final=nanm  change=+nanm  min=0.36m
+    ep 2/8  steps=6 kill  wr=1.00  avg_r=-1499.7004
+      [dart] fire_rate=0.550  min_dist_init=49.67m  final=nanm  change=+nanm  min=0.29m
+      [mech] team_value_loss=1.334e+05  team_adv_std=1.459e+02
+      [mech] team_value_loss=1.334e+05  team_adv_std=1.479e+02
+  Training main (team 1, p0003) against self...
+    ep 1/8  steps=6 kill  wr=1.00  avg_r=465.7649
+      [dart] fire_rate=0.483  min_dist_init=44.22m  final=nanm  change=+nanm  min=0.29m
+      [mech] team_value_loss=1.327e+05  team_adv_std=1.806e+02
+      [mech] team_value_loss=1.393e+05  team_adv_std=1.790e+02
+    ep 2/8  steps=6 kill  wr=1.50  avg_r=-509.7870
+      [dart] fire_rate=0.508  min_dist_init=85.86m  final=nanm  change=+nanm  min=0.14m
+  Training main (team 1, p0003) against p0012...
+    ep 1/8  steps=8 kill  wr=0.00  avg_r=628.8562
+      [dart] fire_rate=0.476  min_dist_init=32.35m  final=nanm  change=+nanm  min=0.14m
+    ep 2/8  steps=6 kill  wr=0.50  avg_r=-450.7948
+      [dart] fire_rate=0.467  min_dist_init=44.12m  final=nanm  change=+nanm  min=0.12m
+  Training main (team 1, p0003) against p0006...
+    ep 1/8  steps=8 kill  wr=0.00  avg_r=676.7363
+      [dart] fire_rate=0.494  min_dist_init=32.38m  final=nanm  change=+nanm  min=0.18m
+      [mech] team_value_loss=8.189e+04  team_adv_std=1.379e+02
+      [mech] team_value_loss=8.117e+04  team_adv_std=1.382e+02
+    ep 2/8  steps=6 kill  wr=1.00  avg_r=-1417.7648
+      [dart] fire_rate=0.567  min_dist_init=136.59m  final=nanm  change=+nanm  min=0.22m
+  Training main (team 0, p0006) against self...
+    ep 1/8  steps=7 kill  wr=1.00  avg_r=-1456.8857
+      [dart] fire_rate=0.535  min_dist_init=72.06m  final=nanm  change=+nanm  min=0.11m
+    ep 2/8  steps=6 kill  wr=1.50  avg_r=-1500.7716
+      [dart] fire_rate=0.558  min_dist_init=99.35m  final=nanm  change=+nanm  min=0.25m
+    ep 3/8  steps=6 kill  wr=1.33  avg_r=-1518.3957
+      [dart] fire_rate=0.525  min_dist_init=44.23m  final=nanm  change=+nanm  min=0.50m
+    ep 4/8  steps=6 kill  wr=1.50  avg_r=-1006.4612
+      [dart] fire_rate=0.583  min_dist_init=91.94m  final=nanm  change=+nanm  min=0.42m
+  Training main (team 0, p0006) against p0013...
+    ep 1/8  steps=8 kill  wr=1.00  avg_r=-1361.1824
+      [dart] fire_rate=0.530  min_dist_init=32.22m  final=nanm  change=+nanm  min=0.04m
+      [mech] team_value_loss=2.131e+05  team_adv_std=2.352e+02
+      [mech] team_value_loss=2.148e+05  team_adv_std=2.350e+02
+    ep 2/8  steps=6 kill  wr=1.00  avg_r=-1433.5931
+      [dart] fire_rate=0.500  min_dist_init=44.18m  final=nanm  change=+nanm  min=0.25m
+    ep 3/8  steps=10 kill  wr=1.00  avg_r=-1331.0000
+      [dart] fire_rate=0.519  min_dist_init=29.79m  final=nanm  change=+nanm  min=0.22m
+    ep 4/8  steps=6 kill  wr=0.75  avg_r=-886.4516
+      [dart] fire_rate=0.542  min_dist_init=46.71m  final=nanm  change=+nanm  min=0.26m
+  Training main (team 1, p0008) against self...
+    ep 1/8  steps=7 kill  wr=1.00  avg_r=-1420.6368
+      [dart] fire_rate=0.486  min_dist_init=39.71m  final=nanm  change=+nanm  min=0.14m
+    ep 2/8  steps=8 kill  wr=1.00  avg_r=-370.4733
+      [dart] fire_rate=0.482  min_dist_init=32.26m  final=nanm  change=+nanm  min=0.17m
+  Training main (team 1, p0008) against p0011...
+    ep 1/8  steps=9 kill  wr=0.00  avg_r=600.6032
+      [dart] fire_rate=0.536  min_dist_init=3069.97m  final=nanm  change=+nanm  min=0.22m
+      [mech] team_value_loss=1.307e+05  team_adv_std=1.545e+02
+      [mech] team_value_loss=1.400e+05  team_adv_std=1.609e+02
+    ep 2/8  steps=6 kill  wr=0.00  avg_r=2403.6902
+      [dart] fire_rate=0.450  min_dist_init=3572.13m  final=nanm  change=+nanm  min=0.26m
+  Training main (team 1, p0008) against p0012...
+    ep 1/8  steps=9 kill  wr=1.00  avg_r=-1209.4018
+      [dart] fire_rate=0.542  min_dist_init=28.59m  final=nanm  change=+nanm  min=0.10m
+    ep 2/8  steps=7 kill  wr=1.00  avg_r=-1309.6090
+      [dart] fire_rate=0.507  min_dist_init=71.96m  final=nanm  change=+nanm  min=0.36m
+[League] Iteration 1 complete in 1167.2s
+[League] alpha=0.700 (schedule=constant) beta_kl=0.067
+[League] kill_radius hold at 24.500m (kill_rate=1.00 < 99.0)
+
+============================================================
+PSRO Iteration 2/3
+============================================================
+[League] Iteration 2: Evaluating payoff matrix...
+  [payoff] p0010 vs p0013 (1/8)... win_rate=0.00 (5.5s)
+  [payoff] p0010 vs p0015 (2/8)...     step 100: alive=1 red_wins=0/1 wr_sofar=0.00
+    step 200: alive=1 red_wins=0/1 wr_sofar=0.00
+    step 300: alive=1 red_wins=0/1 wr_sofar=0.00
+    step 400: alive=1 red_wins=0/1 wr_sofar=0.00
+    [p0010 vs p0015] final-step illumination_progress: team0=0.0000 team1=0.0042 (max t0=0.0000 t1=0.0500)
+win_rate=0.00 (116.6s)
+  [payoff] p0011 vs p0013 (3/8)...     step 100: alive=1 red_wins=0/1 wr_sofar=0.00
+    step 200: alive=1 red_wins=0/1 wr_sofar=0.00
+    step 300: alive=1 red_wins=0/1 wr_sofar=0.00
+    step 400: alive=1 red_wins=0/1 wr_sofar=0.00
+    [p0011 vs p0013] final-step illumination_progress: team0=0.0000 team1=0.0125 (max t0=0.0000 t1=0.1000)
+win_rate=0.00 (116.4s)
+  [payoff] p0011 vs p0015 (4/8)... win_rate=0.00 (5.5s)
+  [payoff] p0012 vs p0013 (5/8)...     step 100: alive=1 red_wins=0/1 wr_sofar=0.00
+    step 200: alive=1 red_wins=0/1 wr_sofar=0.00
+    step 300: alive=1 red_wins=0/1 wr_sofar=0.00
+win_rate=0.00 (88.2s)
+  [payoff] p0012 vs p0015 (6/8)...     step 100: alive=1 red_wins=0/1 wr_sofar=0.00
+    step 200: alive=1 red_wins=0/1 wr_sofar=0.00
+    step 300: alive=1 red_wins=0/1 wr_sofar=0.00
+    step 400: alive=1 red_wins=0/1 wr_sofar=0.00
+    [p0012 vs p0015] final-step illumination_progress: team0=0.0208 team1=0.0000 (max t0=0.1500 t1=0.0000)
+win_rate=0.25 (117.8s)
+  [payoff] p0014 vs p0013 (7/8)...     step 100: alive=1 red_wins=0/1 wr_sofar=0.00
+    step 200: alive=1 red_wins=0/1 wr_sofar=0.00
+    step 300: alive=1 red_wins=0/1 wr_sofar=0.00
+    step 400: alive=1 red_wins=0/1 wr_sofar=0.00
+    [p0014 vs p0013] final-step illumination_progress: team0=0.0167 team1=0.0042 (max t0=0.0500 t1=0.0500)
+win_rate=0.50 (118.4s)
+  [payoff] p0014 vs p0015 (8/8)...     step 100: alive=1 red_wins=0/1 wr_sofar=0.00
+    step 200: alive=1 red_wins=0/1 wr_sofar=0.00
+    step 300: alive=1 red_wins=0/1 wr_sofar=0.00
+    step 400: alive=1 red_wins=0/1 wr_sofar=0.00
+    [p0014 vs p0015] final-step illumination_progress: team0=0.0167 team1=0.0125 (max t0=0.0500 t1=0.1000)
+win_rate=0.00 (117.8s)
+  Team 0 sigma=[0.667 0.333] NashConv=0.0833 H_task=1.386 effK=1.89
+  Team 1 sigma=[0.333 0.667] NashConv=0.0417 H_task=1.386 effK=1.89
+  Training main (team 0, p0012) against self...
+    ep 1/8  steps=9 kill  wr=1.00  avg_r=814.2261
+      [dart] fire_rate=0.516  min_dist_init=42.59m  final=nanm  change=+nanm  min=0.13m
+      [mech] team_value_loss=7.230e+04  team_adv_std=1.123e+02
+      [mech] team_value_loss=7.198e+04  team_adv_std=1.128e+02
+    ep 2/8  steps=6 kill  wr=1.00  avg_r=638.2929
+      [dart] fire_rate=0.508  min_dist_init=46.99m  final=nanm  change=+nanm  min=0.16m
+  Training main (team 0, p0012) against p0013...
+    ep 1/8  steps=6 kill  wr=0.00  avg_r=489.2530
+      [dart] fire_rate=0.533  min_dist_init=44.26m  final=nanm  change=+nanm  min=0.14m
+    ep 2/8  steps=6 kill  wr=0.50  avg_r=-532.3413
+      [dart] fire_rate=0.458  min_dist_init=50.05m  final=nanm  change=+nanm  min=0.19m
+  Training main (team 0, p0012) against p0015...
+    ep 1/8  steps=6 kill  wr=0.00  avg_r=465.9321
+      [dart] fire_rate=0.508  min_dist_init=44.28m  final=nanm  change=+nanm  min=0.24m
+    ep 2/8  steps=6 kill  wr=0.00  avg_r=468.7710
+      [dart] fire_rate=0.542  min_dist_init=44.22m  final=nanm  change=+nanm  min=0.05m
+      [mech] team_value_loss=1.016e+05  team_adv_std=1.364e+02
+      [mech] team_value_loss=1.031e+05  team_adv_std=1.382e+02
+  Training main (team 1, p0013) against self...
+    ep 1/8  steps=6 kill  wr=3.00  avg_r=-3498.2145
+      [dart] fire_rate=0.575  min_dist_init=127.66m  final=nanm  change=+nanm  min=0.03m
+      [mech] team_value_loss=2.433e+05  team_adv_std=1.271e+02
+      [mech] team_value_loss=2.422e+05  team_adv_std=1.255e+02
+    ep 2/8  steps=6 kill  wr=2.50  avg_r=-1506.8455
+      [dart] fire_rate=0.567  min_dist_init=85.92m  final=nanm  change=+nanm  min=0.33m
+  Training main (team 1, p0013) against p0014...
+    ep 1/8  steps=10 kill  wr=0.00  avg_r=859.2255
+      [dart] fire_rate=0.565  min_dist_init=25.65m  final=nanm  change=+nanm  min=0.19m
+    ep 2/8  steps=6 kill  wr=0.00  avg_r=681.9675
+      [dart] fire_rate=0.583  min_dist_init=52.23m  final=nanm  change=+nanm  min=0.03m
+  Training main (team 1, p0013) against p0016...
+    ep 1/8  steps=6 kill  wr=0.00  avg_r=447.9449
+      [dart] fire_rate=0.458  min_dist_init=44.11m  final=nanm  change=+nanm  min=0.39m
+      [mech] team_value_loss=9.442e+04  team_adv_std=1.374e+02
+      [mech] team_value_loss=8.942e+04  team_adv_std=1.421e+02
+    ep 2/8  steps=6 kill  wr=0.50  avg_r=-537.3894
+      [dart] fire_rate=0.558  min_dist_init=44.26m  final=nanm  change=+nanm  min=0.46m
+  Training main (team 0, p0014) against self...
+    ep 1/8  steps=6 kill  wr=1.00  avg_r=424.5441
+      [dart] fire_rate=0.442  min_dist_init=44.31m  final=nanm  change=+nanm  min=0.24m
+    ep 2/8  steps=6 kill  wr=1.50  avg_r=444.4180
+      [dart] fire_rate=0.525  min_dist_init=94.24m  final=nanm  change=+nanm  min=0.02m
+  Training main (team 0, p0014) against p0015...
+    ep 1/8  steps=10 kill  wr=0.00  avg_r=883.2033
+      [dart] fire_rate=0.509  min_dist_init=25.78m  final=nanm  change=+nanm  min=0.32m
+    ep 2/8  steps=10 kill  wr=0.00  avg_r=855.9598
+      [dart] fire_rate=0.486  min_dist_init=48.84m  final=nanm  change=+nanm  min=0.26m
+      [mech] team_value_loss=1.313e+05  team_adv_std=1.454e+02
+      [mech] team_value_loss=1.277e+05  team_adv_std=1.476e+02
+  Training main (team 0, p0014) against p0017...
+    ep 1/8  steps=6 kill  wr=1.00  avg_r=-1503.3158
+      [dart] fire_rate=0.583  min_dist_init=94.56m  final=nanm  change=+nanm  min=0.11m
+    ep 2/8  steps=6 kill  wr=0.50  avg_r=-524.4638
+      [dart] fire_rate=0.525  min_dist_init=44.07m  final=nanm  change=+nanm  min=0.28m
+  Training main (team 1, p0015) against self...
+    ep 1/8  steps=6 kill  wr=1.00  avg_r=-1489.7894
+      [dart] fire_rate=0.600  min_dist_init=44.24m  final=nanm  change=+nanm  min=0.04m
+    ep 2/8  steps=9 kill  wr=1.00  avg_r=-1349.7405
+      [dart] fire_rate=0.484  min_dist_init=28.63m  final=nanm  change=+nanm  min=0.35m
+  Training main (team 1, p0015) against p0018...
+    ep 1/8  steps=6 kill  wr=0.00  avg_r=485.6061
+      [dart] fire_rate=0.517  min_dist_init=85.87m  final=nanm  change=+nanm  min=0.09m
+      [mech] team_value_loss=1.137e+05  team_adv_std=1.073e+02
+      [mech] team_value_loss=1.118e+05  team_adv_std=1.069e+02
+    ep 2/8  steps=6 kill  wr=0.00  avg_r=481.1746
+      [dart] fire_rate=0.558  min_dist_init=85.71m  final=nanm  change=+nanm  min=0.38m
+  Training main (team 1, p0015) against p0016...
+    ep 1/8  steps=6 kill  wr=0.00  avg_r=477.1613
+      [dart] fire_rate=0.608  min_dist_init=44.28m  final=nanm  change=+nanm  min=0.11m
+    ep 2/8  steps=6 kill  wr=0.50  avg_r=-526.8616
+      [dart] fire_rate=0.575  min_dist_init=127.58m  final=nanm  change=+nanm  min=0.30m
+[League] Iteration 2 complete in 843.4s
+[League] alpha=0.700 (schedule=constant) beta_kl=0.033
+  [mutant] Created p0020 from p0015 (team=1, wr=0.667, eps=0.05, 1/2)
+  [mutant] Created p0021 from p0015 (team=1, wr=0.667, eps=0.05, 2/2)
+[League] Generated 2 mutant policies in iteration 2
+[League] kill_radius hold at 24.500m (kill_rate=1.00 < 99.0)
+  Checkpoint saved at iteration 2
+
+Training complete. Final league saved.
