@@ -1,8 +1,9 @@
-# P1 实验报告 — F1+F2 修复验证（修改建议 §6 最小实验）
+# P1 实验报告 + 阶段复盘（合并版）— F1+F2 修复验证（修改建议 §6 最小实验）
 
 **日期**: 2026-06-28
 **状态**: 实验完成（B 备选 iter 0-1 完整数据），分析完成，待用户复盘后决策下一阶段
-**相关文档**: [修改建议.md](修改建议.md) · [ALPHA_COLLAPSE_REPORT.md](ALPHA_COLLAPSE_REPORT.md) · [V5_DARTBOARD_REPORT.md](V5_DARTBOARD_REPORT.md) · [P1_STAGE_RETROSPECTIVE.md](P1_STAGE_RETROSPECTIVE.md)
+**合并自**: P1_EXPERIMENT_REPORT.md + P1_STAGE_RETROSPECTIVE.md
+**相关文档**: [修改建议.md](修改建议.md) · [ALPHA_COLLAPSE_REPORT.md](ALPHA_COLLAPSE_REPORT.md) · [V5_DARTBOARD_REPORT.md](V5_DARTBOARD_REPORT.md)
 
 ---
 
@@ -270,6 +271,51 @@ self-play 期望 0.5，实测 0.43 基本正常，分布健康（有强 mutant�
 - F1+F2 在 kr<5m 严苛条件下是否仍稳定？
 - F1 和 F2 哪个贡献更大？（需 C/D 单独 ablation）
 - F1+F2 是否足够支撑完整 24 iter 长训练？
+
+### 5.4 教训与流程改进（阶段复盘）
+
+**得 1 — 代码修复落地**
+- F1 [buffer.py:220](training/ppo/buffer.py#L220) 重写 compute_team_returns（done-mask + RMS）
+- F2 [ppo_trainer.py:91](training/ppo/ppo_trainer.py#L91) 删 team_adv 双重归一化
+- 合成数据验证：team_value loss 改善 ~92x
+
+**得 2 — 发现 2 个 pre-existing 严重 bug**（最大收获）
+- Bug #1 [train.py:116](training/train.py#L116) `return FluxLeague(...)` → config override 全是 dead code
+  - 影响：v3_adaptive_alpha 30min 验证从未真正跑过 adaptive（实际都跑 linear），ALPHA_COLLAPSE_REPORT.md 关于 adaptive 的结论作废
+- Bug #2 F1 GAE 路径漏调 compute_team_returns
+  - 影响：前两次 P1 跑了 ~35min F1 完全没生效（team_returns=0），第三次才是真正 F1+F2 测试
+- 全仓 AST 审计：training/ + radar_sim/ 无其他 return-then-dead-code 模式
+
+**得 3 — S0 reward 量级真相**
+- 配置 kill_bonus raw=100000，**实际进入 team_rewards max ~91-181**（team_reward_weight=0.1 缩放 + sum 聚合）
+- team_returns max：v3_scaling 22977 → B 实测 7.79-17.42（**改善 1300-2900x**）
+
+**得 4 — alpha schedule 真正生效**
+- iter 0 输出 `alpha=0.700 (schedule=constant)`（修复 Bug #1 后）
+- 历史所有"linear"输出都是因为 Bug #1，从未来自配置
+
+**失 1 — 节奏严重低估**
+- 估计每 iter ~25 min，**实际 130 min**（payoff 评估 36 matchups × ~120s 是瓶颈）
+- 原计划 4 备选 × 3 iter ≈ 5h，**实际要 17h**
+- 应该一开始就砍 n_eval_games: 8→4 + population_cap: 12→8
+
+**失 2 — 代码改动后没做单 iter smoke test**
+- F1 改完直接跑 sweep，没验证 GAE 路径调用
+- 浪费 35 min × 2 次（两次 P1 都因 F1 没生效而结果无效）
+
+**失 3 — 配置 review 不充分**
+- train.py dead code 在第一次启动就暴露（alpha=0 schedule=linear vs 配置 constant），但归因为"配置未读"，没深究
+- 直到 cron 监控触发才回头审计
+
+**失 4 — 没主动做边界 audit**
+- 修改建议明确写"F1 在 n_step>0 分支"，我没问"n_step=0 怎么办"
+- 这是基础代码审计应想到的边界
+
+**流程改进建议（下一阶段执行）**
+1. 任何代码改动后，先跑 1 iter smoke test 验证 F1/F2 真的生效（看 S0 print + alpha=）
+2. 配置 override 必须 smoke test（启动后立刻 `grep` 日志确认字段值）
+3. 多分支代码改动必须审计所有 if/else 路径，不能只测主流
+4. payoff 评估时间在配置层显式约束（n_eval_games ≤ 4, population_cap ≤ 8）
 
 ---
 
