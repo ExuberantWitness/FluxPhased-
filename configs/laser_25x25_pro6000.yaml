@@ -42,9 +42,11 @@ ppo:
     max_grad_norm: 0.5
 
 training:
-  psro_iterations: 24           # [scaled 20->24] extra margin to lock 0.2m
+  psro_iterations: 48           # Phase 1: [scaled 24->48] for 12-24h PPO 收敛 (plan §1.6)
   league: true                  # multi-agent PSRO-lite (red vs frozen pool)
   league_snapshot_every: 3
+  # Phase 1.0 改动 1 (plan §1.0): F8 reward_normalize — 之前 train_laser 默认不开
+  reward_normalize: true
   # --- below: IDENTICAL to verified p14 (do NOT change — these reach 0.2m) ---
   hybrid_fire: true
   residual_aim: true
@@ -78,6 +80,11 @@ reward_shaping:
   beam_hit_radius_m: 500.0
   beam_spatial_cap: 1000.0
   beam_temporal_epsilon: 0.05
+  # Phase 1.0 改动 2b (plan T1): 全场稠密 dartboard reward
+  # per-step 都给 (不只 fire_on),fire_on 时额外加权 0.5×。
+  # weight=50 同 guidance 量级,kill_bonus=100 仍稀疏奖励。
+  dartboard_weight: 50.0
+  dartboard_scale_m: 5.0
 
 env:
   min_radar_baseline_m: 5000.0  # 方案1: ≥5km deployment baseline (key to 0.2m)

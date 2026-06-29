@@ -439,6 +439,22 @@ class TeamPPOTrainer:
         half_y = float(env.map_size[1]) / 2.0
         anchor_x = cmd_obs[..., 68]  # sensed enemy-0 x (normalized [-1,1])
         anchor_y = cmd_obs[..., 69]
+        # [ANCHOR-C] Diagnostic: anchor (from cmd_obs[68:70], should be Kalman-fused)
+        # vs true enemy pos (from env.radar_pos). Fires once per trainer.
+        if not getattr(self, '_anchor_c_printed', False):
+            self._anchor_c_printed = True
+            enemy_idx = env.battlefield.team_radar_indices[1]  # opponent of team 0
+            true_ex = env.radar_pos[0, enemy_idx[0], 0].item()
+            true_ey = env.radar_pos[0, enemy_idx[0], 1].item()
+            anchor_x_m = anchor_x[0].item() * half_x
+            anchor_y_m = anchor_y[0].item() * half_y
+            err = ((anchor_x_m - true_ex) ** 2 + (anchor_y_m - true_ey) ** 2) ** 0.5
+            print(f"[ANCHOR-C] anchor=({anchor_x_m:.1f},{anchor_y_m:.1f})m "
+                  f"true_enemy0=({true_ex:.1f},{true_ey:.1f})m "
+                  f"err={err:.2f}m | own_radar0=({env.radar_pos[0,0,0].item():.1f},"
+                  f"{env.radar_pos[0,0,1].item():.1f}) "
+                  f"own_radar1=({env.radar_pos[0,1,0].item():.1f},"
+                  f"{env.radar_pos[0,1,1].item():.1f})", flush=True)
         # Phase 3 v5c/v5d: add Gaussian noise to anchor (normalized units).
         if self.anchor_noise_std_m > 0.0:
             noise_sigma_x = self.anchor_noise_std_m / half_x
@@ -454,6 +470,16 @@ class TeamPPOTrainer:
         env_action[..., 1] = aim_x
         env_action[..., 2] = aim_y
         env_action[..., 3] = 0.0  # aim_z=0 (ground targets only)
+        # [ANCHOR-D] Diagnostic: final env_action sent to env. Fires once.
+        if not getattr(self, '_anchor_d_printed', False):
+            self._anchor_d_printed = True
+            print(f"[ANCHOR-D] cmd_action_raw[0]={cmd_action[0].tolist()} "
+                  f"residual_scale_m={self.residual_scale_m} "
+                  f"dx_norm={dx_norm[0].item():.6f} dy_norm={dy_norm[0].item():.6f} "
+                  f"env_action[0]=[fire={env_action[0,0].item():.3f}, "
+                  f"aim_x={env_action[0,1].item():.4f}, aim_y={env_action[0,2].item():.4f}] "
+                  f"→ physical=({env_action[0,1].item()*half_x:.1f},"
+                  f"{env_action[0,2].item()*half_y:.1f})m", flush=True)
         return env_action
 
     def init_buffers(self, env_state_dim: int, env_action_dim: int,

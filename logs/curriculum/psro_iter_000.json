@@ -1,28 +1,38 @@
 {
   "iteration": 0,
   "p0000_train": {
-    "episodes": 2,
-    "win_rate": 0.5,
-    "avg_reward": -369.798828125
+    "episodes": 5,
+    "win_rate": 0.6,
+    "avg_reward": -720.8214263916016
+  },
+  "p0001_train": {
+    "episodes": 10,
+    "win_rate": 0.6,
+    "avg_reward": -564.0400466918945
   },
   "p0002_train": {
-    "episodes": 8,
-    "win_rate": 0.875,
-    "avg_reward": -1169.2319626808167
+    "episodes": 10,
+    "win_rate": 0.1,
+    "avg_reward": 483.858424949646
   },
   "p0003_train": {
     "episodes": 2,
-    "win_rate": 0.0,
-    "avg_reward": 440.04405212402344
+    "win_rate": 1.0,
+    "avg_reward": -1520.9421081542969
+  },
+  "p0004_train": {
+    "episodes": 10,
+    "win_rate": 0.2,
+    "avg_reward": 100.21334800720214
   },
   "p0005_train": {
-    "episodes": 8,
-    "win_rate": 1.0,
-    "avg_reward": -1438.2989673614502
+    "episodes": 10,
+    "win_rate": 0.8,
+    "avg_reward": -1201.3944355010985
   },
-  "elapsed_s": 473.23505091667175,
-  "alpha": 0.7,
+  "elapsed_s": 890.4579241275787,
+  "alpha": 0.0,
   "beta_kl": 0.1,
-  "alpha_schedule": "constant",
+  "alpha_schedule": "linear",
   "mutants_generated": 2
 }

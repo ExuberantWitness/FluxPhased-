@@ -213,14 +213,20 @@ class LaserTrainer:
         radar_action_dim = N * 22 + 3
         cmd_action_dim = 5
 
+        # Phase 1.0 改动 1: F8 reward_normalize — 之前 train_laser 路径默认 False,
+        # 现按 plan 显式从 config 读,默认 True(plan §1.0 改动 1)。
+        reward_normalize = shared.get("reward_normalize", True)
+
         self.radar_buf = RolloutBuffer(
             buf_size, obs_dim=radar_state_dim, act_dim=radar_action_dim,
             gamma=self.gamma, gae_lambda=self.gae_lambda, device=self.device,
+            reward_normalize=reward_normalize,
         )
         self.cmd_buf = RolloutBuffer(
             buf_size, obs_dim=76, act_dim=cmd_action_dim,
             gamma=self.gamma, gae_lambda=self.gae_lambda, device=self.device,
             privileged_dim=getattr(commander_ac, "privileged_dim", 0),
+            reward_normalize=reward_normalize,
         )
 
         # Reward config
@@ -755,6 +761,15 @@ class LaserTrainer:
         total_entropy = 0
         total_bc_loss = 0
         n_updates = 0
+        # Phase 1.0 改动 3: advantage std 监控 — 防 policy_loss → 0 坍塌
+        # (plan §1.0 改动 3;闸门:训练全程 adv_std > 1e-3)
+        total_adv_std_pre = 0.0
+        total_adv_mean_pre = 0.0
+        # Phase 1.0 改动 5 (plan T10): aim residual 监控 — 验证 BC + dartboard 兼容性
+        # 若 residual_aim=True 且 BC weight=5.0 主导,residual 应≈0;
+        # 若 dartboard dense reward 给了 PPO 学习空间,residual 应非零上升。
+        # 阈值参考:aim_residual_norm 单调上升到 0.1+ → dartboard 起作用。
+        total_aim_residual_norm = 0.0
 
         for epoch in range(self.n_epochs):
             for batch in buffer.get_minibatches(self.batch_size):
@@ -765,6 +780,14 @@ class LaserTrainer:
                 returns = batch["returns"]
                 priv_info = batch.get("privileged_info")  # None if buffer has no privileged_infos
                 team_state = batch.get("team_states") if team_critic is not None else None
+
+                # Phase 1.0 改动 3: 记录 normalize 前的 advantage 统计
+                total_adv_std_pre += advantages.std().item()
+                total_adv_mean_pre += advantages.mean().item()
+
+                # Phase 1.0 改动 5: aim residual (action dims 1:3 是 aim_x/aim_y residual)
+                if old_actions.shape[-1] >= 3:
+                    total_aim_residual_norm += old_actions[:, 1:3].norm(dim=-1).mean().item()
 
                 advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
@@ -854,7 +877,13 @@ class LaserTrainer:
             "policy_loss": total_policy_loss / n_updates,
             "value_loss": total_value_loss / n_updates,
             "entropy": total_entropy / n_updates,
+            # Phase 1.0 改动 3: 暴露 adv_std / adv_mean 给主循环写入 wandb
+            "adv_std_pre_normalize": total_adv_std_pre / n_updates,
+            "adv_mean_pre_normalize": total_adv_mean_pre / n_updates,
         }
+        # Phase 1.0 改动 5: aim residual (只在 cmd buffer 有 dim≥3 时累计)
+        if total_aim_residual_norm > 0:
+            metrics["aim_residual_norm"] = total_aim_residual_norm / n_updates
         if total_bc_loss > 0:
             metrics["bc_loss"] = total_bc_loss / n_updates
         return metrics
@@ -1475,6 +1504,8 @@ def main():
         iter_min_dist = 1e9
         iter_total_cmd_r = 0.0
         iter_reward_samples = 0
+        # Phase 1.0 改动 3+5: 累计本 iter 的 adv_std / aim_residual 均值
+        last_cmd_metrics = {}
 
         # BC weight schedule: linear decay
         if cmd_bc_decay_iters > 0:
@@ -1504,14 +1535,19 @@ def main():
             if radar_ptr >= buf_size * 0.8 or cmd_ptr >= buf_size * 0.8:
                 metrics = trainer.update(cmd_bc_weight=cur_bc_weight, cmd_bc_only=in_pretrain)
                 n_updates += 1
+                last_cmd_metrics = metrics.get("commander", {})
 
                 if n_updates == 1:  # log first update
                     rm = metrics.get("radar", {})
-                    cm = metrics.get("commander", {})
+                    cm = last_cmd_metrics
                     radar_loss = rm.get("policy_loss", 0)
                     cmd_loss = cm.get("policy_loss", 0)
                     bc_loss = cm.get("bc_loss", 0)
-                    print(f"  [Update] radar_loss={radar_loss:.4f} cmd_loss={cmd_loss:.4f} bc_loss={bc_loss:.4f}")
+                    # Phase 1.0 改动 3+5: 显示 adv_std / aim_residual,监控 PPO 健康 + BC 兼容性
+                    adv_std = cm.get("adv_std_pre_normalize", 0)
+                    aim_res = cm.get("aim_residual_norm", 0)
+                    print(f"  [Update] radar_loss={radar_loss:.4f} cmd_loss={cmd_loss:.4f} bc_loss={bc_loss:.4f} "
+                          f"adv_std={adv_std:.4f} aim_res={aim_res:.4f}")
 
         # Force update at end of iteration
         if trainer.radar_buf.ptr > 0 or trainer.cmd_buf.ptr > 0:
@@ -1550,6 +1586,11 @@ def main():
 
         cur_log_std = commander_ac.log_std.data[1:4].mean().item()  # aim dims only (jam held high)
 
+        # Phase 1.0 改动 3+5: adv_std / aim_residual 从最后一次 update 取
+        last_adv_std = last_cmd_metrics.get("adv_std_pre_normalize", 0.0)
+        last_aim_res = last_cmd_metrics.get("aim_residual_norm", 0.0)
+        last_cmd_loss = last_cmd_metrics.get("policy_loss", 0.0)
+
         print(
             f"[PSRO {psro_iter+1}/{psro_iters}] "
             f"kills={iter_kills} kill_rate={kill_rate:.3f} "
@@ -1560,7 +1601,8 @@ def main():
             f"bc_w={cur_bc_weight:.2f} "
             f"rate={pulse_rate:.0f}p/s "
             f"time={iter_elapsed:.0f}s "
-            f"upd={n_updates}"
+            f"upd={n_updates} "
+            f"cmd_pl={last_cmd_loss:.5f} adv_std={last_adv_std:.3f} aim_res={last_aim_res:.3f}"
         )
 
         # Deterministic eval rollout EVERY iter — measures true policy quality (no log_std

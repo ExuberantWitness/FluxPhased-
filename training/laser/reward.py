@@ -238,6 +238,30 @@ class LaserRewardShaper:
             dist_all = (aim - enemy_pos).norm(dim=-1)  # [E, R/2]
             dist_all = dist_all + (~enemy_alive).float() * 1e6
             min_dist = dist_all.min(dim=-1).values  # [E]
+            # [ANCHOR-E] Diagnostic: aim vs enemy_pos vs min_dist.
+            # Fires for first 8 invocations per team — covers dart_min_dist_init
+            # window (steps 1-8 after first_step guard) so we see what the shaper
+            # actually computes when min_dist_init=139m is reported.
+            cnt = getattr(self, f'_anchor_e_count_t{t}', 0)
+            if cnt < 8:
+                setattr(self, f'_anchor_e_count_t{t}', cnt + 1)
+                aim0 = aim[0, 0].tolist()
+                ep0 = enemy_pos[0, 0].tolist()
+                d0 = dist_all[0, 0].item()
+                md0 = min_dist[0].item()
+                line = (f"[ANCHOR-E] n={cnt} team={t} aim[0]=({aim0[0]:.1f},{aim0[1]:.1f},{aim0[2]:.1f}) "
+                        f"enemy0=({ep0[0]:.1f},{ep0[1]:.1f}) dist0={d0:.1f}m min_dist[0]={md0:.1f}m")
+                if enemy_pos.shape[1] > 1:
+                    ep1 = enemy_pos[0, 1].tolist()
+                    d1 = dist_all[0, 1].item()
+                    line += f" enemy1=({ep1[0]:.1f},{ep1[1]:.1f}) dist1={d1:.1f}m"
+                # Show min_dist for ALL envs to find which envs pull avg up.
+                md_all = min_dist.tolist()
+                line += f" | all_envs min_dist={[f'{x:.1f}' for x in md_all]}"
+                # And the mean for this team (compare to dart_min_dist_avg which
+                # averages over both teams).
+                line += f" | team_mean={min_dist.mean().item():.2f}m max={min_dist.max().item():.1f}m"
+                print(line, flush=True)
 
             # (A) Guidance: log-distance potential, monotone & non-saturating to r_floor
             r_eff = min_dist.clamp(min=self.beam_r_floor_m)
@@ -271,12 +295,19 @@ class LaserRewardShaper:
             min_dist_per_team[:, t] = min_dist
             fire_on_per_team[:, t] = fire_on
 
-            # Phase 3 v5: exponential precision ("dart-board") reward.
-            # Strong gradient near target; only counts when fire_on so policy
-            # is rewarded for firing AT the target, not just being close.
+            # Phase 1.0 改动 2b (plan T1): 全场稠密 dartboard reward.
+            # 之前: 只在 fire_on 时给 (line 303 旧版),PPO init 时 fire 50% Bernoulli
+            # → dartboard 信号稀疏,PPO 学不会瞄准。
+            # 现在: per-step 都给 (不管 fire_on),fire_on 时额外加权 0.5×,
+            # 鼓励"瞄准时开火"而非"只靠近不开火"。
+            # 量级: weight=50 同 guidance,per-step max 贡献 ~50 (近距离),
+            # 远距离 →0; kill_bonus=100 仍稀疏奖励。总 reward magnitude ~100-200/step。
             if self.dartboard_weight > 0.0:
                 dart_r = torch.exp(-min_dist / max(self.dartboard_scale_m, 1e-3))
-                beam_reward = beam_reward + fire_on.float() * self.dartboard_weight * dart_r
+                # 全场稠密项(per-step 都给,不管 fire_on)
+                beam_reward = beam_reward + self.dartboard_weight * dart_r
+                # fire_on 时额外加权(鼓励"瞄准时开火")
+                beam_reward = beam_reward + fire_on.float() * self.dartboard_weight * 0.5 * dart_r
             # (C1) Immediate dense reward for firing while locked
             beam_reward = beam_reward + locked.float() * self.fire_lock_bonus
             # (C2) Small penalty for firing while NOT locked
@@ -348,4 +379,24 @@ class LaserRewardShaper:
             "dart_min_dist_avg":    float(min_dist_per_team[~torch.isnan(min_dist_per_team)].mean().item()) if not torch.isnan(min_dist_per_team).all() else float("nan"),
             "dart_min_dist_min":    float(min_dist_per_team[~torch.isnan(min_dist_per_team)].min().item())  if not torch.isnan(min_dist_per_team).all() else float("nan"),
             "dart_fire_rate":       float(fire_on_per_team.float().mean().item()),
+            # Phase 1.0 改动 2 (plan §1.0): 离群-resistant 版本,排 2% alive-flag/zero-init
+            # outlier (425-439m)。avg 被 outlier 拉到 139m 是统计假象 (见
+            # EXPERIMENTAL_PHENOMENA_REPORT.md 现象 2),用 median / trim_mean(10%) 看真值。
+            "dart_min_dist_median":    float(min_dist_per_team[~torch.isnan(min_dist_per_team)].median().item()) if not torch.isnan(min_dist_per_team).all() else float("nan"),
+            "dart_min_dist_trim_mean": float(self._trim_mean(min_dist_per_team[~torch.isnan(min_dist_per_team)], p=0.1)) if not torch.isnan(min_dist_per_team).all() else float("nan"),
         }
+
+    @staticmethod
+    def _trim_mean(t: torch.Tensor, p: float = 0.1) -> torch.Tensor:
+        """Trimmed mean: drop fraction p from each tail (default p=0.1 → drop 10% each side).
+
+        Robust to outliers (e.g., 425-439m min_dist from zero-init policy early steps).
+        Falls back to median for tensors too small to trim.
+        """
+        if t.numel() == 0:
+            return torch.tensor(float("nan"), device=t.device)
+        k = int(t.numel() * p)
+        if 2 * k >= t.numel():
+            return t.median()
+        s, _ = torch.sort(t.flatten())
+        return s[k:-k].mean()

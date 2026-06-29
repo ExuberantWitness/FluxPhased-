@@ -306,6 +306,20 @@ def fused_sensing(
                 bzx = bzx.clamp(-half_x, half_x); bzy = bzy.clamp(-half_y, half_y)
                 x0, x1, P00, P01, P11 = _kalman_step(
                     x0, x1, P00, P01, P11, bzx, bzy, BR00, BR01, BR11, q)
+            # [ANCHOR-AB] Diagnostic: warm-start final state for enemy e.
+            # Fires once per enemy per first-call (use module-level flag).
+            global _ANCHOR_AB_PRINTED
+            if "_ANCHOR_AB_PRINTED" not in globals() or len(_ANCHOR_AB_PRINTED) < 2:
+                _ANCHOR_AB_PRINTED = globals().get("_ANCHOR_AB_PRINTED", set())
+                if e not in _ANCHOR_AB_PRINTED:
+                    _ANCHOR_AB_PRINTED.add(e)
+                    err_x = (x0 - ex).abs().max().item()
+                    err_y = (x1 - ey).abs().max().item()
+                    print(f"[ANCHOR-AB] enemy={e} burnin={tracker.track_burnin} "
+                          f"max_err_x={err_x:.3f}m max_err_y={err_y:.3f}m "
+                          f"(true=({ex[0,0].item():.1f},{ey[0,0].item():.1f}) "
+                          f"est=({x0[0,0].item():.1f},{x1[0,0].item():.1f}))",
+                          flush=True)
         else:
             x0 = tracker._trk_x[..., e, 0]; x1 = tracker._trk_x[..., e, 1]
             P00 = tracker._trk_P[..., e, 0, 0]; P01 = tracker._trk_P[..., e, 0, 1]

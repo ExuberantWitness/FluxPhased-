@@ -19,7 +19,9 @@ import yaml
 
 
 def main():
-    cfg_path = "configs/laser_25x25_train.yaml"
+    # Phase 1.S sanity check: allow CLI override so we can point at the league config.
+    cfg_path = sys.argv[1] if len(sys.argv) > 1 else "configs/laser_25x25_train.yaml"
+    print(f"[diagnose_grad] using config: {cfg_path}")
     with open(cfg_path) as f:
         cfg = yaml.safe_load(f)
 

@@ -193,6 +193,20 @@ class VecDrone:
         self._commander_aim[..., 0] = commander_actions[..., 1] * half_x
         self._commander_aim[..., 1] = commander_actions[..., 2] * half_y
         self._commander_aim[..., 2] = commander_actions[..., 3] * 1000.0  # z scale
+        # [ANCHOR-DD] Diagnostic: confirm decoded aim. Fires first 12 calls.
+        # Shows both teams so we can verify _commander_aim tracks enemy across
+        # the dart_min_dist_init window (steps 1-12).
+        cnt = getattr(self, '_anchor_dd_count', 0)
+        if cnt < 12:
+            self._anchor_dd_count = cnt + 1
+            for t in range(self.n_teams):
+                print(f"[ANCHOR-DD] n={cnt} team={t} cmd_in[0,t]=[fire={commander_actions[0,t,0].item():.3f},"
+                      f"aim_x={commander_actions[0,t,1].item():.4f},"
+                      f"aim_y={commander_actions[0,t,2].item():.4f}] "
+                      f"→ _commander_aim[0,t]=("
+                      f"{self._commander_aim[0,t,0].item():.1f},"
+                      f"{self._commander_aim[0,t,1].item():.1f},"
+                      f"{self._commander_aim[0,t,2].item():.1f})m", flush=True)
 
     def update_aim(self):
         """Resolve aim position: commander > radar. Update laser_aim and fire_on."""

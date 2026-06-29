@@ -1,0 +1,136 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 102.0 GB
+Config: configs/laser_25x25_pro6000.yaml
+Rows×Cols: 25×25
+Episodes per PSRO iter: 10
+PSRO iterations: 48
+Warp 1.10.1 initialized:
+   CUDA Toolkit 12.8, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Workstation Edition" (95 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/ubuntu/.cache/warp/1.10.1
+Env: E=12, R=4, N=625, S=20000, P=4, bins=64
+VRAM: 19.20 GB
+Radar AC params: 1,489,504
+Commander AC params: 172,555
+VRAM after models: 19.21 GB
+
+============================================================
+Starting training: 48 PSRO iters × 10 episodes
+Max pulses/episode: 500
+============================================================
+
+BC weight: 5.0 → 2.0 over 12 iters
+kill_radius curriculum: 50.0m → 0.2m (success-gated)
+League ON: red=training vs blue=opponent pool (snapshot every 3 iters)
+Module radar_sim.gpu.vec_channel 6a2afee load on device 'cuda:0' took 0.46 ms  (cached)
+Module radar_sim.gpu.vec_array 0e899e2 load on device 'cuda:0' took 1.90 ms  (cached)
+[ANCHOR-DD] n=0 team=0 cmd_in[0,t]=[fire=0.000,aim_x=0.0000,aim_y=0.0000] → _commander_aim[0,t]=(0.0,0.0,0.0)m
+[ANCHOR-DD] n=0 team=1 cmd_in[0,t]=[fire=0.000,aim_x=0.0000,aim_y=0.0000] → _commander_aim[0,t]=(0.0,0.0,0.0)m
+[ANCHOR-DD] n=1 team=0 cmd_in[0,t]=[fire=0.000,aim_x=0.0000,aim_y=0.0000] → _commander_aim[0,t]=(0.0,0.0,0.0)m
+[ANCHOR-DD] n=1 team=1 cmd_in[0,t]=[fire=0.000,aim_x=0.0000,aim_y=0.0000] → _commander_aim[0,t]=(0.0,0.0,0.0)m
+[ANCHOR-DD] n=2 team=0 cmd_in[0,t]=[fire=0.000,aim_x=0.0000,aim_y=0.0000] → _commander_aim[0,t]=(0.0,0.0,0.0)m
+[ANCHOR-DD] n=2 team=1 cmd_in[0,t]=[fire=0.000,aim_x=0.0000,aim_y=0.0000] → _commander_aim[0,t]=(0.0,0.0,0.0)m
+[ANCHOR-DD] n=3 team=0 cmd_in[0,t]=[fire=0.000,aim_x=0.0000,aim_y=0.0000] → _commander_aim[0,t]=(0.0,0.0,0.0)m
+[ANCHOR-DD] n=3 team=1 cmd_in[0,t]=[fire=0.000,aim_x=0.0000,aim_y=0.0000] → _commander_aim[0,t]=(0.0,0.0,0.0)m
+[ANCHOR-DD] n=4 team=0 cmd_in[0,t]=[fire=0.000,aim_x=0.0000,aim_y=0.0000] → _commander_aim[0,t]=(0.0,0.0,0.0)m
+[ANCHOR-DD] n=4 team=1 cmd_in[0,t]=[fire=0.000,aim_x=0.0000,aim_y=0.0000] → _commander_aim[0,t]=(0.0,0.0,0.0)m
+[ANCHOR-DD] n=5 team=0 cmd_in[0,t]=[fire=1.000,aim_x=-0.3718,aim_y=0.5508] → _commander_aim[0,t]=(-3717.6,5508.1,1.4)m
+[ANCHOR-DD] n=5 team=1 cmd_in[0,t]=[fire=1.000,aim_x=-0.3239,aim_y=-0.4096] → _commander_aim[0,t]=(-3238.9,-4096.3,1.9)m
+[ANCHOR-DD] n=6 team=0 cmd_in[0,t]=[fire=1.000,aim_x=-0.3718,aim_y=0.5508] → _commander_aim[0,t]=(-3717.6,5508.1,1.4)m
+[ANCHOR-DD] n=6 team=1 cmd_in[0,t]=[fire=1.000,aim_x=-0.3239,aim_y=-0.4096] → _commander_aim[0,t]=(-3238.9,-4096.3,1.9)m
+[ANCHOR-DD] n=7 team=0 cmd_in[0,t]=[fire=1.000,aim_x=-0.3718,aim_y=0.5508] → _commander_aim[0,t]=(-3717.6,5508.1,1.4)m
+[ANCHOR-DD] n=7 team=1 cmd_in[0,t]=[fire=1.000,aim_x=-0.3239,aim_y=-0.4096] → _commander_aim[0,t]=(-3238.9,-4096.3,1.9)m
+[ANCHOR-DD] n=8 team=0 cmd_in[0,t]=[fire=1.000,aim_x=-0.3718,aim_y=0.5508] → _commander_aim[0,t]=(-3717.6,5508.1,1.4)m
+[ANCHOR-DD] n=8 team=1 cmd_in[0,t]=[fire=1.000,aim_x=-0.3239,aim_y=-0.4096] → _commander_aim[0,t]=(-3238.9,-4096.3,1.9)m
+[ANCHOR-DD] n=9 team=0 cmd_in[0,t]=[fire=1.000,aim_x=-0.3718,aim_y=0.5508] → _commander_aim[0,t]=(-3717.6,5508.1,1.4)m
+[ANCHOR-DD] n=9 team=1 cmd_in[0,t]=[fire=1.000,aim_x=-0.3239,aim_y=-0.4096] → _commander_aim[0,t]=(-3238.9,-4096.3,1.9)m
+[ANCHOR-DD] n=10 team=0 cmd_in[0,t]=[fire=1.000,aim_x=-0.3720,aim_y=0.5511] → _commander_aim[0,t]=(-3720.0,5510.8,-1.1)m
+[ANCHOR-DD] n=10 team=1 cmd_in[0,t]=[fire=1.000,aim_x=-0.3241,aim_y=-0.4094] → _commander_aim[0,t]=(-3241.4,-4094.5,0.1)m
+[ANCHOR-DD] n=11 team=0 cmd_in[0,t]=[fire=1.000,aim_x=-0.3720,aim_y=0.5511] → _commander_aim[0,t]=(-3720.0,5510.8,-1.1)m
+[ANCHOR-DD] n=11 team=1 cmd_in[0,t]=[fire=1.000,aim_x=-0.3241,aim_y=-0.4094] → _commander_aim[0,t]=(-3241.4,-4094.5,0.1)m
+  [Update] radar_loss=0.1089 cmd_loss=-0.0054 bc_loss=0.0001 adv_std=10.5952 aim_res=0.4241
+[PSRO 1/48] kills=175 kill_rate=8.750 min_aim_dist=0m kr=50.00m avg_cmd_r=130.0616 log_std=-1.00 bc_w=5.00 rate=5p/s time=533s upd=5 cmd_pl=-0.00256 adv_std=9.972 aim_res=0.411
+[Eval @ iter 1] eval_kills=16 eval_min_aim_dist=0m eval_kill_rate=0.667 kr_next=35.00m pool=1 opp=0 | this:R12/B0/D0 | cum red=1.00 blue=0.00 draw=0.00 (n=12) | jam=0.00
+  [Update] radar_loss=0.0073 cmd_loss=-0.0036 bc_loss=0.0002 adv_std=9.8210 aim_res=0.4227
+[PSRO 2/48] kills=166 kill_rate=8.300 min_aim_dist=0m kr=35.00m avg_cmd_r=135.7905 log_std=-1.40 bc_w=4.75 rate=5p/s time=407s upd=5 cmd_pl=-0.00162 adv_std=9.391 aim_res=0.429
+[Eval @ iter 2] eval_kills=13 eval_min_aim_dist=0m eval_kill_rate=0.542 kr_next=24.50m pool=1 opp=0 | this:R12/B0/D0 | cum red=1.00 blue=0.00 draw=0.00 (n=24) | jam=0.00
+  [Update] radar_loss=0.0061 cmd_loss=-0.0028 bc_loss=0.0002 adv_std=10.3622 aim_res=0.2990
+[PSRO 3/48] kills=169 kill_rate=8.450 min_aim_dist=0m kr=24.50m avg_cmd_r=135.9320 log_std=-1.80 bc_w=4.50 rate=5p/s time=422s upd=5 cmd_pl=-0.00036 adv_std=6.410 aim_res=0.305
+[Eval @ iter 3] eval_kills=15 eval_min_aim_dist=0m eval_kill_rate=0.625 kr_next=17.15m pool=1 opp=0 | this:R12/B0/D0 | cum red=1.00 blue=0.00 draw=0.00 (n=36) | jam=0.00
+  [Update] radar_loss=0.0031 cmd_loss=-0.0048 bc_loss=0.0002 adv_std=10.1444 aim_res=0.2022
+[PSRO 4/48] kills=199 kill_rate=9.950 min_aim_dist=0m kr=17.15m avg_cmd_r=135.9926 log_std=-2.20 bc_w=4.25 rate=5p/s time=391s upd=5 cmd_pl=-0.00270 adv_std=11.736 aim_res=0.204
+[Eval @ iter 4] eval_kills=24 eval_min_aim_dist=0m eval_kill_rate=1.000 kr_next=12.00m pool=2 opp=1 | this:R12/B0/D0 | cum red=1.00 blue=0.00 draw=0.00 (n=48) | jam=0.00
+  [Update] radar_loss=0.0064 cmd_loss=-0.0081 bc_loss=0.0003 adv_std=10.8650 aim_res=0.1415
+[PSRO 5/48] kills=188 kill_rate=9.400 min_aim_dist=0m kr=12.00m avg_cmd_r=145.8873 log_std=-2.60 bc_w=4.00 rate=5p/s time=350s upd=4 cmd_pl=-0.00936 adv_std=10.427 aim_res=0.140
+[Eval @ iter 5] eval_kills=24 eval_min_aim_dist=0m eval_kill_rate=1.000 kr_next=8.40m pool=2 opp=1 | this:R12/B0/D0 | cum red=1.00 blue=0.00 draw=0.00 (n=60) | jam=0.00
+  [Update] radar_loss=0.0134 cmd_loss=-0.0049 bc_loss=0.0005 adv_std=11.1623 aim_res=0.0972
+[PSRO 6/48] kills=196 kill_rate=9.800 min_aim_dist=0m kr=8.40m avg_cmd_r=141.8053 log_std=-3.00 bc_w=3.75 rate=5p/s time=342s upd=4 cmd_pl=-0.00422 adv_std=9.919 aim_res=0.101
+[Eval @ iter 6] eval_kills=24 eval_min_aim_dist=0m eval_kill_rate=1.000 kr_next=5.88m pool=2 opp=1 | this:R12/B0/D0 | cum red=1.00 blue=0.00 draw=0.00 (n=72) | jam=0.00
+  [Update] radar_loss=0.0050 cmd_loss=-0.0055 bc_loss=0.0005 adv_std=11.7875 aim_res=0.0682
+[PSRO 7/48] kills=173 kill_rate=8.650 min_aim_dist=0m kr=5.88m avg_cmd_r=186.7866 log_std=-3.40 bc_w=3.50 rate=5p/s time=230s upd=3 cmd_pl=0.00137 adv_std=14.500 aim_res=0.069
+[Eval @ iter 7] eval_kills=24 eval_min_aim_dist=0m eval_kill_rate=1.000 kr_next=4.12m pool=3 opp=2 | this:R12/B0/D0 | cum red=1.00 blue=0.00 draw=0.00 (n=84) | jam=0.00
+  [Update] radar_loss=0.0034 cmd_loss=0.0001 bc_loss=0.0004 adv_std=12.1877 aim_res=0.0503
+[PSRO 8/48] kills=187 kill_rate=9.350 min_aim_dist=0m kr=4.12m avg_cmd_r=185.5952 log_std=-3.80 bc_w=3.25 rate=5p/s time=234s upd=3 cmd_pl=-0.00077 adv_std=10.702 aim_res=0.048
+[Eval @ iter 8] eval_kills=24 eval_min_aim_dist=0m eval_kill_rate=1.000 kr_next=2.88m pool=3 opp=2 | this:R12/B0/D0 | cum red=1.00 blue=0.00 draw=0.00 (n=96) | jam=0.00
+  [Update] radar_loss=0.0143 cmd_loss=0.0071 bc_loss=0.0006 adv_std=7.5725 aim_res=0.0426
+[PSRO 9/48] kills=120 kill_rate=6.000 min_aim_dist=0m kr=2.88m avg_cmd_r=136.7083 log_std=-4.20 bc_w=3.00 rate=5p/s time=615s upd=5 cmd_pl=0.02814 adv_std=7.753 aim_res=0.040
+[Eval @ iter 9] eval_kills=14 eval_min_aim_dist=0m eval_kill_rate=0.583 kr_next=2.02m pool=3 opp=0 | this:R12/B0/D0 | cum red=1.00 blue=0.00 draw=0.00 (n=108) | jam=0.00
+  [Update] radar_loss=0.0041 cmd_loss=0.0359 bc_loss=0.0005 adv_std=10.2710 aim_res=0.0356
+[PSRO 10/48] kills=120 kill_rate=6.000 min_aim_dist=0m kr=2.02m avg_cmd_r=138.3791 log_std=-4.60 bc_w=2.75 rate=5p/s time=546s upd=5 cmd_pl=0.00899 adv_std=7.698 aim_res=0.032
+[Eval @ iter 10] eval_kills=13 eval_min_aim_dist=0m eval_kill_rate=0.542 kr_next=1.41m pool=4 opp=0 | this:R12/B0/D0 | cum red=1.00 blue=0.00 draw=0.00 (n=120) | jam=0.00
+  [Update] radar_loss=0.0085 cmd_loss=0.0402 bc_loss=0.0004 adv_std=8.2259 aim_res=0.0265
+[PSRO 11/48] kills=188 kill_rate=9.400 min_aim_dist=0m kr=1.41m avg_cmd_r=161.4673 log_std=-5.00 bc_w=2.50 rate=5p/s time=308s upd=4 cmd_pl=0.02038 adv_std=10.608 aim_res=0.025
+[Eval @ iter 11] eval_kills=24 eval_min_aim_dist=0m eval_kill_rate=1.000 kr_next=0.99m pool=4 opp=2 | this:R12/B0/D0 | cum red=1.00 blue=0.00 draw=0.00 (n=132) | jam=0.00
+  [Update] radar_loss=0.0098 cmd_loss=0.0766 bc_loss=0.0005 adv_std=9.5511 aim_res=0.0277
+[PSRO 12/48] kills=118 kill_rate=5.900 min_aim_dist=0m kr=0.99m avg_cmd_r=133.5674 log_std=-5.40 bc_w=2.25 rate=5p/s time=660s upd=6 cmd_pl=0.12030 adv_std=6.957 aim_res=0.023
+[Eval @ iter 12] eval_kills=12 eval_min_aim_dist=0m eval_kill_rate=0.500 kr_next=0.69m pool=4 opp=0 | this:R12/B0/D0 | cum red=1.00 blue=0.00 draw=0.00 (n=144) | jam=0.00
+  [Update] radar_loss=0.0079 cmd_loss=0.1373 bc_loss=0.0004 adv_std=7.5946 aim_res=0.0247
+[PSRO 13/48] kills=185 kill_rate=9.250 min_aim_dist=0m kr=0.69m avg_cmd_r=165.4314 log_std=-5.80 bc_w=2.00 rate=5p/s time=317s upd=4 cmd_pl=0.19590 adv_std=10.726 aim_res=0.023
+[Eval @ iter 13] eval_kills=24 eval_min_aim_dist=0m eval_kill_rate=1.000 kr_next=0.48m pool=5 opp=3 | this:R12/B0/D0 | cum red=1.00 blue=0.00 draw=0.00 (n=156) | jam=0.00
+  [Update] radar_loss=0.0085 cmd_loss=0.2352 bc_loss=0.0005 adv_std=8.7508 aim_res=0.0250
+[PSRO 14/48] kills=97 kill_rate=4.850 min_aim_dist=0m kr=0.48m avg_cmd_r=134.8185 log_std=-6.00 bc_w=2.00 rate=5p/s time=922s upd=9 cmd_pl=0.18385 adv_std=5.470 aim_res=0.055
+[Eval @ iter 14] eval_kills=12 eval_min_aim_dist=0m eval_kill_rate=0.500 kr_next=0.34m pool=5 opp=0 | this:R8/B2/D2 | cum red=0.98 blue=0.01 draw=0.01 (n=168) | jam=0.00
+  [Update] radar_loss=0.0233 cmd_loss=0.1241 bc_loss=0.0024 adv_std=21.3144 aim_res=0.0571
+[PSRO 15/48] kills=44 kill_rate=2.200 min_aim_dist=0m kr=0.34m avg_cmd_r=161.0938 log_std=-6.00 bc_w=2.00 rate=5p/s time=1043s upd=10 cmd_pl=0.22265 adv_std=37.257 aim_res=0.064
+[Eval @ iter 15] eval_kills=8 eval_min_aim_dist=0m eval_kill_rate=0.333 kr_next=0.34m pool=5 opp=0 | this:R4/B2/D6 | cum red=0.93 blue=0.02 draw=0.04 (n=180) | jam=0.00
+  [Update] radar_loss=0.0519 cmd_loss=0.1037 bc_loss=0.0022 adv_std=16.5390 aim_res=0.0609
+[PSRO 16/48] kills=33 kill_rate=1.650 min_aim_dist=0m kr=0.34m avg_cmd_r=193.5704 log_std=-6.00 bc_w=2.00 rate=5p/s time=1044s upd=10 cmd_pl=0.16698 adv_std=10.841 aim_res=0.062
+[Eval @ iter 16] eval_kills=9 eval_min_aim_dist=0m eval_kill_rate=0.375 kr_next=0.34m pool=6 opp=3 | this:R7/B1/D4 | cum red=0.91 blue=0.03 draw=0.06 (n=192) | jam=0.00
+  [Update] radar_loss=0.0936 cmd_loss=0.5395 bc_loss=0.0027 adv_std=34.6805 aim_res=0.0766
+[PSRO 17/48] kills=27 kill_rate=1.350 min_aim_dist=0m kr=0.34m avg_cmd_r=200.1277 log_std=-6.00 bc_w=2.00 rate=5p/s time=1043s upd=10 cmd_pl=0.06301 adv_std=26.751 aim_res=0.067
+[Eval @ iter 17] eval_kills=15 eval_min_aim_dist=0m eval_kill_rate=0.625 kr_next=0.24m pool=6 opp=2 | this:R3/B9/D0 | cum red=0.87 blue=0.07 draw=0.06 (n=204) | jam=0.00
+  [Update] radar_loss=0.0092 cmd_loss=0.0396 bc_loss=0.0021 adv_std=36.9655 aim_res=0.0669
+[PSRO 18/48] kills=6 kill_rate=0.300 min_aim_dist=0m kr=0.24m avg_cmd_r=199.2113 log_std=-6.00 bc_w=2.00 rate=5p/s time=1044s upd=10 cmd_pl=-0.00604 adv_std=39.082 aim_res=0.069
+[Eval @ iter 18] eval_kills=2 eval_min_aim_dist=0m eval_kill_rate=0.083 kr_next=0.24m pool=6 opp=5 | this:R2/B0/D10 | cum red=0.83 blue=0.06 draw=0.10 (n=216) | jam=0.00
+  [Update] radar_loss=-0.0008 cmd_loss=-0.0026 bc_loss=0.0023 adv_std=37.6030 aim_res=0.0716
+[PSRO 19/48] kills=5 kill_rate=0.250 min_aim_dist=0m kr=0.24m avg_cmd_r=202.3823 log_std=-6.00 bc_w=2.00 rate=5p/s time=1042s upd=10 cmd_pl=-0.00317 adv_std=49.710 aim_res=0.072
+[Eval @ iter 19] eval_kills=0 eval_min_aim_dist=0m eval_kill_rate=0.000 kr_next=0.28m pool=7 opp=6 | this:R0/B0/D12 | cum red=0.79 blue=0.06 draw=0.15 (n=228) | jam=0.00
+  [Update] radar_loss=0.0092 cmd_loss=-0.0010 bc_loss=0.0024 adv_std=112.9250 aim_res=0.0695
+[PSRO 20/48] kills=10 kill_rate=0.500 min_aim_dist=0m kr=0.28m avg_cmd_r=181.3652 log_std=-6.00 bc_w=2.00 rate=5p/s time=1042s upd=10 cmd_pl=-0.00304 adv_std=190.238 aim_res=0.075
+[Eval @ iter 20] eval_kills=6 eval_min_aim_dist=0m eval_kill_rate=0.250 kr_next=0.28m pool=7 opp=0 | this:R3/B2/D7 | cum red=0.76 blue=0.07 draw=0.17 (n=240) | jam=0.00
+  [Update] radar_loss=-0.0004 cmd_loss=-0.0029 bc_loss=0.0023 adv_std=169.5603 aim_res=0.0670
+[PSRO 21/48] kills=10 kill_rate=0.500 min_aim_dist=0m kr=0.28m avg_cmd_r=198.2490 log_std=-6.00 bc_w=2.00 rate=5p/s time=1041s upd=10 cmd_pl=0.42236 adv_std=80.833 aim_res=0.075
+[Eval @ iter 21] eval_kills=1 eval_min_aim_dist=0m eval_kill_rate=0.042 kr_next=0.28m pool=7 opp=5 | this:R1/B0/D11 | cum red=0.73 blue=0.06 draw=0.21 (n=252) | jam=0.00
+  [Update] radar_loss=0.0035 cmd_loss=0.1452 bc_loss=0.0026 adv_std=109.5021 aim_res=0.0680
+[PSRO 22/48] kills=14 kill_rate=0.700 min_aim_dist=0m kr=0.28m avg_cmd_r=197.0504 log_std=-6.00 bc_w=2.00 rate=5p/s time=1043s upd=10 cmd_pl=0.34802 adv_std=80.367 aim_res=0.067
+[Eval @ iter 22] eval_kills=3 eval_min_aim_dist=0m eval_kill_rate=0.125 kr_next=0.28m pool=8 opp=5 | this:R3/B0/D9 | cum red=0.71 blue=0.06 draw=0.23 (n=264) | jam=0.00
+  [Update] radar_loss=0.8553 cmd_loss=0.1774 bc_loss=0.0027 adv_std=64.7267 aim_res=0.0726
+[PSRO 23/48] kills=45 kill_rate=2.250 min_aim_dist=0m kr=0.28m avg_cmd_r=193.2172 log_std=-6.00 bc_w=2.00 rate=5p/s time=1043s upd=10 cmd_pl=-0.00320 adv_std=24.906 aim_res=0.081
+[Eval @ iter 23] eval_kills=3 eval_min_aim_dist=0m eval_kill_rate=0.125 kr_next=0.28m pool=8 opp=4 | this:R0/B3/D9 | cum red=0.68 blue=0.07 draw=0.25 (n=276) | jam=0.00
+  [Update] radar_loss=-0.0011 cmd_loss=-0.0015 bc_loss=0.0027 adv_std=83.9937 aim_res=0.0737
+[PSRO 24/48] kills=11 kill_rate=0.550 min_aim_dist=0m kr=0.28m avg_cmd_r=188.3946 log_std=-6.00 bc_w=2.00 rate=5p/s time=1041s upd=10 cmd_pl=-0.00535 adv_std=35.208 aim_res=0.087
+[Eval @ iter 24] eval_kills=12 eval_min_aim_dist=0m eval_kill_rate=0.500 kr_next=0.20m pool=8 opp=1 | this:R0/B12/D0 | cum red=0.65 blue=0.11 draw=0.24 (n=288) | jam=0.00
+  [Update] radar_loss=0.0081 cmd_loss=0.0219 bc_loss=0.0033 adv_std=89.4088 aim_res=0.0867
+[PSRO 25/48] kills=2 kill_rate=0.100 min_aim_dist=0m kr=0.20m avg_cmd_r=209.7231 log_std=-6.00 bc_w=2.00 rate=5p/s time=1043s upd=10 cmd_pl=-0.00438 adv_std=72.108 aim_res=0.080
+[Eval @ iter 25] eval_kills=3 eval_min_aim_dist=0m eval_kill_rate=0.125 kr_next=0.20m pool=9 opp=4 | this:R0/B3/D9 | cum red=0.62 blue=0.11 draw=0.26 (n=300) | jam=0.00
+  [Update] radar_loss=-0.0000 cmd_loss=-0.0036 bc_loss=0.0033 adv_std=147.6567 aim_res=0.0857
+[PSRO 26/48] kills=3 kill_rate=0.150 min_aim_dist=0m kr=0.20m avg_cmd_r=207.9440 log_std=-6.00 bc_w=2.00 rate=5p/s time=1043s upd=10 cmd_pl=-0.00751 adv_std=106.045 aim_res=0.089
+[Eval @ iter 26] eval_kills=3 eval_min_aim_dist=0m eval_kill_rate=0.125 kr_next=0.20m pool=9 opp=4 | this:R0/B3/D9 | cum red=0.60 blue=0.12 draw=0.28 (n=312) | jam=0.00
+  [Update] radar_loss=-0.0009 cmd_loss=-0.0033 bc_loss=0.0035 adv_std=121.3210 aim_res=0.0895
+[PSRO 27/48] kills=0 kill_rate=0.000 min_aim_dist=0m kr=0.20m avg_cmd_r=199.8048 log_std=-6.00 bc_w=2.00 rate=5p/s time=1045s upd=10 cmd_pl=-0.00384 adv_std=179.969 aim_res=0.084
+[Eval @ iter 27] eval_kills=0 eval_min_aim_dist=0m eval_kill_rate=0.000 kr_next=0.24m pool=9 opp=5 | this:R0/B0/D12 | cum red=0.58 blue=0.11 draw=0.31 (n=324) | jam=0.00
+  [Update] radar_loss=-0.0004 cmd_loss=-0.0072 bc_loss=0.0035 adv_std=235.1146 aim_res=0.0897
