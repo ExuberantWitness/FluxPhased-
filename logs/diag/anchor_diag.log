@@ -1,0 +1,68 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 102.0 GB
+FluxPhased League Training
+Config: configs/ablation_f1f8/v3_p2_A_baseline.yaml
+Device: cuda
+Environment: E=12, R=4, N=625, P=4, bins=64
+State dim: 163783, Action dim: 13753
+[wandb] wandb not available; skipping logging
+Warp 1.10.1 initialized:
+   CUDA Toolkit 12.8, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Workstation Edition" (95 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/ubuntu/.cache/warp/1.10.1
+[League] kill_radius initialized at 24.500m (will anneal toward 0.200m)
+
+============================================================
+PSRO Iteration 0/3
+============================================================
+[League] Iteration 0: Evaluating payoff matrix...
+  [payoff] p0000 vs p0003 (1/9)... Module radar_sim.gpu.vec_channel 6a2afee load on device 'cuda:0' took 0.40 ms  (cached)
+Module radar_sim.gpu.vec_array 0e899e2 load on device 'cuda:0' took 29.21 ms  (cached)
+[ANCHOR-DD] decoded _commander_aim[0,0]=(0.0,0.0,0.0) cmd_in[0,0]=[fire=0.000,aim_x=0.0000,aim_y=0.0000] half=(10000,10000)
+[ANCHOR-AB] enemy=0 burnin=120 max_err_x=0.068m max_err_y=0.051m (true=(2606.9,6377.6) est=(2606.9,6377.6))
+[ANCHOR-AB] enemy=1 burnin=120 max_err_x=0.088m max_err_y=0.043m (true=(-2297.7,2716.1) est=(-2297.7,2716.1))
+[ANCHOR-C] anchor=(2606.9,6377.6)m true_enemy0=(2606.9,6377.6)m err=0.02m | own_radar0=(903.7,-2073.7) own_radar1=(-3919.5,-7226.6)
+[ANCHOR-D] cmd_action_raw[0]=[1.0, 0.002117120660841465, -0.0011753806611523032, -0.0021153937559574842, 0.002805418102070689] residual_scale_m=6.0 dx_norm=0.000001 dy_norm=-0.000001 env_action[0]=[fire=1.000, aim_x=0.2607, aim_y=0.6378] → physical=(2606.9,6377.6)m
+[ANCHOR-C] anchor=(903.7,-2073.7)m true_enemy0=(2606.9,6377.6)m err=8621.22m | own_radar0=(903.7,-2073.7) own_radar1=(-3919.5,-7226.6)
+[ANCHOR-D] cmd_action_raw[0]=[1.0, 0.00018345811986364424, -0.0012769908644258976, 0.0011003082618117332, -9.735664934851229e-05] residual_scale_m=6.0 dx_norm=0.000000 dy_norm=-0.000001 env_action[0]=[fire=1.000, aim_x=0.0904, aim_y=-0.2074] → physical=(903.7,-2073.7)m
+win_rate=1.00 (6.0s)
+  [payoff] p0000 vs p0004 (2/9)... [ANCHOR-C] anchor=(-2894.2,-7891.2)m true_enemy0=(-2101.5,2045.9)m err=9968.62m | own_radar0=(-2894.2,-7891.2) own_radar1=(109.9,-3633.0)
+[ANCHOR-D] cmd_action_raw[0]=[-1.0, 0.00017071038018912077, 0.000925696745980531, -0.0006115976721048355, -0.0018180665792897344] residual_scale_m=6.0 dx_norm=0.000000 dy_norm=0.000001 env_action[0]=[fire=-1.000, aim_x=-0.2894, aim_y=-0.7891] → physical=(-2894.2,-7891.2)m
+    step 100: alive=2 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=2 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=2 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=2 red_wins=0/0 wr_sofar=0.00
+    [p0000 vs p0004] final-step illumination_progress: team0=0.0292 team1=0.0500 (max t0=0.1000 t1=0.4000)
+win_rate=0.75 (118.1s)
+  [payoff] p0000 vs p0005 (3/9)... [ANCHOR-C] anchor=(-4072.3,-7489.4)m true_enemy0=(-1864.1,2984.2)m err=10703.84m | own_radar0=(-4072.2,-7489.4) own_radar1=(-2532.2,-2732.5)
+[ANCHOR-D] cmd_action_raw[0]=[1.0, 0.0003572366840671748, 0.0007384504424408078, 0.0005605786573141813, 0.0009874483803287148] residual_scale_m=6.0 dx_norm=0.000000 dy_norm=0.000000 env_action[0]=[fire=1.000, aim_x=-0.4072, aim_y=-0.7489] → physical=(-4072.3,-7489.4)m
+win_rate=0.50 (5.7s)
+  [payoff] p0001 vs p0003 (4/9)... [ANCHOR-C] anchor=(2557.3,4456.2)m true_enemy0=(2557.3,4456.2)m err=0.03m | own_radar0=(1911.2,-4003.7) own_radar1=(-1947.2,-7183.8)
+[ANCHOR-D] cmd_action_raw[0]=[1.0, 9.633851004764438e-05, -0.0016062594950199127, 0.0010375246638432145, -0.00044585694558918476] residual_scale_m=6.0 dx_norm=0.000000 dy_norm=-0.000001 env_action[0]=[fire=1.000, aim_x=0.2557, aim_y=0.4456] → physical=(2557.3,4456.2)m
+win_rate=1.00 (5.6s)
+  [payoff] p0001 vs p0004 (5/9)... win_rate=1.00 (5.6s)
+  [payoff] p0001 vs p0005 (6/9)... win_rate=1.00 (5.6s)
+  [payoff] p0002 vs p0003 (7/9)... [ANCHOR-C] anchor=(3459.0,8726.7)m true_enemy0=(3459.0,8726.7)m err=0.04m | own_radar0=(-575.0,-7503.3) own_radar1=(3530.0,-2974.9)
+[ANCHOR-D] cmd_action_raw[0]=[-1.0, -0.0049904934130609035, -0.002564601367339492, -0.00014927962911315262, 0.002042056992650032] residual_scale_m=6.0 dx_norm=-0.000003 dy_norm=-0.000002 env_action[0]=[fire=-1.000, aim_x=0.3459, aim_y=0.8727] → physical=(3459.0,8726.6)m
+win_rate=0.00 (5.6s)
+  [payoff] p0002 vs p0004 (8/9)...     step 100: alive=2 red_wins=0/0 wr_sofar=0.00
+    step 200: alive=2 red_wins=0/0 wr_sofar=0.00
+    step 300: alive=2 red_wins=0/0 wr_sofar=0.00
+    step 400: alive=2 red_wins=0/0 wr_sofar=0.00
+    [p0002 vs p0004] final-step illumination_progress: team0=0.0125 team1=0.0167 (max t0=0.1000 t1=0.0500)
+win_rate=0.50 (118.7s)
+  [payoff] p0002 vs p0005 (9/9)... win_rate=0.50 (5.7s)
+  Team 0 sigma=[0. 1. 0.] NashConv=0.0000 H_task=1.386 effK=1.00
+  Team 1 sigma=[1. 0. 0.] NashConv=0.0000 H_task=1.386 effK=1.00
+  Training main (team 0, p0000) against self...
+[ANCHOR-E] team=0 aim[0]=(4579.3,3269.4,0.0) enemy0=(4577.8,3270.1) dist0=1.6m enemy1=(1907.4,7497.3) dist1=5001.4m
+[ANCHOR-E] team=1 aim[0]=(-3663.1,-4238.6,0.0) enemy0=(-3665.5,-4238.6) dist0=2.4m enemy1=(1108.0,-5726.4) dist1=4997.7m
+    ep 1/8  steps=7 kill  wr=1.00  avg_r=-1430.9990
+      [dart] fire_rate=0.507  min_dist_init=37.06m  final=nanm  change=+nanm  min=0.02m
+    ep 2/8  steps=11 kill  wr=1.50  avg_r=-1239.3099
+      [dart] fire_rate=0.500  min_dist_init=44.31m  final=nanm  change=+nanm  min=0.12m
+  Training main (team 0, p0000) against p0004...
