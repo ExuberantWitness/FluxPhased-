@@ -417,17 +417,30 @@ class LaserTrainer:
         self.pool_winrate.append(0.5)  # opp i's win-rate vs us (PFSP weight)
 
     def _sample_opponent(self):
-        """PFSP: load an opponent from the pool, weighted toward HARD ones (those that
-        beat the current policy), so training prioritises its weaknesses."""
+        """PFSP (AlphaStar f_hard): load an opponent from the pool, weighted toward HARD
+        ones (those that beat the current policy), so training prioritises its weaknesses.
+        Weight formula: w_i = (pool_winrate[i] + ε)^p, p=2, ε=0.1.
+        pool_winrate[i] = opp i's recent win-rate vs current policy (1.0 = always beats us).
+        Updated each eval via EMA in the main loop."""
         if not self.pool:
             return
         import numpy as np
-        w = np.array(self.pool_winrate) + 0.1  # opp win-rate vs us; +0.1 keeps all sampleable
+        w = (np.array(self.pool_winrate) + 0.1) ** 2  # f_hard(p=2): hard opps over-weighted
         w = w / w.sum()
         self._opp_idx = int(np.random.choice(len(self.pool), p=w))
         rs, cs = self.pool[self._opp_idx]
         self.radar_opp.load_state_dict(rs)
         self.commander_opp.load_state_dict(cs)
+
+    def update_pool_winrate(self, opp_idx, blue_wins, red_wins, draws, eta=0.25):
+        """EMA update of pool_winrate[opp_idx] from the latest eval outcomes.
+        blue_rate = blue_wins / (red+blue+draws); opp's win-rate = how often it beats us.
+        Called once per psro_iter right after eval_episode()."""
+        total = red_wins + blue_wins + draws
+        if total <= 0 or opp_idx < 0 or opp_idx >= len(self.pool_winrate):
+            return
+        blue_rate = blue_wins / total  # draws count as "red failed to win" → biases toward blue
+        self.pool_winrate[opp_idx] = (1.0 - eta) * self.pool_winrate[opp_idx] + eta * blue_rate
 
     def _add_sensing_noise(self, obs: torch.Tensor) -> torch.Tensor:
         """§5-S0: replace the exact enemy positions in obs[68:72] with a radar-realistic
@@ -1628,9 +1641,23 @@ def main():
             cum_blue += eval_stats.get("blue_wins", 0)
             cum_draw += eval_stats.get("draws", 0)
             tot = max(cum_red + cum_blue + cum_draw, 1)
-            league_str = (f" pool={len(trainer.pool)} opp={getattr(trainer,'_opp_idx',-1)}"
+            # PFSP EMA update: feed this iter's eval outcome back into the opponent's win-rate.
+            # Blue wins → opp is hard → next _sample_opponent weights it higher (f_hard p=2).
+            opp_idx = getattr(trainer, "_opp_idx", -1)
+            trainer.update_pool_winrate(
+                opp_idx,
+                eval_stats.get("blue_wins", 0),
+                eval_stats.get("red_wins", 0),
+                eval_stats.get("draws", 0),
+                eta=0.25,
+            )
+            pool_wr_str = ""
+            if 0 <= opp_idx < len(trainer.pool_winrate):
+                pool_wr_str = f" wr[opp]={trainer.pool_winrate[opp_idx]:.2f}"
+            league_str = (f" pool={len(trainer.pool)} opp={opp_idx}"
                           f" | this:R{eval_stats.get('red_wins',0)}/B{eval_stats.get('blue_wins',0)}/D{eval_stats.get('draws',0)}"
                           f" | cum red={cum_red/tot:.2f} blue={cum_blue/tot:.2f} draw={cum_draw/tot:.2f} (n={tot})"
+                          f"{pool_wr_str}"
                           f" | jam={eval_stats.get('jam_mean',0.0):.2f}")
         else:
             league_str = ""

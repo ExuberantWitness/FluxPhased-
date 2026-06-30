@@ -102,7 +102,7 @@ env:
   pulses_per_control: 5
   bandwidth: 200000000.0
   vehicle_speed_ms: 20.0
-  kill_radius_m: 0.24
+  kill_radius_m: 0.5    # [Phase 1 PfspFix] 方案 B: 0.24 -> 0.5 (避开 fine-kr 退化区)
   illumination_time_s: 0.002
   drone_altitude_m: 3000.0
   map_size: [20000.0, 20000.0]
