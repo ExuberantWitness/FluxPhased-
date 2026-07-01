@@ -1,0 +1,21 @@
+{
+  "protocol": "APP",
+  "protocol_version": "1.0",
+  "algorithm": "mappo",
+  "paper_title": "FluxLeague: AlphaStar-style Self-Play for Phased Array Laser Defense",
+  "authors": ["anonymous"],
+  "commit_pinned": "5c24f0d497563e0914edf337238ddb09c8a7e566",
+  "seed": 42,
+  "license": "TBD",
+  "components": {
+    "agents_md": "AGENTS.md",
+    "readme": "README.md",
+    "license": "LICENSE",
+    "code": "code/",
+    "data": "data/",
+    "environment": "environment/"
+  },
+  "entry": "../../main.py",
+  "entry_cmd": "python main.py --config algo/mappo/code/config.yaml",
+  "results_ref": "../../experiments/phase1.5_mappo_seed42/metrics.json"
+}
