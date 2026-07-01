@@ -1,0 +1,25 @@
+{
+  "run_id": "phase1.5_mappo_seed42",
+  "purpose": "Phase 1.5 MAPPO baseline \u2014 team critic (CTDE) + uniform opponent sampling. Tests whether AlphaStar PFSP league is necessary vs vanilla MAPPO under identical recipe.",
+  "seed": 42,
+  "config_path": "configs/laser_25x25_mappo.yaml",
+  "config_snapshot": "experiments/phase1.5_mappo_seed42/config.yaml",
+  "git": {
+    "commit": "911c5ef236fed7db894a79041e3e6609ae74172a",
+    "branch": "main",
+    "dirty": true,
+    "repo_root": "/home/ubuntu/CODE/FluxPhased-"
+  },
+  "host": {
+    "hostname": "node15",
+    "gpu": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition, 97887 MiB"
+  },
+  "timing": {
+    "start_iso": "2026-07-01T11:42:00+08:00",
+    "end_iso": "2026-07-01T15:31:00+08:00",
+    "wall_clock_hours": 3.817
+  },
+  "reproduce_cmd": "bash scripts/run_train.sh configs/laser_25x25_mappo.yaml logs/phase1.5_mappo.log",
+  "notes": "Phase 1.5 MAPPO baseline. CTDE team critic + PFSP off (pfsp_p=0). Compared vs PfspFix reference (commit 911c5ef).",
+  "written_at": "2026-07-01T07:50:17.058118+00:00"
+}

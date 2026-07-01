@@ -1,0 +1,25 @@
+{
+  "run_id": "phase1_pfsp_seed42",
+  "purpose": "Phase 1 PfspFix baseline \u2014 verified recipe, seed=42 bit-exact. Reference run for all Phase 1.5+ comparisons.",
+  "seed": 42,
+  "config_path": "configs/laser_25x25_pro6000_stable.yaml",
+  "config_snapshot": "experiments/phase1_pfsp_seed42/config.yaml",
+  "git": {
+    "commit": "911c5ef236fed7db894a79041e3e6609ae74172a",
+    "branch": "main",
+    "dirty": true,
+    "repo_root": "/home/ubuntu/CODE/FluxPhased-"
+  },
+  "host": {
+    "hostname": "node15",
+    "gpu": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition, 97887 MiB"
+  },
+  "timing": {
+    "start_iso": "2026-07-01T01:08:00+08:00",
+    "end_iso": "2026-07-01T04:30:00+08:00",
+    "wall_clock_hours": 3.367
+  },
+  "reproduce_cmd": "bash scripts/run_train.sh configs/laser_25x25_pro6000_stable.yaml logs/phase1_seed42_run1.log",
+  "notes": "PfspFix bit-exact reference. Verified bit-exact via recheck iter 1-13 (diff only in wall-clock seconds, all algorithmic values identical).",
+  "written_at": "2026-07-01T03:34:15.490654+00:00"
+}

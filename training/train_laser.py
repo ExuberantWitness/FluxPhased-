@@ -130,6 +130,10 @@ class LaserTrainer:
         # tests adversarial robustness against a population instead of plain self-play.
         import copy as _copy
         self.league = bool(cfg.get("training", {}).get("league", False))
+        # PFSP f_hard exponent (AlphaStar w_i = (winrate_i + ε)^p). Default p=2 (PfspFix).
+        # p=0 → uniform sampling (公平 IPPO/MAPPO baseline,关掉 PFSP 优势).
+        # int() cast 是关键:避免 numpy **2(int) vs **2.0(float) 走不同代码路径破坏 bit-exact.
+        self.pfsp_p = int(cfg.get("league", {}).get("pfsp_p", 2))
         if self.league:
             self.radar_opp = _copy.deepcopy(radar_ac).to(dev)
             self.commander_opp = _copy.deepcopy(commander_ac).to(dev)
@@ -436,13 +440,15 @@ class LaserTrainer:
     def _sample_opponent(self):
         """PFSP (AlphaStar f_hard): load an opponent from the pool, weighted toward HARD
         ones (those that beat the current policy), so training prioritises its weaknesses.
-        Weight formula: w_i = (pool_winrate[i] + ε)^p, p=2, ε=0.1.
+        Weight formula: w_i = (pool_winrate[i] + ε)^p.
         pool_winrate[i] = opp i's recent win-rate vs current policy (1.0 = always beats us).
+        pfsp_p (config league.pfsp_p, default 2): 0 = uniform sampling (IPPO/MAPPO baseline),
+          2 = f_hard (PfspFix default), higher = more aggressive focus on hard opps.
         Updated each eval via EMA in the main loop."""
         if not self.pool:
             return
         import numpy as np
-        w = (np.array(self.pool_winrate) + 0.1) ** 2  # f_hard(p=2): hard opps over-weighted
+        w = (np.array(self.pool_winrate) + 0.1) ** self.pfsp_p
         w = w / w.sum()
         self._opp_idx = int(np.random.choice(len(self.pool), p=w))
         rs, cs = self.pool[self._opp_idx]
