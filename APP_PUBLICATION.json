@@ -9,28 +9,33 @@
   "algorithms": [
     {
       "name": "pspfix",
-      "path": "algorithms/pspfix/",
+      "path": "algo/pspfix/",
       "commit_pinned": "911c5ef236fed7db894a79041e3e6609ae74172a",
       "role": "reference",
+      "entry": "main.py --config algo/pspfix/code/config.yaml",
       "results_ref": "experiments/phase1_pfsp_seed42/metrics.json"
     },
     {
       "name": "mappo",
-      "path": "algorithms/mappo/",
+      "path": "algo/mappo/",
       "commit_pinned": "5c24f0d497563e0914edf337238ddb09c8a7e566",
       "role": "candidate",
+      "entry": "main.py --config algo/mappo/code/config.yaml",
       "results_ref": "experiments/phase1.5_mappo_seed42/metrics.json"
     },
     {
       "name": "ippo",
-      "path": "algorithms/ippo/",
+      "path": "algo/ippo/",
       "commit_pinned": "af0d4c20fd2a14eed05f3e8d39f28ad6f43dd1d6",
       "role": "candidate",
+      "entry": "main.py --config algo/ippo/code/config.yaml",
       "results_ref": null
     }
   ],
   "shared": {
-    "training_code": "training/train_laser.py",
+    "entry": "main.py",
+    "training_code": "algo/_shared/train_laser.py",
+    "environment_code": "env/",
     "launcher": "scripts/run_train.sh",
     "conda_env": "fluxphased",
     "warp_cache": "$HOME/.cache/warp/"
