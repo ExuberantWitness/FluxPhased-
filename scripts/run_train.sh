@@ -37,7 +37,7 @@ conda activate fluxphased
 export PYTHONUNBUFFERED=1
 
 # Launch training in background
-nohup python -X faulthandler -u -m training.train_laser --config "$CONFIG" > "$LOG" 2>&1 &
+nohup python -X faulthandler -u -m algo._shared.train_laser --config "$CONFIG" > "$LOG" 2>&1 &
 PID=$!
 disown
 
