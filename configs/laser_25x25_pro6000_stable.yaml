@@ -12,6 +12,9 @@
 # ============================================================================
 
 sub_array_size: 5
+seed: 42                    # 全 RNG 锁定 (random/np/torch/cudnn) — bit-exact 复现
+                            # 代价: cudnn.deterministic=True 让 GPU 训练慢 ~10-20%
+                            # Phase 1 探索时可选注释掉看真实方差;Phase 3 论文实验必须开
 
 league:
   population_cap: 30            # [scaled 10->30] bigger opponent pool on 98GB

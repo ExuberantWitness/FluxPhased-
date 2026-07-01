@@ -10,6 +10,8 @@ Usage:
 """
 
 import argparse
+import os
+import random
 import time
 import yaml
 import torch
@@ -17,6 +19,21 @@ import torch.nn as nn
 import numpy as np
 
 from radar_sim.gpu.vec_mfar_env import MFARVecEnv
+
+
+def set_global_seed(seed: int):
+    """Lock all RNGs + cuDNN for bit-exact reproducibility.
+
+    Sets Python hash seed, random/np/torch (CPU+CUDA) generators, and forces
+    cuDNN into deterministic mode. Cost: ~10-20% slower GPU training.
+    MUST be called before env build, weight init, or any tensor op."""
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 from training.radar_policy import CPIAccumulator
 from training.ppo.actor_critic import (
     SubArrayRadarActorCritic,
@@ -1415,6 +1432,11 @@ def main():
     args = parser.parse_args()
 
     cfg = load_config(args.config)
+
+    # Lock ALL RNGs before anything else creates tensors, weights, or env state.
+    # A single global seed → bit-exact reproducible runs (cost: ~10-20% slower via cuDNN det.)
+    set_global_seed(cfg.get("seed", 42))
+    print(f"Seed: {cfg.get('seed', 42)} (cudnn.deterministic=True)")
 
     # Override for quick test
     if args.rows and args.cols:
