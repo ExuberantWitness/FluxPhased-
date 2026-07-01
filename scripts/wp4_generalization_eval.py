@@ -46,7 +46,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import matplotlib.pyplot as plt
 
-from training.train import compute_env_params
+from algo._shared.train import compute_env_params
 from scripts.wp3_robustness_eval import (
     find_latest_checkpoint,
     load_trained_policy,

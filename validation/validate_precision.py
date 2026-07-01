@@ -24,19 +24,19 @@ import warp as wp
 device = "cuda" if torch.cuda.is_available() else "cpu"
 wp.init()
 
-from radar_sim.physics.array import PhasedArray
-from radar_sim.physics.channel import (
+from env.physics.array import PhasedArray
+from env.physics.channel import (
     free_space_path_loss_db, compute_snr, compute_jamming_power,
     PropagationChannel,
 )
-from radar_sim.physics.receiver import MatchedFilter, RadarReceiver
-from radar_sim.physics.interference import InterferenceEngine
-from radar_sim.config import ArrayGeometry, RFConfig, CPIConfig
+from env.physics.receiver import MatchedFilter, RadarReceiver
+from env.physics.interference import InterferenceEngine
+from env.config import ArrayGeometry, RFConfig, CPIConfig
 
-from radar_sim.gpu.array_gpu import PhasedArrayGPU
-from radar_sim.gpu.channel_gpu import ChannelGPU
-from radar_sim.gpu.receiver_gpu import RadarReceiverGPU
-from radar_sim.gpu.interference_gpu import InterferenceEngineGPU
+from env.gpu.array_gpu import PhasedArrayGPU
+from env.gpu.channel_gpu import ChannelGPU
+from env.gpu.receiver_gpu import RadarReceiverGPU
+from env.gpu.interference_gpu import InterferenceEngineGPU
 
 SPEED_OF_LIGHT = 299792458.0
 DEG2RAD = np.pi / 180.0

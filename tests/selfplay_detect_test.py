@@ -24,10 +24,10 @@ import torch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from training.ppo.reward_shaping import DenseRewardShaper
-from training.ppo.ppo_trainer import TeamPPOTrainer
-from training.ppo.actor_critic import create_team_policy
-from radar_sim.gpu.vec_mfar_env import MFARVecEnv
+from algo._shared.ppo.reward_shaping import DenseRewardShaper
+from algo._shared.ppo.ppo_trainer import TeamPPOTrainer
+from algo._shared.ppo.actor_critic import create_team_policy
+from env.gpu.vec_mfar_env import MFARVecEnv
 
 # ── Config ────────────────────────────────────────────────────────────────
 TARGET_DISTANCE_M = 12700.0

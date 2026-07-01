@@ -13,8 +13,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import torch
 import torch.nn.functional as F
 import numpy as np
-from training.ppo.buffer import RolloutBuffer
-from training.train_laser import LaserTrainer, build_actors, build_env
+from algo._shared.ppo.buffer import RolloutBuffer
+from algo._shared.train_laser import LaserTrainer, build_actors, build_env
 import yaml
 
 

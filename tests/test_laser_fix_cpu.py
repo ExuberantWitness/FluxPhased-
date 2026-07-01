@@ -11,7 +11,7 @@ Run: python tests/test_laser_fix_cpu.py
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import torch
-from training.ppo.actor_critic import CommanderActorCritic
+from algo._shared.ppo.actor_critic import CommanderActorCritic
 
 torch.manual_seed(0)
 DEV = "cpu"

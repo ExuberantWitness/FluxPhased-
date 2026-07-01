@@ -307,8 +307,8 @@ class TeamPPOTrainer:
         self.sensing_cfg = sensing_cfg or {}
         self.reward_normalize = reward_normalize  # F8
         if task_type == "laser":
-            from training.laser.reward import LaserRewardShaper
-            from training.laser.sensing import KalmanTracker
+            from algo._shared.laser.reward import LaserRewardShaper
+            from algo._shared.laser.sensing import KalmanTracker
             # Override the DenseRewardShaper with laser shaper
             self.reward_shaper = LaserRewardShaper(
                 self.laser_cfg, env=None, device=device,
@@ -387,7 +387,7 @@ class TeamPPOTrainer:
             return cmd_obs
         half_x = float(env.map_size[0]) / 2.0
         half_y = float(env.map_size[1]) / 2.0
-        from training.laser.sensing import fused_sensing, add_sensing_noise
+        from algo._shared.laser.sensing import fused_sensing, add_sensing_noise
         if self.sensing_mode in ("fused", "tracked"):
             jam = self.reward_shaper._jam_level  # [E, n_teams]
             cmd_obs = fused_sensing(
@@ -616,7 +616,7 @@ class TeamPPOTrainer:
         # this per-step call keeps radars spread as they move at 20 m/s through the ep.)
         if self.task_type == "laser":
             self._attach_laser_env(env)
-            from training.laser.sensing import enforce_radar_baseline
+            from algo._shared.laser.sensing import enforce_radar_baseline
             enforce_radar_baseline(env, self.min_radar_baseline_m)
 
         state, commander_obs = self._get_observations(env, spectrum, events)

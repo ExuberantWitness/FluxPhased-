@@ -38,7 +38,7 @@ print("=" * 60)
 
 
 def test_basic():
-    from radar_sim.gpu.vec_env import RadarSimVecEnv
+    from env.gpu.vec_env import RadarSimVecEnv
 
     env = RadarSimVecEnv(
         num_envs=10, n_radars=4, rows=10, cols=10,
@@ -87,8 +87,8 @@ print("=" * 60)
 
 
 def test_consistency():
-    from radar_sim.gpu.vec_env import RadarSimVecEnv
-    from radar_sim.gpu.pipeline_gpu import RadarPipelineGPU, RadarState, TargetState
+    from env.gpu.vec_env import RadarSimVecEnv
+    from env.gpu.pipeline_gpu import RadarPipelineGPU, RadarState, TargetState
 
     fc = 10e9
     bw = 200e6
@@ -218,7 +218,7 @@ print("=" * 60)
 
 
 def benchmark():
-    from radar_sim.gpu.vec_env import RadarSimVecEnv
+    from env.gpu.vec_env import RadarSimVecEnv
 
     for n in [1, 4, 10]:
         torch.cuda.reset_peak_memory_stats()

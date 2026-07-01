@@ -9,7 +9,7 @@ Runs the PettingZoo ParallelEnv with random agent policies to verify:
 - Detection and communication models
 
 Usage:
-    python -m radar_sim.main [--steps N] [--seed S] [--render]
+    python -m env.main [--steps N] [--seed S] [--render]
 """
 
 import argparse

@@ -31,7 +31,7 @@ if device == "cuda":
 
 def fresh_mfar_env(num_envs=2, rows=25, cols=25):
     """Create an MFAR env for testing (25×25)."""
-    from radar_sim.gpu.vec_mfar_env import MFARVecEnv
+    from env.gpu.vec_mfar_env import MFARVecEnv
     gc.collect()
     if device == "cuda":
         torch.cuda.empty_cache()
@@ -132,7 +132,7 @@ print("=" * 60)
 
 
 def test_bpsk_roundtrip():
-    from radar_sim.gpu.waveform_gpu import (
+    from env.gpu.waveform_gpu import (
         encode_bpsk, decode_bpsk, modulate_bpsk, demodulate_bpsk,
     )
 
@@ -174,7 +174,7 @@ print("=" * 60)
 
 
 def test_fft_spectrum():
-    from radar_sim.gpu.vec_element_processor import VecElementProcessor
+    from env.gpu.vec_element_processor import VecElementProcessor
 
     proc = VecElementProcessor(
         fs=200e6, n_samples=1000, pulses_per_cpi=4,
@@ -208,7 +208,7 @@ print("=" * 60)
 
 
 def test_waveform_library():
-    from radar_sim.gpu.waveform_gpu import (
+    from env.gpu.waveform_gpu import (
         generate_lfm, generate_barker, generate_frank, generate_costas,
         generate_nlfm, generate_p4,
         generate_noise_broadband, generate_noise_spot, generate_drfm,
@@ -264,7 +264,7 @@ print("=" * 60)
 
 
 def test_per_element_steering():
-    from radar_sim.gpu.vec_array import VecArray
+    from env.gpu.vec_array import VecArray
 
     arr = VecArray(
         rows=25, cols=25, fc=10e9,

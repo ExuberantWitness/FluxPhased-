@@ -22,10 +22,10 @@ import torch
 # Add project root to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from radar_sim.gpu.vec_mfar_env import MFARVecEnv
-from radar_sim.config import DEFAULT_ROWS, DEFAULT_COLS
-from training.flux_league import FluxLeague
-from training.curriculum.phased_trainer import PhasedTrainer
+from env.gpu.vec_mfar_env import MFARVecEnv
+from env.config import DEFAULT_ROWS, DEFAULT_COLS
+from algo._shared.flux_league import FluxLeague
+from algo._shared.curriculum.phased_trainer import PhasedTrainer
 
 
 def load_config(path: str) -> dict:

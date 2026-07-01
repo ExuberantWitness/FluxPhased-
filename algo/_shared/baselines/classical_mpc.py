@@ -33,10 +33,10 @@ import yaml
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from radar_sim.gpu.vec_mfar_env import MFARVecEnv
-from radar_sim.config import DEFAULT_ROWS, DEFAULT_COLS
-from training.laser.episode import LaserEpisodeRunner
-from training.laser.sensing import enforce_radar_baseline
+from env.gpu.vec_mfar_env import MFARVecEnv
+from env.config import DEFAULT_ROWS, DEFAULT_COLS
+from algo._shared.laser.episode import LaserEpisodeRunner
+from algo._shared.laser.sensing import enforce_radar_baseline
 
 
 def _create_env(config: dict) -> MFARVecEnv:
@@ -108,7 +108,7 @@ class ClassicalMPC:
         self.r_end = (team + 1) * R_team
         self.R_team = R_team
 
-        from training.laser.sensing import KalmanTracker
+        from algo._shared.laser.sensing import KalmanTracker
         self.kalman_tracker = KalmanTracker(
             track_q_m=self.track_q_m, track_burnin=self.track_burnin,
         )
@@ -153,7 +153,7 @@ class ClassicalMPC:
         )  # [E, n_teams, 76]
 
         # Apply fused sensing in-place (writes fused enemy xy into cmd_obs[68:72])
-        from training.laser.sensing import fused_sensing
+        from algo._shared.laser.sensing import fused_sensing
         fused_sensing(
             cmd_obs,
             half_x=self.half_map_m, half_y=self.half_map_m,

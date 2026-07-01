@@ -12,7 +12,7 @@ sys.path.insert(0, "E:/DATA/vscode/FluxPhased")
 
 import numpy as np
 import torch
-from radar_sim.pz_gpu.core import FluxPhasedPZEnv
+from env.pz_gpu.core import FluxPhasedPZEnv
 
 PASS = 0
 FAIL = 0
@@ -593,7 +593,7 @@ def test_info_structure():
 def test_unwrapped_access():
     """unwrapped property gives access to MFARVecEnv."""
     env = make_env()
-    from radar_sim.gpu.vec_mfar_env import MFARVecEnv
+    from env.gpu.vec_mfar_env import MFARVecEnv
     assert isinstance(env.unwrapped, MFARVecEnv)
     assert env.unwrapped.n_radars == 4
     _pass("unwrapped property")

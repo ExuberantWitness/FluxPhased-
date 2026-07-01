@@ -23,8 +23,8 @@ import numpy as np
 # Ensure project root is importable when run with `python smoke_tcdams_25.py`.
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
-from radar_sim.gpu.vec_mfar_env import MFARVecEnv
-from training.flux_league import FluxLeague
+from env.gpu.vec_mfar_env import MFARVecEnv
+from algo._shared.flux_league import FluxLeague
 
 
 CKPT_DIR = "checkpoints/smoke_tcdams_25"

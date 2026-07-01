@@ -28,7 +28,7 @@ if device == "cuda":
 
 
 def make_env(**kwargs):
-    from radar_sim.gpu.vec_mfar_env import MFARVecEnv
+    from env.gpu.vec_mfar_env import MFARVecEnv
     defaults = dict(
         num_envs=1, n_radars=2, rows=25, cols=25,
         pulses_per_cpi=4, bandwidth=10e6, prf=10e3,
@@ -44,8 +44,8 @@ def make_env(**kwargs):
 # ============================================================
 def test_detection():
     """Verify IQ-level detection chain: LFM → channel → matched filter → peak."""
-    from radar_sim.gpu.waveform_gpu import generate_lfm
-    from radar_sim.gpu.vec_channel import VecChannel
+    from env.gpu.waveform_gpu import generate_lfm
+    from env.gpu.vec_channel import VecChannel
 
     print("\n" + "=" * 60)
     print("TEST 1: Detection / 探测")
@@ -96,7 +96,7 @@ def test_detection():
           f"PG={pg_db:.1f} dB (expected ~{expected_pg:.1f} dB)")
 
     # Test all waveform types
-    from radar_sim.gpu.waveform_gpu import (
+    from env.gpu.waveform_gpu import (
         generate_barker, generate_frank, generate_costas,
         generate_nlfm, generate_p4,
     )
@@ -128,7 +128,7 @@ def test_detection():
 # ============================================================
 def test_mutual_interference():
     """Verify cross-radar IQ interference adds correctly scaled signals."""
-    from radar_sim.gpu.vec_interference import VecInterference
+    from env.gpu.vec_interference import VecInterference
 
     print("\n" + "=" * 60)
     print("TEST 2: Mutual Interference / 互扰")
@@ -167,7 +167,7 @@ def test_mutual_interference():
 # ============================================================
 def test_communication():
     """Verify BPSK comm chain: encode → modulate → channel → demodulate → decode."""
-    from radar_sim.gpu.waveform_gpu import (
+    from env.gpu.waveform_gpu import (
         encode_bpsk, decode_bpsk, modulate_bpsk, demodulate_bpsk,
     )
 
@@ -287,7 +287,7 @@ def test_self_interference():
 # ============================================================
 def test_jamming():
     """Verify noise jamming degrades detection and DRFM creates false targets."""
-    from radar_sim.gpu.waveform_gpu import (
+    from env.gpu.waveform_gpu import (
         generate_noise_broadband, generate_noise_spot,
         generate_lfm, generate_drfm,
     )
@@ -378,7 +378,7 @@ def test_jamming():
 # ============================================================
 def test_reconnaissance():
     """Verify recon elements extract signal parameters from spectrum."""
-    from radar_sim.gpu.vec_element_processor import VecElementProcessor
+    from env.gpu.vec_element_processor import VecElementProcessor
 
     print("\n" + "=" * 60)
     print("TEST 6: Reconnaissance / 侦察")

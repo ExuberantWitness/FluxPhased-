@@ -16,7 +16,7 @@ import torch
 import warp as wp
 wp.init()
 
-from radar_sim.gpu.vec_env import RadarSimVecEnv
+from env.gpu.vec_env import RadarSimVecEnv
 
 device = "cuda"
 DEV = torch.device(device)

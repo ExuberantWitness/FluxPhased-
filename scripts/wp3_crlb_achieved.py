@@ -46,10 +46,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import matplotlib.pyplot as plt
 
-from radar_sim.gpu.vec_mfar_env import MFARVecEnv
-from training.laser.episode import LaserEpisodeRunner
-from training.laser.sensing import enforce_radar_baseline
-from training.train import compute_env_params
+from env.gpu.vec_mfar_env import MFARVecEnv
+from algo._shared.laser.episode import LaserEpisodeRunner
+from algo._shared.laser.sensing import enforce_radar_baseline
+from algo._shared.train import compute_env_params
 
 # Reuse policy loader from wp3_robustness_eval (same architecture)
 from scripts.wp3_robustness_eval import (

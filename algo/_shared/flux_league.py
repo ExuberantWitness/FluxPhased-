@@ -597,7 +597,7 @@ class FluxLeague:
         # Generic (non-laser) task falls back to the same runner with random
         # physical-layer actions — the existing trainer was never wired to
         # a real env API, so this is the only path that runs end-to-end.
-        from training.laser.episode import LaserEpisodeRunner
+        from algo._shared.laser.episode import LaserEpisodeRunner
         runner = LaserEpisodeRunner(
             env, pulses_per_control=self.pulses_per_control, device=self.device,
         )

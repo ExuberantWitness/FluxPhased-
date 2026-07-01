@@ -37,7 +37,7 @@ run_variant() {
     echo "=============================================================="
 
     # Start training in background
-    $PYTHON -m training.train --config "$CFG" --device cuda > "$LOG" 2>&1 &
+    $PYTHON -m algo._shared.train --config "$CFG" --device cuda > "$LOG" 2>&1 &
     local PID=$!
     echo "$PID" > "$PIDFILE"
     echo "[i] Training PID: $PID"

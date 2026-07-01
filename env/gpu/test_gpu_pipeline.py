@@ -32,7 +32,7 @@ print("\n" + "=" * 60)
 print("Test 1: PhasedArrayGPU - Beam steering and array factor")
 print("=" * 60)
 
-from radar_sim.gpu.array_gpu import PhasedArrayGPU
+from env.gpu.array_gpu import PhasedArrayGPU
 
 arr = PhasedArrayGPU(rows=25, cols=25, fc=10e9, device=device)
 print(f"  Array: {arr.rows}x{arr.cols} = {arr.n_elem} elements")
@@ -77,7 +77,7 @@ print("\n" + "=" * 60)
 print("Test 2: ChannelGPU - Per-element channel simulation")
 print("=" * 60)
 
-from radar_sim.gpu.channel_gpu import ChannelGPU
+from env.gpu.channel_gpu import ChannelGPU
 
 ch = ChannelGPU(fc=10e9, bandwidth=200e6, device=device)
 print(f"  Channel: fc=10GHz, bw=200MHz, noise floor={ch.noise_power_dbm:.1f} dBm")
@@ -111,7 +111,7 @@ print("\n" + "=" * 60)
 print("Test 3: RadarReceiverGPU - Matched filter + range-Doppler + CFAR")
 print("=" * 60)
 
-from radar_sim.gpu.receiver_gpu import RadarReceiverGPU
+from env.gpu.receiver_gpu import RadarReceiverGPU
 
 rx_proc = RadarReceiverGPU(fc=10e9, bandwidth=200e6, prf=10e3, device=device)
 print(f"  Range resolution: {rx_proc.range_res:.2f} m")
@@ -155,7 +155,7 @@ print("\n" + "=" * 60)
 print("Test 4: InterferenceEngineGPU - Cross-radar IQ interference")
 print("=" * 60)
 
-from radar_sim.gpu.interference_gpu import InterferenceEngineGPU
+from env.gpu.interference_gpu import InterferenceEngineGPU
 
 intf = InterferenceEngineGPU(
     arrays={i: arr for i in range(4)},
@@ -197,7 +197,7 @@ print("\n" + "=" * 60)
 print("Test 5: Full Pipeline Benchmark")
 print("=" * 60)
 
-from radar_sim.gpu.pipeline_gpu import RadarPipelineGPU, RadarState, TargetState
+from env.gpu.pipeline_gpu import RadarPipelineGPU, RadarState, TargetState
 
 # Use smaller params for quick benchmark
 pipeline = RadarPipelineGPU(

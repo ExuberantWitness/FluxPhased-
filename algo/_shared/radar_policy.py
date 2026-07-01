@@ -13,8 +13,8 @@ import torch
 import torch.nn as nn
 import numpy as np
 
-from radar_sim.gpu.vec_element_processor import VecElementProcessor
-from radar_sim.gpu.waveform_gpu import encode_bpsk, modulate_bpsk
+from env.gpu.vec_element_processor import VecElementProcessor
+from env.gpu.waveform_gpu import encode_bpsk, modulate_bpsk
 
 from .ppo.actor_critic import (
     SubArrayRadarActorCritic,

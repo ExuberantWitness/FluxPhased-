@@ -10,8 +10,8 @@ Verifies:
 
 import numpy as np
 
-from training.self_play.meta_solver import solve_nash
-from training.self_play.tc_dams_solver import (
+from algo._shared.self_play.meta_solver import solve_nash
+from algo._shared.self_play.tc_dams_solver import (
     solve_tc_dams,
     task_fingerprint_entropy,
     effective_population_size,

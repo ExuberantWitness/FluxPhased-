@@ -14,7 +14,7 @@ import numpy as np
 
 def make_test_env(**overrides):
     """Create an MFAR env for testing (25×25)."""
-    from radar_sim.gpu.vec_mfar_env import MFARVecEnv
+    from env.gpu.vec_mfar_env import MFARVecEnv
     defaults = dict(
         num_envs=1, n_radars=4, rows=25, cols=25,
         pulses_per_cpi=4, bandwidth=10e6, prf=10e3,
@@ -27,7 +27,7 @@ def make_test_env(**overrides):
 
 def make_random_policy(env, seed=42):
     """Create a RandomPolicy for the given env."""
-    from radar_sim.evaluation.collectors.episode_collector import RandomPolicy
+    from env.evaluation.collectors.episode_collector import RandomPolicy
     return RandomPolicy(
         state_dim=env.state_dim,
         action_dim=env.action_dim,
@@ -87,7 +87,7 @@ def test_ground_truth():
     env.reset()
     result = env.step()
 
-    from radar_sim.evaluation.collectors.ground_truth import GroundTruthComputer
+    from env.evaluation.collectors.ground_truth import GroundTruthComputer
     gt = GroundTruthComputer(env)
     gt_result = gt.compute()
 
@@ -120,7 +120,7 @@ def test_episode_collector():
     env = make_test_env()
     policy = make_random_policy(env, seed=42)
 
-    from radar_sim.evaluation.collectors.episode_collector import EpisodeCollector
+    from env.evaluation.collectors.episode_collector import EpisodeCollector
     collector = EpisodeCollector(env, max_steps=10)
 
     def radar_policy(result):
@@ -156,7 +156,7 @@ print("=" * 60)
 
 
 def test_perception_metrics():
-    from radar_sim.evaluation.metrics.perception import PerceptionMetrics
+    from env.evaluation.metrics.perception import PerceptionMetrics
 
     env = make_test_env()
     env.reset()
@@ -184,7 +184,7 @@ def test_perception_metrics():
     assert "snr_est_db" in peaks
 
     # Test resource allocation via task_ids
-    from radar_sim.evaluation.metrics.combat import CombatMetrics
+    from env.evaluation.metrics.combat import CombatMetrics
     cm = CombatMetrics()
     alloc = cm.resource_allocation(task_ids)
     assert abs(alloc["detect_frac"] - 1.0) < 0.01, \
@@ -204,8 +204,8 @@ print("=" * 60)
 
 
 def test_combat_metrics():
-    from radar_sim.evaluation.collectors.episode_collector import EpisodeCollector
-    from radar_sim.evaluation.metrics.combat import CombatMetrics
+    from env.evaluation.collectors.episode_collector import EpisodeCollector
+    from env.evaluation.metrics.combat import CombatMetrics
 
     env = make_test_env()
 
@@ -247,8 +247,8 @@ print("=" * 60)
 
 
 def test_game_metrics():
-    from radar_sim.evaluation.collectors.episode_collector import EpisodeCollector
-    from radar_sim.evaluation.metrics.game import GameMetrics
+    from env.evaluation.collectors.episode_collector import EpisodeCollector
+    from env.evaluation.metrics.game import GameMetrics
 
     env = make_test_env()
     collector = EpisodeCollector(env, max_steps=3)
@@ -280,7 +280,7 @@ print("=" * 60)
 
 
 def test_comm_metrics():
-    from radar_sim.evaluation.metrics.comm import CommMetrics
+    from env.evaluation.metrics.comm import CommMetrics
 
     cm = CommMetrics()
 
@@ -307,7 +307,7 @@ print("=" * 60)
 
 
 def test_trigger_sources():
-    from radar_sim.evaluation.analysis.trigger_sources import (
+    from env.evaluation.analysis.trigger_sources import (
         PERCEPTION_TRIGGERS, ANALYSIS_TRIGGERS, GAME_TRIGGERS,
     )
 
@@ -333,8 +333,8 @@ print("=" * 60)
 
 
 def test_scenario_generator():
-    from radar_sim.evaluation.analysis.scenario_generator import ScenarioGenerator
-    from radar_sim.evaluation.analysis.trigger_sources import PERCEPTION_TRIGGERS
+    from env.evaluation.analysis.scenario_generator import ScenarioGenerator
+    from env.evaluation.analysis.trigger_sources import PERCEPTION_TRIGGERS
 
     gen = ScenarioGenerator(PERCEPTION_TRIGGERS)
     config = gen.random_scenario()
@@ -360,8 +360,8 @@ print("=" * 60)
 
 
 def test_cde_metric():
-    from radar_sim.evaluation.analysis.cde import CDEMetric
-    from radar_sim.evaluation.collectors.episode_collector import EpisodeData
+    from env.evaluation.analysis.cde import CDEMetric
+    from env.evaluation.collectors.episode_collector import EpisodeData
     import torch
 
     cde = CDEMetric()
@@ -394,7 +394,7 @@ print("=" * 60)
 
 
 def test_accelerated_eval():
-    from radar_sim.evaluation.analysis.accelerated_eval import AcceleratedEvaluator
+    from env.evaluation.analysis.accelerated_eval import AcceleratedEvaluator
 
     # Constant metric → should converge quickly
     call_count = [0]
@@ -430,7 +430,7 @@ print("=" * 60)
 
 
 def test_evaluation_report():
-    from radar_sim.evaluation.reporting.report import EvaluationReport
+    from env.evaluation.reporting.report import EvaluationReport
 
     report = EvaluationReport()
     report.perception = {"range_accuracy": 0.85, "target_coverage": 0.92}
@@ -461,8 +461,8 @@ print("=" * 60)
 
 
 def test_pz_integration():
-    from radar_sim.pz_gpu.core import FluxPhasedPZEnv
-    from radar_sim.evaluation.collectors.episode_collector import (
+    from env.pz_gpu.core import FluxPhasedPZEnv
+    from env.evaluation.collectors.episode_collector import (
         EpisodeCollector, RandomPolicy,
     )
 

@@ -1,9 +1,9 @@
 """Compare streaming vs pre-allocated vs MATLAB/theory precision."""
 import sys, os, gc, numpy as np, torch
 torch.manual_seed(42); np.random.seed(42)
-from radar_sim.gpu.vec_mfar_env import MFARVecEnv
-from radar_sim.gpu.array_gpu import PhasedArrayGPU
-from radar_sim.gpu.waveform_gpu import generate_lfm
+from env.gpu.vec_mfar_env import MFARVecEnv
+from env.gpu.array_gpu import PhasedArrayGPU
+from env.gpu.waveform_gpu import generate_lfm
 
 def step(prealloc):
     gc.collect(); torch.cuda.empty_cache(); torch.cuda.synchronize()

@@ -37,7 +37,7 @@ def benchmark():
     print(f"PyTorch: {torch.__version__}")
     print(f"Device: {DEVICE}")
 
-    from radar_sim.gpu.vec_mfar_env import MFARVecEnv
+    from env.gpu.vec_mfar_env import MFARVecEnv
 
     # --- Config ---
     config = {

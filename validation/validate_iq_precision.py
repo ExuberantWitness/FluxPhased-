@@ -44,7 +44,7 @@ def validate_self_interference():
     10^(-isolation_dB/20) in voltage. So SI power per element =
     coupling^2 = 10^(-isolation_dB/10).
     """
-    from radar_sim.gpu.vec_mfar_env import MFARVecEnv
+    from env.gpu.vec_mfar_env import MFARVecEnv
 
     print("=" * 70)
     print("PRECISION 1: Self-Interference Coupling Power")
@@ -118,7 +118,7 @@ def validate_drfm_freq_shift():
         out = signal * exp(j * 2*pi * freq_shift * t)
     The FFT of out should have its peak shifted by freq_shift bins.
     """
-    from radar_sim.gpu.waveform_gpu import generate_lfm, generate_drfm
+    from env.gpu.waveform_gpu import generate_lfm, generate_drfm
 
     print("\n" + "=" * 70)
     print("PRECISION 2: DRFM Frequency Shift Accuracy")
@@ -182,9 +182,9 @@ def validate_jnr_link_budget():
 
     This reuses the validated approach from validate_precision.py Test 4.
     """
-    from radar_sim.physics.interference import InterferenceEngine
-    from radar_sim.physics.array import PhasedArray
-    from radar_sim.config import ArrayGeometry
+    from env.physics.interference import InterferenceEngine
+    from env.physics.array import PhasedArray
+    from env.config import ArrayGeometry
 
     print("\n" + "=" * 70)
     print("PRECISION 3: JNR Link Budget (CPU InterferenceEngine)")
@@ -260,7 +260,7 @@ def validate_recon_params():
     Inject a tone at known frequency with known bandwidth and power,
     verify extracted parameters match within tolerance.
     """
-    from radar_sim.gpu.vec_element_processor import VecElementProcessor
+    from env.gpu.vec_element_processor import VecElementProcessor
 
     print("\n" + "=" * 70)
     print("PRECISION 4: Reconnaissance Parameter Estimation")

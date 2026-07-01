@@ -19,8 +19,8 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from radar_sim.gpu.vec_mfar_env import MFARVecEnv
-from training.laser.sensing import fused_sensing, KalmanTracker
+from env.gpu.vec_mfar_env import MFARVecEnv
+from algo._shared.laser.sensing import fused_sensing, KalmanTracker
 
 
 def get_commander_obs(env):
@@ -61,7 +61,7 @@ def measure_bias(mode: str, n_episodes: int = 5, reset_each_ep: bool = True):
     half_x = float(env.map_size[0]) / 2.0
     half_y = float(env.map_size[1]) / 2.0
 
-    from training.laser.sensing import enforce_radar_baseline
+    from algo._shared.laser.sensing import enforce_radar_baseline
     enforce_radar_baseline(env, min_baseline_m=5000.0)
 
     range_sigma_m = 0.05

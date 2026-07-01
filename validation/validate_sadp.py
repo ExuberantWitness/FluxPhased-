@@ -21,7 +21,7 @@ import torch.testing
 
 def test_policy_creation():
     """Test SubArrayRadarActorCritic creation and parameter count."""
-    from training.ppo.actor_critic import SubArrayRadarActorCritic, create_team_policy
+    from algo._shared.ppo.actor_critic import SubArrayRadarActorCritic, create_team_policy
 
     # 25x25 array, P=4, bins=64, sub=5
     model = SubArrayRadarActorCritic(
@@ -43,7 +43,7 @@ def test_policy_creation():
 
 def test_forward_pass():
     """Test forward pass produces correct output shapes."""
-    from training.ppo.actor_critic import SubArrayRadarActorCritic
+    from algo._shared.ppo.actor_critic import SubArrayRadarActorCritic
 
     model = SubArrayRadarActorCritic(
         n_elem=625, n_pulses=4, n_bins=64,
@@ -69,7 +69,7 @@ def test_forward_pass():
 
 def test_evaluate_actions():
     """Test evaluate_actions produces valid log-probs and entropy."""
-    from training.ppo.actor_critic import SubArrayRadarActorCritic
+    from algo._shared.ppo.actor_critic import SubArrayRadarActorCritic
 
     model = SubArrayRadarActorCritic(
         n_elem=625, n_pulses=4, n_bins=64,
@@ -96,7 +96,7 @@ def test_evaluate_actions():
 
 def test_sub_array_broadcast():
     """Test that all elements in a sub-array have identical actions."""
-    from training.ppo.actor_critic import SubArrayRadarActorCritic
+    from algo._shared.ppo.actor_critic import SubArrayRadarActorCritic
 
     model = SubArrayRadarActorCritic(
         n_elem=625, n_pulses=4, n_bins=64,
@@ -124,8 +124,8 @@ def test_sub_array_broadcast():
 
 def test_env_integration():
     """Test SADP policy works with MFARVecEnv step."""
-    from radar_sim.gpu.vec_mfar_env import MFARVecEnv
-    from training.ppo.actor_critic import create_team_policy
+    from env.gpu.vec_mfar_env import MFARVecEnv
+    from algo._shared.ppo.actor_critic import create_team_policy
 
     env = MFARVecEnv(
         num_envs=1, n_radars=4, rows=25, cols=25,

@@ -27,8 +27,8 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from radar_sim.gpu.vec_mfar_env import MFARVecEnv
-from training.laser.episode import LaserEpisodeRunner
+from env.gpu.vec_mfar_env import MFARVecEnv
+from algo._shared.laser.episode import LaserEpisodeRunner
 
 
 class ScriptedOracle:

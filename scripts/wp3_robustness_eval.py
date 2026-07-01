@@ -120,14 +120,14 @@ def resolve_kill_radius(
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from radar_sim.gpu.vec_mfar_env import MFARVecEnv
-from radar_sim.config import DEFAULT_ROWS, DEFAULT_COLS
-from training.flux_league import FluxLeague  # noqa: F401  (validates import path)
-from training.laser.episode import LaserEpisodeRunner
-from training.laser.sensing import enforce_radar_baseline
-from training.ppo.actor_critic import create_team_policy
-from training.ppo.ppo_trainer import TeamPPOTrainer
-from training.train import compute_env_params
+from env.gpu.vec_mfar_env import MFARVecEnv
+from env.config import DEFAULT_ROWS, DEFAULT_COLS
+from algo._shared.flux_league import FluxLeague  # noqa: F401  (validates import path)
+from algo._shared.laser.episode import LaserEpisodeRunner
+from algo._shared.laser.sensing import enforce_radar_baseline
+from algo._shared.ppo.actor_critic import create_team_policy
+from algo._shared.ppo.ppo_trainer import TeamPPOTrainer
+from algo._shared.train import compute_env_params
 
 
 # ---------------------------------------------------------------------------

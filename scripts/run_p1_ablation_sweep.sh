@@ -24,7 +24,7 @@ for tag in B_f1f2 A_baseline C_f1only D_f2only; do
     echo "" | tee -a "$SWEEP_LOG"
     echo "=== [$tag] config=$cfg log=$log ===" | tee -a "$SWEEP_LOG"
     echo "Start: $(date)" | tee -a "$SWEEP_LOG"
-    python -m training.train --config $CFG_DIR/$cfg.yaml > "$log" 2>&1
+    python -m algo._shared.train --config $CFG_DIR/$cfg.yaml > "$log" 2>&1
     rc=$?
     echo "End: $(date) rc=$rc" | tee -a "$SWEEP_LOG"
     # Extract kill_rate trajectory

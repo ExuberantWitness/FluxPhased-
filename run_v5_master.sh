@@ -41,7 +41,7 @@ for variant in "${VARIANTS[@]}"; do
     echo "  log: $VAR_LOG" | tee -a "$MASTER_LOG"
 
     # Launch training
-    python -m training.train --config "configs/ablation_f1f8/${variant}.yaml" > "$VAR_LOG" 2>&1 &
+    python -m algo._shared.train --config "configs/ablation_f1f8/${variant}.yaml" > "$VAR_LOG" 2>&1 &
     PID=$!
     echo "$PID" > "/tmp/${variant}.pid"
     echo "  PID: $PID" | tee -a "$MASTER_LOG"

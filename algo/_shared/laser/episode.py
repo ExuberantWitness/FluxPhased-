@@ -31,7 +31,7 @@ import torch
 import numpy as np
 from typing import Optional, Dict, Any
 
-from training.radar_policy import CPIAccumulator
+from algo._shared.radar_policy import CPIAccumulator
 
 
 __all__ = ["LaserEpisodeRunner"]
@@ -139,7 +139,7 @@ class LaserEpisodeRunner:
         # train_laser._enforce_radar_baseline (applied at reset). Without this the
         # warm-start locks the tracker onto the un-spread near-collinear geometry →
         # degenerate fused anchor → aim at map centre → progress=0 → win_rate=0.5.
-        from training.laser.sensing import enforce_radar_baseline
+        from algo._shared.laser.sensing import enforce_radar_baseline
         for _trainer in (red_trainer, blue_trainer):
             _base = float(getattr(_trainer, "min_radar_baseline_m", 0.0)) if _trainer else 0.0
             if _base > 0.0:

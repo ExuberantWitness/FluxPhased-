@@ -168,7 +168,7 @@ def main():
     # Build a tiny network in-memory to do backward.
     # Inspect the actor_critic constructor signature to avoid guessing.
     import inspect
-    from training.ppo.actor_critic import CommanderActorCritic
+    from algo._shared.ppo.actor_critic import CommanderActorCritic
     sig = inspect.signature(CommanderActorCritic.__init__)
     print(f"  CommanderActorCritic signature: {sig}")
     # Construct with positional/known kwargs from the signature

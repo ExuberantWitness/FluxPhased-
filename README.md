@@ -123,17 +123,17 @@ Run the following commands in order from the project root. All tests should pass
 ```bash
 conda activate fluxphased
 
-# If you see "ModuleNotFoundError: No module named 'radar_sim'", set PYTHONPATH first:
+# If you see "ModuleNotFoundError: No module named 'env'", set PYTHONPATH first:
 export PYTHONPATH=$(pwd)
 
 # Validation tests (can run without training deps)
-python radar_sim/gpu/test_gpu_pipeline.py        # single-CPI pipeline test
-python radar_sim/gpu/test_vec_env.py             # vectorized env (smoke + benchmark)
-python radar_sim/gpu/test_2env_25.py             # 2-env precision + usability on 25x25
-python radar_sim/gpu/test_mfar.py                # MFAR 4-task per-element control tests
-python radar_sim/gpu/test_missile_env.py          # Missile combat + multi-agent tests
-python radar_sim/pz_gpu/test_pettingzoo.py         # PettingZoo Parallel API tests
-python radar_sim/evaluation/test_evaluation.py     # Effectiveness evaluation metrics tests
+python env/gpu/test_gpu_pipeline.py        # single-CPI pipeline test
+python env/gpu/test_vec_env.py             # vectorized env (smoke + benchmark)
+python env/gpu/test_2env_25.py             # 2-env precision + usability on 25x25
+python env/gpu/test_mfar.py                # MFAR 4-task per-element control tests
+python env/gpu/test_missile_env.py          # Missile combat + multi-agent tests
+python env/pz_gpu/test_pettingzoo.py         # PettingZoo Parallel API tests
+python env/evaluation/test_evaluation.py     # Effectiveness evaluation metrics tests
 
 # IQ capability validation (6 capabilities)
 python validation/test_iq_capabilities.py
@@ -240,7 +240,7 @@ pip install torch==2.12.0 torchvision torchaudio --index-url https://download.py
 
 Prefix every Python command with `PYTHONIOENCODING=utf-8`:
 ```powershell
-PYTHONIOENCODING=utf-8 python radar_sim/gpu/test_mfar.py
+PYTHONIOENCODING=utf-8 python env/gpu/test_mfar.py
 ```
 </details>
 
@@ -260,7 +260,7 @@ num_radars: 2      # decrease from default (e.g., 4 → 2)
 <summary><b>Architecture / 系统架构</b></summary>
 
 ```
-radar_sim/
+env/
 ├── config.py            # System configuration / 系统配置 (25x25 阵列, 射频, 波形, 战场)
 ├── config_loader.py     # YAML ↔ dataclass loader / YAML 配置加载器
 ├── gpu/                 # GPU-accelerated simulation / GPU 加速仿真 (Warp + PyTorch)
@@ -640,12 +640,12 @@ RTX 2060, 1 env × 4 radars × 25×25 阵列, 8 脉冲, FFT=64:
 
 ---
 
-`radar_sim/pz_gpu/` 将 GPU 向量化 MFAR 环境封装为 [PettingZoo ParallelEnv](https://pettingzoo.farama.org/api/parallel/)，可对接 MALib / Ray RLlib / MARLlib / Tianshou 等 MARL 框架。
+`env/pz_gpu/` 将 GPU 向量化 MFAR 环境封装为 [PettingZoo ParallelEnv](https://pettingzoo.farama.org/api/parallel/)，可对接 MALib / Ray RLlib / MARLlib / Tianshou 等 MARL 框架。
 
 ### 核心接口
 
 ```python
-from radar_sim.pz_gpu import FluxPhasedPZEnv
+from env.pz_gpu import FluxPhasedPZEnv
 
 env = FluxPhasedPZEnv(
     radar_latents_fn=my_encoder,  # [R, state_dim] → [R, num_input_length]
@@ -725,7 +725,7 @@ env = FluxPhasedPZEnv(radar_latents_fn=my_encoder)
 <details>
 <summary><b>Effectiveness Evaluation Framework / 效能评估框架</b></summary>
 
-`radar_sim/evaluation/` 提供与电磁效应测量与调控技术效能评估方案对齐的 Metrics 体系，覆盖感知、分析、博弈三层评估维度。
+`env/evaluation/` 提供与电磁效应测量与调控技术效能评估方案对齐的 Metrics 体系，覆盖感知、分析、博弈三层评估维度。
 
 ### 评估维度与指标
 
@@ -759,7 +759,7 @@ env = FluxPhasedPZEnv(radar_latents_fn=my_encoder)
 ### 使用方式
 
 ```python
-from radar_sim.evaluation import (
+from env.evaluation import (
     EpisodeCollector, PerceptionMetrics, CombatMetrics,
     GameMetrics, CDEMetric, EvaluationReport,
 )
@@ -829,9 +829,9 @@ report.to_markdown("eval_report.md")
 |--------------|----------------|
 | **RadarSimPy** v15.2.0 | Level-2 cross-validation against industry simulator. Free for personal use at https://radarsimx.com/product/radarsimpy/ |
 | **Matplotlib** | `validation/generate_plots.py` 可视化 |
-| **PettingZoo** | `radar_sim/pz_gpu/` GPU 并行接口封装 (parallel_api_test passed) |
-| **SALib** | `radar_sim/evaluation/` BN-Sobol 敏感性分析（评估框架可选依赖） |
-| **SciPy** | `radar_sim/evaluation/` 加速评估置信区间计算（评估框架可选依赖） |
+| **PettingZoo** | `env/pz_gpu/` GPU 并行接口封装 (parallel_api_test passed) |
+| **SALib** | `env/evaluation/` BN-Sobol 敏感性分析（评估框架可选依赖） |
+| **SciPy** | `env/evaluation/` 加速评估置信区间计算（评估框架可选依赖） |
 
 ### Hardware / 硬件要求
 
@@ -870,7 +870,7 @@ pip install warp-lang==1.7.2 numpy matplotlib pettingzoo
 <details>
 <summary><b>Parallel Environments / 并行环境仿真</b></summary>
 
-GPU 端实现了 `RadarSimVecEnv`（[radar_sim/gpu/vec_env.py](radar_sim/gpu/vec_env.py)）——参考 Newton/IsaacLab 架构的批量化雷达仿真，所有 Warp 内核按 `dim = num_envs × n_radars × n_elem` 平铺启动，PyTorch 端用 `wp.from_torch` 零拷贝共享显存。一次 `step()` 完成全部环境的 CPI（波束导向 → TX/RX 波形 → 信道延迟/多普勒/增益 → 互干扰 → 匹配滤波 → Doppler FFT → CA-CFAR）。
+GPU 端实现了 `RadarSimVecEnv`（[env/gpu/vec_env.py](env/gpu/vec_env.py)）——参考 Newton/IsaacLab 架构的批量化雷达仿真，所有 Warp 内核按 `dim = num_envs × n_radars × n_elem` 平铺启动，PyTorch 端用 `wp.from_torch` 零拷贝共享显存。一次 `step()` 完成全部环境的 CPI（波束导向 → TX/RX 波形 → 信道延迟/多普勒/增益 → 互干扰 → 匹配滤波 → Doppler FFT → CA-CFAR）。
 
 ### Per-Env VRAM Footprint / 单环境显存占用
 
@@ -1050,7 +1050,7 @@ lambda   = c / fc      # ≈ 0.03 m
 
 **核心代码**:
 ```python
-from radar_sim.gpu.vec_mfar_env import MFARVecEnv
+from env.gpu.vec_mfar_env import MFARVecEnv
 
 for iso_db in [10, 20, 25, 30, 40]:
     env = MFARVecEnv(num_envs=1, n_radars=2, rows=25, cols=25,
@@ -1084,7 +1084,7 @@ for iso_db in [10, 20, 25, 30, 40]:
 
 **核心代码**:
 ```python
-from radar_sim.gpu.waveform_gpu import generate_lfm, generate_drfm
+from env.gpu.waveform_gpu import generate_lfm, generate_drfm
 
 original = generate_lfm(50e-6, 2e6, 10e6, device, "up")
 for freq_shift_hz in [0, 1e5, 2e5, 4e5]:
@@ -1115,7 +1115,7 @@ for freq_shift_hz in [0, 1e5, 2e5, 4e5]:
 
 **核心代码**:
 ```python
-from radar_sim.physics.interference import InterferenceEngine
+from env.physics.interference import InterferenceEngine
 
 intf = InterferenceEngine()
 for dist in [2000, 5000, 10000, 20000]:
@@ -1980,9 +1980,9 @@ Commander launch_flag>0.5 → 导弹发射 → 飞行 494,824 步 → 进入 kil
 #### 修改文件
 
 - `training/ppo/`：DenseRewardShaper，SubArrayRadarActorCritic，PPOTrainer，PPO_DEFAULTS，ENV_DEFAULTS，REWARD_CONFIG，FluxLeague.initialize（policy 数量）。注：单体 `train_league.py` 已于 2026-06-13 删除，所有训练统一使用模块化入口 `python -m training.train --config ...`。
-- `radar_sim/gpu/vec_element_processor.py`：COMM 固定 BPSK 参数，MF 公式修正
-- `radar_sim/gpu/vec_mfar_env.py`：流模式 COMM RX 修复，跨队直射路径
-- `radar_sim/gpu/vec_battlefield.py`：COMM 参考波形同步
+- `env/gpu/vec_element_processor.py`：COMM 固定 BPSK 参数，MF 公式修正
+- `env/gpu/vec_mfar_env.py`：流模式 COMM RX 修复，跨队直射路径
+- `env/gpu/vec_battlefield.py`：COMM 参考波形同步
 - `tests/minimal_detect_test.py`：完整最小验证脚本（多次迭代）
 - `tests/selfplay_detect_test.py`：新建 self-play 双队验证脚本
 
@@ -2288,8 +2288,8 @@ R0 (Nash baseline) 在 RTX 4090 + streaming 模式下完整跑通 Phase A→B→
 | D | Exploiter 精炼 + 100 局终评 | Final agents + 胜率报告 |
 
 **修改文件**：
-- `radar_sim/gpu/vec_mfar_env.py` — 新增 `cpi_preallocate` 参数 + streaming 脉冲循环
-- `radar_sim/gpu/vec_element_processor.py` — `process_rx_cpi_unified` 新增 `iq_is_fft` 参数
+- `env/gpu/vec_mfar_env.py` — 新增 `cpi_preallocate` 参数 + streaming 脉冲循环
+- `env/gpu/vec_element_processor.py` — `process_rx_cpi_unified` 新增 `iq_is_fft` 参数
 - `train_league.py` — ~~已删除（2026-06-13）~~：参数致命错误（pulses_per_cpi=1、未设 speed_ms），已迁移至模块化 `training/` 包 + `configs/league_25x25_configA.yaml`
 - `check_precision.py` — **新增**：streaming vs pre-allocated 精度对比脚本
 
@@ -2580,9 +2580,9 @@ band(iter) = (1 - α)·400 + α·100    α = min(iter/15, 1)
 **YAML Config + Sim2Real Calibration Pipeline**
 - 所有物理仿真参数（阵列几何、射频、导弹、战场、奖励权重等 40+ 参数）现可通过 [configs/physics.yaml](configs/physics.yaml) 配置
 - 算法/训练参数独立到 [configs/algorithm.yaml](configs/algorithm.yaml)
-- 新增 [config_loader.py](radar_sim/config_loader.py) 支持 YAML ↔ dataclass 双向转换
+- 新增 [config_loader.py](env/config_loader.py) 支持 YAML ↔ dataclass 双向转换
 - 修复 `VecArray.directivity_db` 属性中 dx_wl/dy_wl 硬编码 bug
-- 新增 [radar_sim/calibration/](radar_sim/calibration/) sim2real 参数标定 pipeline：支持 Sobol/网格/随机场景采样、合成参考数据生成、scipy 最小二乘 / 遗传算法 / L-BFGS-B 参数估计、Markdown 报告 + 收敛曲线
+- 新增 [env/calibration/](env/calibration/) sim2real 参数标定 pipeline：支持 Sobol/网格/随机场景采样、合成参考数据生成、scipy 最小二乘 / 遗传算法 / L-BFGS-B 参数估计、Markdown 报告 + 收敛曲线
 
 **README 折叠化重构**
 - 全部大段落改为 `<details>` 可折叠结构，首屏仅显示简介 + Quick Start

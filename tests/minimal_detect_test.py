@@ -23,11 +23,11 @@ import torch
 # Allow importing from parent dir
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from training.ppo.reward_shaping import DenseRewardShaper
-from training.ppo.actor_critic import RadarActorCritic, create_team_policy
-from training.ppo.buffer import RolloutBuffer
-from training.ppo.ppo_trainer import TeamPPOTrainer, PPOTrainer
-from radar_sim.gpu.vec_mfar_env import MFARVecEnv
+from algo._shared.ppo.reward_shaping import DenseRewardShaper
+from algo._shared.ppo.actor_critic import RadarActorCritic, create_team_policy
+from algo._shared.ppo.buffer import RolloutBuffer
+from algo._shared.ppo.ppo_trainer import TeamPPOTrainer, PPOTrainer
+from env.gpu.vec_mfar_env import MFARVecEnv
 
 # ── Config ────────────────────────────────────────────────────────────────
 TARGET_DISTANCE_M = 12700.0       # 12.7 km

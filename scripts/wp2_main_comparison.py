@@ -55,10 +55,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import matplotlib.pyplot as plt
 
-from radar_sim.gpu.vec_mfar_env import MFARVecEnv
-from training.laser.episode import LaserEpisodeRunner
-from training.laser.sensing import enforce_radar_baseline
-from training.train import compute_env_params
+from env.gpu.vec_mfar_env import MFARVecEnv
+from algo._shared.laser.episode import LaserEpisodeRunner
+from algo._shared.laser.sensing import enforce_radar_baseline
+from algo._shared.train import compute_env_params
 from scripts.wp3_robustness_eval import (
     find_latest_checkpoint,
     load_trained_policy,
@@ -110,7 +110,7 @@ class PolicyEntry:
     def _load_rule(self, config: dict, env_params: dict, device: str):
         """Instantiate rule-based policy."""
         if self.spec == "classical_mpc":
-            from training.baselines.classical_mpc import ClassicalMPC
+            from algo._shared.baselines.classical_mpc import ClassicalMPC
             env_cfg = config.get("env", {})
             min_baseline = float(env_cfg.get("min_radar_baseline_m", 5000.0))
             range_sigma = float(config.get("sensing_noise", {})

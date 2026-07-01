@@ -18,7 +18,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 
-from radar_sim.gpu.vec_mfar_env import MFARVecEnv
+from env.gpu.vec_mfar_env import MFARVecEnv
 
 
 def set_global_seed(seed: int):
@@ -34,14 +34,14 @@ def set_global_seed(seed: int):
     torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-from training.radar_policy import CPIAccumulator
-from training.ppo.actor_critic import (
+from algo._shared.radar_policy import CPIAccumulator
+from algo._shared.ppo.actor_critic import (
     SubArrayRadarActorCritic,
     CommanderActorCritic,
     TeamCritic,
     build_team_state,
 )
-from training.ppo.buffer import RolloutBuffer
+from algo._shared.ppo.buffer import RolloutBuffer
 
 
 def load_config(path: str) -> dict:

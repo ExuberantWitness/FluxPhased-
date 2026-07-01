@@ -18,10 +18,10 @@ import torch.nn as nn
 import numpy as np
 from collections import defaultdict
 
-from radar_sim.gpu.vec_mfar_env import MFARVecEnv
-from training.ppo.actor_critic import CommanderActorCritic, RadarActorCritic
-from training.ppo.buffer import RolloutBuffer
-from training.ppo.reward_shaping import DenseRewardShaper
+from env.gpu.vec_mfar_env import MFARVecEnv
+from algo._shared.ppo.actor_critic import CommanderActorCritic, RadarActorCritic
+from algo._shared.ppo.buffer import RolloutBuffer
+from algo._shared.ppo.reward_shaping import DenseRewardShaper
 
 
 def run_verification():

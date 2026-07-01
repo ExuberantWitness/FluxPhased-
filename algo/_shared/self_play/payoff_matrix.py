@@ -107,7 +107,7 @@ class PayoffMatrix:
         # Pulse-level runner: env.step takes (tx_signal, commander_actions,
         # vehicle_actions) and runs ONE pulse. We need pulses_per_control
         # pulses to fill a CPI before the radar policy can read state.
-        from training.laser.episode import LaserEpisodeRunner
+        from algo._shared.laser.episode import LaserEpisodeRunner
         runner = LaserEpisodeRunner(
             env, pulses_per_control=self.pulses_per_control, device=self.device,
         )

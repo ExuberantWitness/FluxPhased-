@@ -5,8 +5,8 @@ import shutil
 import tempfile
 import numpy as np
 
-from training.self_play.opponent_pool import OpponentPool
-from training.self_play.elo_band_sampler import EloBandSampler
+from algo._shared.self_play.opponent_pool import OpponentPool
+from algo._shared.self_play.elo_band_sampler import EloBandSampler
 
 
 def _build_pool(tmp):
