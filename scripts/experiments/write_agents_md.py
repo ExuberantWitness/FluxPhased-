@@ -162,6 +162,8 @@ def render_index(run_dirs: list[Path]) -> str:
     lines = [
         "# Experiments index", "",
         "> Headline numbers across all runs in this directory.", "",
+        "> 📄 **Full experiment report**: [`../PHASE1_5_MAPPO_REPORT.md`](../PHASE1_5_MAPPO_REPORT.md) — setup, results, reproduction, discussion.",
+        "",
         "> Add a new run by copying `scripts/experiments/_template/` (TODO) or by ",
         "> following the recipe in `scripts/experiments/README.md`.", "",
         "## Run comparison", "",
