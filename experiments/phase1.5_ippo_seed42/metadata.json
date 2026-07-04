@@ -1,0 +1,25 @@
+{
+  "run_id": "phase1.5_ippo_seed42",
+  "purpose": "Phase 1.5 IPPO baseline — per-agent critic (no CTDE) + uniform opponent sampling (no PFSP). Isolates the joint contribution of AlphaStar PFSP league + per-agent critic; compared vs PfspFix (PFSP on) and MAPPO (CTDE on) to decompose the two effects.",
+  "seed": 42,
+  "config_path": "algo/ippo/code/config.yaml",
+  "config_snapshot": "experiments/phase1.5_ippo_seed42/config.yaml",
+  "git": {
+    "commit": "af0d4c20fd2a14eed05f3e8d39f28ad6f43dd1d6",
+    "branch": "phase1.5/three-way-baselines",
+    "dirty": true,
+    "repo_root": "/home/ubuntu/CODE/FluxPhased-"
+  },
+  "host": {
+    "hostname": "node15",
+    "gpu": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition, 97887 MiB"
+  },
+  "timing": {
+    "start_iso": "2026-07-04T21:28:53+08:00",
+    "end_iso": "2026-07-05T01:25:11+08:00",
+    "wall_clock_hours": 3.938
+  },
+  "reproduce_cmd": "python main.py --config algo/ippo/code/config.yaml",
+  "notes": "Phase 1.5 IPPO baseline (third arm of three-way comparison). Per-agent critic + PFSP off (pfsp_p=0). Decomposes PfspFix-vs-MAPPO into CTDE effect (MAPPO vs IPPO) and PFSP effect (PfspFix vs IPPO). Refactor-era run on phase1.5/three-way-baselines branch.",
+  "written_at": "2026-07-04T23:25:00+00:00"
+}
