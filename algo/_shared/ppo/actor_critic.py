@@ -915,6 +915,29 @@ class SubArrayRadarActorCritic(nn.Module):
 
         return task_frac, params, vehicle
 
+    def compact_joint_block(self, actions: torch.Tensor) -> torch.Tensor:
+        """Compress element-level [B, 13753] action into 303-dim compact block.
+
+        Block layout (matches coma_critic.py / coma_advantage.py):
+            [0:100]   task_frac   ([B, 25, 4] flattened — one-hot per sub-array)
+            [100:300] params      ([B, 25, 8] flattened — beam/detect/jam)
+            [300:303] vehicle     ([B, 3])
+
+        Used by COMA's counterfactual advantage to compress sampled
+        counterfactual actions before placing them in the joint_action vector.
+        """
+        task_frac, params, vehicle = self._extract_sub_from_elem(actions)
+        B = actions.shape[0]
+        return torch.cat([
+            task_frac.reshape(B, -1),
+            params.reshape(B, -1),
+            vehicle.reshape(B, -1),
+        ], dim=-1)  # [B, 303]
+
+    # Alias — coma_advantage.py tries compact_joint_block first, then
+    # to_sub_array_form. Both point to the same compression.
+    to_sub_array_form = compact_joint_block
+
     def forward(self, state: torch.Tensor, privileged_info: torch.Tensor = None):
         """Deterministic forward: state → (action [B, 13753], value, privileged_value)."""
         action, _, value, privileged_value = self.get_action(

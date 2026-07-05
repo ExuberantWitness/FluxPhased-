@@ -204,6 +204,42 @@ class LaserTrainer:
             self.team_critic = None
             self.team_critic_optimizer = None
 
+        # COMA: counterfactual multi-agent critic (Foerster et al. 2018).
+        # When enabled, builds a centralized Q critic that conditions on the
+        # full joint action vector; advantage becomes counterfactual
+        # (Q(s,a) − mean over K samples of Q(s, a_{-i}, a_i')). See
+        # algo/_shared/ppo/coma_advantage.py for the implementation.
+        # Mutually exclusive with use_mappo (both replace the value source).
+        self.use_coma = cfg.get("training", {}).get("use_coma", False)
+        if self.use_coma and self.use_mappo:
+            raise ValueError(
+                "use_coma and use_mappo are mutually exclusive (both replace "
+                "the advantage/critic path). Pick one."
+            )
+        from .ppo.coma_critic import COMACritic, JOINT_ACTION_DIM  # lazy import
+        from .ppo.coma_advantage import JOINT_ACTION_DIM as _JA_DIM_ADV
+        assert JOINT_ACTION_DIM == _JA_DIM_ADV == 1222, "joint_action_dim mismatch"
+        self.joint_action_dim = JOINT_ACTION_DIM if self.use_coma else 0
+        if self.use_coma:
+            self.coma_critic = COMACritic(
+                team_state_dim=104, joint_action_dim=JOINT_ACTION_DIM, hidden_dim=256,
+            ).to(self.device)
+            self.coma_optimizer = torch.optim.Adam(
+                self.coma_critic.parameters(),
+                lr=cmd_cfg.get("coma_critic_lr", 1e-3),
+            )
+            self.coma_n_samples = int(cmd_cfg.get("coma_n_continuous_samples", 8))
+            self.coma_advantage_clip_sigma = float(
+                cmd_cfg.get("coma_advantage_clip_sigma", 0.0)
+            )
+            self._global_coma_step = 0  # for deterministic per-minibatch seeding
+        else:
+            self.coma_critic = None
+            self.coma_optimizer = None
+            self.coma_n_samples = 0
+            self.coma_advantage_clip_sigma = 0.0
+            self._global_coma_step = 0
+
         # CPI accumulator
         self.cpi_buffer = CPIAccumulator(E, R, N, P, S, device=self.device)
         self._spectrum = None
@@ -242,12 +278,16 @@ class LaserTrainer:
             buf_size, obs_dim=radar_state_dim, act_dim=radar_action_dim,
             gamma=self.gamma, gae_lambda=self.gae_lambda, device=self.device,
             reward_normalize=reward_normalize,
+            joint_action_dim=self.joint_action_dim,
+            store_coma_agent_idx=self.use_coma,
         )
         self.cmd_buf = RolloutBuffer(
             buf_size, obs_dim=76, act_dim=cmd_action_dim,
             gamma=self.gamma, gae_lambda=self.gae_lambda, device=self.device,
             privileged_dim=getattr(commander_ac, "privileged_dim", 0),
             reward_normalize=reward_normalize,
+            joint_action_dim=self.joint_action_dim,
+            store_coma_agent_idx=self.use_coma,
         )
 
         # Reward config
@@ -768,7 +808,8 @@ class LaserTrainer:
 
     def _ppo_update(self, ac, optimizer, buffer, clip_range, entropy_coef,
                     bc_weight=0.0, team_critic=None, team_critic_optimizer=None,
-                    bc_only=False):
+                    bc_only=False,
+                    coma_critic=None, coma_optimizer=None, agent_kind=""):
         """Run one PPO update on the buffer.
 
         Args:
@@ -783,6 +824,16 @@ class LaserTrainer:
                      that locks the commander's pointing BEFORE PPO can perturb it —
                      PPO drift was bouncing the mean aim (eval 70m↔1046m). After the
                      pretrain phase, normal PPO (with a strong BC anchor) refines.
+            coma_critic: optional COMA centralized Q-critic. When provided,
+                         advantages are recomputed as COMA counterfactual
+                         advantages (sample-based COMA-S) per minibatch and
+                         value_loss targets the Q critic. Mutually exclusive
+                         with team_critic.
+            coma_optimizer: required when coma_critic is provided.
+            agent_kind: "radar" or "commander" — selects the slot in
+                        joint_action to marginalize when coma_critic is on.
+                        team_idx is always 0 (self-play trains team-0 only);
+                        agent_idx_in_team comes from buffer.coma_agent_idx.
         """
         if buffer.ptr < self.batch_size:
             return {}
@@ -815,7 +866,23 @@ class LaserTrainer:
                 advantages = batch["advantages"]
                 returns = batch["returns"]
                 priv_info = batch.get("privileged_info")  # None if buffer has no privileged_infos
-                team_state = batch.get("team_states") if team_critic is not None else None
+                team_state = batch.get("team_states") if (team_critic is not None or coma_critic is not None) else None
+
+                # COMA: replace per-batch GAE advantages with counterfactual
+                # advantages from the centralized Q critic. Per-transition
+                # agent_idx (0/1 for radar) is read from the buffer so the
+                # correct slot in joint_actions is marginalized. team_idx is
+                # always 0 (self-play trains team-0 only).
+                if coma_critic is not None:
+                    advantages = self._coma_advantages(
+                        coma_critic=coma_critic,
+                        team_state=team_state,
+                        joint_actions=batch.get("joint_actions"),
+                        coma_agent_idx=batch.get("coma_agent_idx"),
+                        actor=ac,
+                        obs=obs,
+                        agent_kind=agent_kind,
+                    )
 
                 # Phase 1.0 改动 3: 记录 normalize 前的 advantage 统计
                 total_adv_std_pre += advantages.std().item()
@@ -837,10 +904,13 @@ class LaserTrainer:
                 policy_loss = -torch.min(surr1, surr2).mean()
 
                 # Choose critic for value loss:
+                # - COMA: use coma_critic(team_state, joint_actions) → Q
                 # - MAPPO: use team_critic(team_state)
                 # - CTDE: use privileged_value (commander's priv head)
                 # - Default: use ac.value_head output
-                if team_critic is not None and team_state is not None:
+                if coma_critic is not None:
+                    critic_value = coma_critic(team_state, batch["joint_actions"])
+                elif team_critic is not None and team_state is not None:
                     critic_value = team_critic(team_state)
                 elif priv_info is not None:
                     critic_value = priv_value
@@ -859,10 +929,10 @@ class LaserTrainer:
                 value_loss = ((value_pred - returns) ** 2).mean()
                 entropy_loss = -entropy.mean()
 
-                # When MAPPO is active, the actor's value_head isn't used.
+                # When MAPPO/COMA is active, the actor's value_head isn't used.
                 # Build loss accordingly: actor takes policy+BC+entropy,
-                # team_critic takes value loss separately.
-                if team_critic is not None:
+                # team_critic / coma_critic takes value loss separately.
+                if team_critic is not None or coma_critic is not None:
                     loss = policy_loss + entropy_coef * entropy_loss
                 else:
                     loss = policy_loss + self.value_coef * value_loss + entropy_coef * entropy_loss
@@ -891,6 +961,8 @@ class LaserTrainer:
                 optimizer.zero_grad()
                 if team_critic_optimizer is not None:
                     team_critic_optimizer.zero_grad()
+                if coma_optimizer is not None:
+                    coma_optimizer.zero_grad()
                 loss.backward()
                 if team_critic is not None and team_critic_optimizer is not None and not bc_only:
                     # Add value loss for team_critic and backprop separately
@@ -898,6 +970,14 @@ class LaserTrainer:
                     value_loss.backward()
                     nn.utils.clip_grad_norm_(team_critic.parameters(), self.max_grad_norm)
                     team_critic_optimizer.step()
+                if coma_critic is not None and coma_optimizer is not None and not bc_only:
+                    # COMA: backprop value_loss into Q critic separately. The
+                    # critic_value (Q) was computed with team_state/joint_actions
+                    # that aren't part of ac, so its graph lives only here.
+                    coma_optimizer.zero_grad()
+                    value_loss.backward()
+                    nn.utils.clip_grad_norm_(coma_critic.parameters(), self.max_grad_norm)
+                    coma_optimizer.step()
                 nn.utils.clip_grad_norm_(ac.parameters(), self.max_grad_norm)
                 optimizer.step()
 
@@ -1008,7 +1088,7 @@ class LaserTrainer:
                 # Radar transitions: only team-0 (training) radars in league mode.
                 radar_idxs = ([int(i) for i in env.battlefield.team_radar_indices[0]]
                               if self.league else range(R))
-                for r in radar_idxs:
+                for agent_idx_in_team, r in enumerate(radar_idxs):
                     for e in range(E):
                         if self.radar_buf.ptr >= self.radar_buf.buffer_size:
                             break
@@ -1019,6 +1099,11 @@ class LaserTrainer:
                             done=done[e].item(),
                             value=self._last_radar_val.reshape(E, R)[e, r].item(),
                             log_prob=self._last_radar_logp.reshape(E, R)[e, r].item(),
+                            joint_action=(
+                                self._last_joint_action[e].cpu()
+                                if self._last_joint_action is not None else None
+                            ),
+                            coma_agent_idx=agent_idx_in_team if self.use_coma else None,
                         )
 
                 # Commander transitions: only team-0 (training) in league mode.
@@ -1049,6 +1134,11 @@ class LaserTrainer:
                             privileged_value=priv_val,
                             privileged_info=priv_info,
                             team_state=team_st,
+                            joint_action=(
+                                self._last_joint_action[e].cpu()
+                                if self._last_joint_action is not None else None
+                            ),
+                            coma_agent_idx=0 if self.use_coma else None,
                         )
 
             # 6. Check kills/dones
@@ -1281,6 +1371,82 @@ class LaserTrainer:
         # Jam level per team from the executed commander action[4] ∈ [-1,1] → [0,1].
         self._jam_level = ((exec_cmd[..., 4] + 1.0) * 0.5).clamp(0.0, 1.0)  # [E, T]
 
+        # COMA: cache the joint action vector for this control step. Built from
+        # the EXECUTED actions (so opponent cmd/radar are the actual pool's
+        # actions, not the actor's own). Layout documented in
+        # algo/_shared/ppo/coma_critic.py docstring (1222 dims, compact form).
+        if self.use_coma:
+            self._last_joint_action = self._build_coma_joint_action(
+                exec_cmd=exec_cmd, r_exec=r_exec,
+            )  # [E, 1222]
+        else:
+            self._last_joint_action = None
+
+    def _build_coma_joint_action(
+        self,
+        exec_cmd: torch.Tensor,   # [E, T=2, 5]
+        r_exec: torch.Tensor,     # [E, R, 13753]
+    ) -> torch.Tensor:
+        """Pack executed actions into the 1222-dim COMA joint_action vector.
+
+        Layout (matches coma_critic.py / coma_advantage.py):
+          [0:5]    commander team-0  (5 dims)
+          [5:10]   commander team-1  (5 dims)
+          [10:313]   radar team-0 radar-0   (303 dims compact)
+          [313:616]  radar team-0 radar-1
+          [616:919]  radar team-1 radar-0
+          [919:1222] radar team-1 radar-1
+
+        Per-radar 303-dim compact block = task_frac(100) + params(200) + vehicle(3).
+        Conversion from element-level 13753-dim action via the radar actor's
+        _extract_sub_from_elem method (returns task_frac[B,25,4], params[B,25,8],
+        vehicle[B,3]); we flatten and concat.
+        """
+        from .ppo.coma_advantage import (
+            JOINT_ACTION_DIM, CMD_BLOCK_DIM, RADAR_BLOCK_DIM,
+            CMD_OFFSETS, RADAR_OFFSETS,
+        )
+        E = exec_cmd.shape[0]
+        dev = exec_cmd.device
+        ja = torch.zeros(E, JOINT_ACTION_DIM, device=dev)
+
+        # Commanders (team-0 and team-1, each 5 dims)
+        ja[:, CMD_OFFSETS[0]:CMD_OFFSETS[0] + CMD_BLOCK_DIM] = exec_cmd[:, 0]
+        ja[:, CMD_OFFSETS[1]:CMD_OFFSETS[1] + CMD_BLOCK_DIM] = exec_cmd[:, 1]
+
+        # Radars: r_exec is [E, R, 13753]. team_radar_indices[0] = [r0, r1]
+        # (team-0 radars), team_radar_indices[1] = [r2, r3] (team-1).
+        # We assume 4 radars total: 2 per team.
+        radar_ac = self.radar_ac
+        # Highest-priority actor (training). _extract_sub_from_elem only exists
+        # on SubArrayRadarActorCritic; if absent, fall back to assuming the
+        # action is already in compact form (defensive; should not trigger in
+        # production since sub_array_size=5 → SubArrayRadarActorCritic).
+        team_radar_indices = self.env.battlefield.team_radar_indices
+        for team_idx in (0, 1):
+            for agent_idx_in_team, radar_idx in enumerate(team_radar_indices[team_idx]):
+                r_idx = int(radar_idx)
+                elem_action = r_exec[:, r_idx]  # [E, 13753]
+                if hasattr(radar_ac, "_extract_sub_from_elem"):
+                    task_frac, params, vehicle = radar_ac._extract_sub_from_elem(elem_action)
+                    # task_frac: [E, 25, 4] → [E, 100]; params: [E, 25, 8] → [E, 200]; vehicle: [E, 3]
+                    compact = torch.cat([
+                        task_frac.reshape(E, -1),
+                        params.reshape(E, -1),
+                        vehicle.reshape(E, -1),
+                    ], dim=-1)  # [E, 303]
+                else:
+                    # Defensive fallback: assume elem_action is already compact
+                    compact = elem_action
+                assert compact.shape[-1] == RADAR_BLOCK_DIM, (
+                    f"COMA: radar compact block {compact.shape[-1]} != "
+                    f"RADAR_BLOCK_DIM={RADAR_BLOCK_DIM}"
+                )
+                radar_joint_idx = team_idx * 2 + agent_idx_in_team  # 0,1,2,3
+                offset = RADAR_OFFSETS[radar_joint_idx]
+                ja[:, offset:offset + RADAR_BLOCK_DIM] = compact
+        return ja
+
     def _build_commander_privileged_info(self):
         """Build privileged_info for commander CTDE critic. None if disabled.
 
@@ -1404,6 +1570,76 @@ class LaserTrainer:
         )  # [E*T, 104]
         return team_state_flat.reshape(E, T, 104)
 
+    def _coma_advantages(
+        self,
+        coma_critic,
+        team_state,          # [B, 104]
+        joint_actions,       # [B, 1222]
+        coma_agent_idx,      # [B] long: 0 or 1 (radar); 0 (commander)
+        actor,
+        obs,                 # [B, obs_dim]
+        agent_kind,          # "radar" | "commander"
+    ):
+        """Compute per-element COMA-S counterfactual advantages.
+
+        Splits the batch by coma_agent_idx so the correct slot in joint_actions
+        is marginalized per transition. For each subgroup, calls
+        coma_counterfactual_advantage with that subgroup's agent_idx scalar;
+        results are scattered back into a [B] advantage tensor.
+
+        RNG contract: bit-exact reproducibility via a per-minibatch seed
+        derived from a global counter (deterministic given seed=42).
+        """
+        from .ppo.coma_advantage import coma_counterfactual_advantage
+        B = joint_actions.shape[0]
+        advantages = torch.zeros(B, device=joint_actions.device)
+
+        # Per-minibatch RNG seed — bit-exact reproducibility. Composed from
+        # a global counter (incremented per minibatch) so the seed sequence
+        # is fixed given the same call order.
+        self._global_coma_step += 1
+        step_seed = 42 + self._global_coma_step * 1000 + 7
+        torch.manual_seed(step_seed)
+
+        if agent_kind == "commander":
+            # Single commander → all transitions are agent_idx=0.
+            adv, _ = coma_counterfactual_advantage(
+                critic=coma_critic,
+                team_state=team_state,
+                joint_action=joint_actions,
+                agent_kind=agent_kind,
+                team_idx=0,
+                agent_idx=0,
+                actor=actor,
+                obs=obs,
+                n_samples=self.coma_n_samples,
+                advantage_clip_sigma=self.coma_advantage_clip_sigma,
+            )
+            advantages = adv
+        else:
+            # Radar: split by agent_idx_in_team (0 or 1 within team-0).
+            for agent_idx_in_team in (0, 1):
+                mask = (coma_agent_idx == agent_idx_in_team)
+                if not mask.any():
+                    continue
+                sub_team_state = team_state[mask]
+                sub_joint = joint_actions[mask]
+                sub_obs = obs[mask]
+                adv, _ = coma_counterfactual_advantage(
+                    critic=coma_critic,
+                    team_state=sub_team_state,
+                    joint_action=sub_joint,
+                    agent_kind=agent_kind,
+                    team_idx=0,
+                    agent_idx=agent_idx_in_team,
+                    actor=actor,
+                    obs=sub_obs,
+                    n_samples=self.coma_n_samples,
+                    advantage_clip_sigma=self.coma_advantage_clip_sigma,
+                )
+                advantages[mask] = adv
+        return advantages
+
     def update(self, cmd_bc_weight: float = 0.0, cmd_bc_only: bool = False) -> dict:
         """Run PPO update on both radar and commander buffers.
 
@@ -1416,6 +1652,9 @@ class LaserTrainer:
         radar_metrics = self._ppo_update(
             self.radar_ac, self.radar_optimizer, self.radar_buf,
             self.radar_clip, self.radar_entropy,
+            coma_critic=self.coma_critic if self.use_coma else None,
+            coma_optimizer=self.coma_optimizer if self.use_coma else None,
+            agent_kind="radar" if self.use_coma else "",
         )
         cmd_metrics = self._ppo_update(
             self.commander_ac, self.commander_optimizer, self.cmd_buf,
@@ -1424,6 +1663,9 @@ class LaserTrainer:
             team_critic=self.team_critic,
             team_critic_optimizer=self.team_critic_optimizer,
             bc_only=cmd_bc_only,
+            coma_critic=self.coma_critic if self.use_coma else None,
+            coma_optimizer=self.coma_optimizer if self.use_coma else None,
+            agent_kind="commander" if self.use_coma else "",
         )
         return {"radar": radar_metrics, "commander": cmd_metrics}
 

@@ -55,6 +55,8 @@ class RolloutBuffer:
         device: str = "cuda",
         privileged_dim: int = 0,
         reward_normalize: bool = False,  # F8: return-based scaling
+        joint_action_dim: int = 0,  # COMA: centralized Q critic input
+        store_coma_agent_idx: bool = False,  # COMA: per-transition agent_idx
     ):
         self.buffer_size = buffer_size
         self.gamma = gamma
@@ -73,6 +75,15 @@ class RolloutBuffer:
         # done-mask (reverts to old cross-episode 800-step accumulation
         # behavior). For快速遍历 isolating F1's contribution.
         self.f1_disable = False
+        # COMA: optional storage for all-agents joint action vector at each
+        # timestep. Populated only when joint_action_dim > 0 (COMA on).
+        # Layout documented in algo/_shared/ppo/coma_critic.py.
+        self.joint_action_dim = joint_action_dim
+        # COMA: per-transition agent index within its team (0 or 1 for radar,
+        # 0 for commander). Needed because radar_buf stores transitions from
+        # both team-0 radars mixed together; COMA must know which slot in
+        # joint_actions was "self" to compute the counterfactual baseline.
+        self.store_coma_agent_idx = store_coma_agent_idx
 
         self.reset()
 
@@ -99,16 +110,34 @@ class RolloutBuffer:
         self.team_states = torch.zeros(self.buffer_size, 104, dtype=torch.float32)
         # BC pretrain log-probs for KL penalty during PPO fine-tuning
         self.pretrain_log_probs = torch.zeros(self.buffer_size, dtype=torch.float32)
+        # COMA: joint action storage (optional). When joint_action_dim > 0,
+        # every add() must supply a joint_action vector (caller contract).
+        if self.joint_action_dim > 0:
+            self.joint_actions = torch.zeros(
+                self.buffer_size, self.joint_action_dim, dtype=torch.float32,
+            )
+        else:
+            self.joint_actions = None
+        # COMA: per-transition agent_idx (0/1 for radar, 0 for commander)
+        if self.store_coma_agent_idx:
+            self.coma_agent_idx = torch.zeros(self.buffer_size, dtype=torch.long)
+        else:
+            self.coma_agent_idx = None
         self.ptr = 0
 
     def add(self, obs, action, reward, done, value, log_prob,
             privileged_value=None, privileged_info=None,
-            team_reward=None, team_state=None, pretrain_log_prob=None):
+            team_reward=None, team_state=None, pretrain_log_prob=None,
+            joint_action=None, coma_agent_idx=None):
         """Add one transition.
 
         Caller is responsible for calling update() before the buffer
         fills (see e.g. PhasedTrainer / FluxLeague._train_against,
         which check `near_full` after every store_transition).
+
+        COMA: when self.joint_action_dim > 0, caller MUST pass joint_action
+        (the all-agents action vector). When self.joint_action_dim == 0
+        (default — ippo/mappo/pspfix), joint_action is ignored.
         """
         assert self.ptr < self.buffer_size, (
             f"RolloutBuffer overflow at ptr={self.ptr} "
@@ -130,6 +159,18 @@ class RolloutBuffer:
             self.team_states[self.ptr] = team_state
         if pretrain_log_prob is not None:
             self.pretrain_log_probs[self.ptr] = pretrain_log_prob
+        if self.joint_actions is not None:
+            assert joint_action is not None, (
+                "COMA buffer requires joint_action on every add() "
+                f"(ptr={self.ptr}, joint_action_dim={self.joint_action_dim})"
+            )
+            self.joint_actions[self.ptr] = joint_action
+        if self.coma_agent_idx is not None:
+            assert coma_agent_idx is not None, (
+                "COMA buffer requires coma_agent_idx on every add() "
+                f"(ptr={self.ptr})"
+            )
+            self.coma_agent_idx[self.ptr] = int(coma_agent_idx)
         self.ptr += 1
 
     @property
@@ -327,6 +368,10 @@ class RolloutBuffer:
             }
             if self.privileged_infos is not None:
                 batch["privileged_info"] = self.privileged_infos[idx].to(self.device)
+            if self.joint_actions is not None:
+                batch["joint_actions"] = self.joint_actions[idx].to(self.device)
+            if self.coma_agent_idx is not None:
+                batch["coma_agent_idx"] = self.coma_agent_idx[idx].to(self.device)
 
             yield batch
 
