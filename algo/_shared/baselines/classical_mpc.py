@@ -179,6 +179,10 @@ class ClassicalMPC:
         elem_actions[:, :, :, 4] = enemy_x_norm.view(E, 1, 1)  # beam_az
         elem_actions[:, :, :, 5] = enemy_y_norm.view(E, 1, 1)  # beam_el
 
+        # LaserEpisodeRunner expects radar_actions as a LIST of [E, action_dim]
+        # tensors (one per radar in the team). See TeamPPOTrainer.get_own_actions.
+        radar_actions_list = [radar_actions[:, i, :] for i in range(R_team)]
+
         # Commander action: fire=1.0 (always), aim=enemy anchor, residual=0
         # action[0]=fire_on_off, action[1:4]=aim_xyz (abs scale)
         commander_action = torch.zeros(E, 5, device=dev)
@@ -190,7 +194,7 @@ class ClassicalMPC:
         return {
             "r_start": self.r_start,
             "r_end": self.r_end,
-            "radar_actions": radar_actions,
+            "radar_actions": radar_actions_list,
             "commander_action": commander_action,
             "transition": None,   # no transitions collected
         }

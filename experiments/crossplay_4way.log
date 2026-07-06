@@ -1,0 +1,24 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 101.9 GB
+Building env (num_envs=12, device=cuda) ...
+Warp 1.10.1 initialized:
+   CUDA Toolkit 12.8, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Workstation Edition" (95 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/ubuntu/.cache/warp/1.10.1
+
+=== Round-robin: ['mappo', 'ippo', 'pspfix', 'full_league'] ===
+Module env.gpu.vec_channel 6a2afee load on device 'cuda:0' took 0.42 ms  (cached)
+Module env.gpu.vec_array 0e899e2 load on device 'cuda:0' took 2.57 ms  (cached)
+  [round-robin] mappo vs ippo: mappo WR=0.750 (54-18-0, n=72, 37s)
+  [round-robin] mappo vs pspfix: mappo WR=0.764 (55-17-0, n=72, 37s)
+  [round-robin] mappo vs full_league: mappo WR=0.500 (36-36-0, n=72, 36s)
+  [round-robin] ippo vs pspfix: ippo WR=0.236 (17-53-2, n=72, 155s)
+  [round-robin] ippo vs full_league: ippo WR=0.208 (15-57-0, n=72, 36s)
+  [round-robin] pspfix vs full_league: pspfix WR=0.194 (14-58-0, n=72, 38s)
+Round-robin elapsed: 340s (5.7 min)
+
+Wrote /home/ubuntu/CODE/FluxPhased-/experiments/crossplay_matrix_4way.md

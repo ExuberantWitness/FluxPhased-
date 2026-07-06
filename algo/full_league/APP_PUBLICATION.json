@@ -1,0 +1,21 @@
+{
+  "protocol": "APP",
+  "protocol_version": "1.0",
+  "algorithm": "full_league",
+  "paper_title": "FluxLeague: AlphaStar-style Self-Play for Phased Array Laser Defense",
+  "authors": ["anonymous"],
+  "commit_pinned": "6375030",
+  "seed": 42,
+  "license": "TBD",
+  "components": {
+    "agents_md": "AGENTS.md",
+    "readme": "README.md",
+    "license": "LICENSE",
+    "code": "code/",
+    "data": "data/",
+    "environment": "environment/"
+  },
+  "entry": "../../main.py",
+  "entry_cmd": "python main.py --config algo/full_league/code/config.yaml",
+  "results_ref": "../../experiments/phase1.5_full_league_seed42/metrics.json"
+}

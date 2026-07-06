@@ -1,0 +1,57 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 101.9 GB
+Building env (num_envs=12, device=cuda) ...
+Warp 1.10.1 initialized:
+   CUDA Toolkit 12.8, Driver 13.2
+   Devices:
+     "cpu"      : "x86_64"
+     "cuda:0"   : "NVIDIA RTX PRO 6000 Blackwell Workstation Edition" (95 GiB, sm_120, mempool enabled)
+   Kernel cache:
+     /home/ubuntu/.cache/warp/1.10.1
+
+=== Round-robin: ['mappo', 'ippo', 'pspfix'] ===
+Module env.gpu.vec_channel 6a2afee load on device 'cuda:0' took 0.54 ms  (cached)
+Module env.gpu.vec_array 0e899e2 load on device 'cuda:0' took 2.55 ms  (cached)
+[ANCHOR-DD] n=0 team=0 cmd_in[0,t]=[fire=0.000,aim_x=0.0000,aim_y=0.0000] → _commander_aim[0,t]=(0.0,0.0,0.0)m
+[ANCHOR-DD] n=0 team=1 cmd_in[0,t]=[fire=0.000,aim_x=0.0000,aim_y=0.0000] → _commander_aim[0,t]=(0.0,0.0,0.0)m
+[ANCHOR-DD] n=1 team=0 cmd_in[0,t]=[fire=0.000,aim_x=0.0000,aim_y=0.0000] → _commander_aim[0,t]=(0.0,0.0,0.0)m
+[ANCHOR-DD] n=1 team=1 cmd_in[0,t]=[fire=0.000,aim_x=0.0000,aim_y=0.0000] → _commander_aim[0,t]=(0.0,0.0,0.0)m
+[ANCHOR-DD] n=2 team=0 cmd_in[0,t]=[fire=0.000,aim_x=0.0000,aim_y=0.0000] → _commander_aim[0,t]=(0.0,0.0,0.0)m
+[ANCHOR-DD] n=2 team=1 cmd_in[0,t]=[fire=0.000,aim_x=0.0000,aim_y=0.0000] → _commander_aim[0,t]=(0.0,0.0,0.0)m
+[ANCHOR-DD] n=3 team=0 cmd_in[0,t]=[fire=0.000,aim_x=0.0000,aim_y=0.0000] → _commander_aim[0,t]=(0.0,0.0,0.0)m
+[ANCHOR-DD] n=3 team=1 cmd_in[0,t]=[fire=0.000,aim_x=0.0000,aim_y=0.0000] → _commander_aim[0,t]=(0.0,0.0,0.0)m
+[ANCHOR-DD] n=4 team=0 cmd_in[0,t]=[fire=0.000,aim_x=0.0000,aim_y=0.0000] → _commander_aim[0,t]=(0.0,0.0,0.0)m
+[ANCHOR-DD] n=4 team=1 cmd_in[0,t]=[fire=0.000,aim_x=0.0000,aim_y=0.0000] → _commander_aim[0,t]=(0.0,0.0,0.0)m
+[ANCHOR-DD] n=5 team=0 cmd_in[0,t]=[fire=1.000,aim_x=0.2607,aim_y=0.6378] → _commander_aim[0,t]=(2606.9,6377.5,0.0)m
+[ANCHOR-DD] n=5 team=1 cmd_in[0,t]=[fire=1.000,aim_x=0.0904,aim_y=-0.2074] → _commander_aim[0,t]=(903.5,-2073.8,-0.3)m
+[ANCHOR-DD] n=6 team=0 cmd_in[0,t]=[fire=1.000,aim_x=0.2607,aim_y=0.6378] → _commander_aim[0,t]=(2606.9,6377.5,0.0)m
+[ANCHOR-DD] n=6 team=1 cmd_in[0,t]=[fire=1.000,aim_x=0.0904,aim_y=-0.2074] → _commander_aim[0,t]=(903.5,-2073.8,-0.3)m
+[ANCHOR-DD] n=7 team=0 cmd_in[0,t]=[fire=1.000,aim_x=0.2607,aim_y=0.6378] → _commander_aim[0,t]=(2606.9,6377.5,0.0)m
+[ANCHOR-DD] n=7 team=1 cmd_in[0,t]=[fire=1.000,aim_x=0.0904,aim_y=-0.2074] → _commander_aim[0,t]=(903.5,-2073.8,-0.3)m
+[ANCHOR-DD] n=8 team=0 cmd_in[0,t]=[fire=1.000,aim_x=0.2607,aim_y=0.6378] → _commander_aim[0,t]=(2606.9,6377.5,0.0)m
+[ANCHOR-DD] n=8 team=1 cmd_in[0,t]=[fire=1.000,aim_x=0.0904,aim_y=-0.2074] → _commander_aim[0,t]=(903.5,-2073.8,-0.3)m
+[ANCHOR-DD] n=9 team=0 cmd_in[0,t]=[fire=1.000,aim_x=0.2607,aim_y=0.6378] → _commander_aim[0,t]=(2606.9,6377.5,0.0)m
+[ANCHOR-DD] n=9 team=1 cmd_in[0,t]=[fire=1.000,aim_x=0.0904,aim_y=-0.2074] → _commander_aim[0,t]=(903.5,-2073.8,-0.3)m
+[ANCHOR-DD] n=10 team=0 cmd_in[0,t]=[fire=1.000,aim_x=0.2607,aim_y=0.6377] → _commander_aim[0,t]=(2606.9,6377.5,0.1)m
+[ANCHOR-DD] n=10 team=1 cmd_in[0,t]=[fire=1.000,aim_x=0.0903,aim_y=-0.2074] → _commander_aim[0,t]=(903.4,-2073.8,-0.3)m
+[ANCHOR-DD] n=11 team=0 cmd_in[0,t]=[fire=1.000,aim_x=0.2607,aim_y=0.6377] → _commander_aim[0,t]=(2606.9,6377.5,0.1)m
+[ANCHOR-DD] n=11 team=1 cmd_in[0,t]=[fire=1.000,aim_x=0.0903,aim_y=-0.2074] → _commander_aim[0,t]=(903.4,-2073.8,-0.3)m
+  [round-robin] mappo vs ippo: mappo WR=0.750 (54-18-0, n=72, 37s)
+  [round-robin] mappo vs pspfix: mappo WR=0.764 (55-17-0, n=72, 37s)
+  [round-robin] ippo vs pspfix: ippo WR=0.278 (20-51-1, n=72, 145s)
+Round-robin elapsed: 219s (3.7 min)
+
+=== Held-out: finals=['mappo', 'ippo', 'pspfix'] vs held_outs=['mappo_iter10', 'ippo_iter10', 'pspfix_iter10'] ===
+  [held-out] mappo vs mappo_iter10: final WR=0.500 (36-36-0, n=72, 36s)
+  [held-out] mappo vs ippo_iter10: final WR=0.861 (62-10-0, n=72, 36s)
+  [held-out] mappo vs pspfix_iter10: final WR=0.833 (60-12-0, n=72, 36s)
+  [held-out] ippo vs mappo_iter10: final WR=0.222 (16-56-0, n=72, 52s)
+  [held-out] ippo vs ippo_iter10: final WR=0.208 (15-55-2, n=72, 252s)
+  [held-out] ippo vs pspfix_iter10: final WR=0.319 (23-38-11, n=72, 354s)
+  [held-out] pspfix vs mappo_iter10: final WR=0.319 (23-49-0, n=72, 37s)
+  [held-out] pspfix vs ippo_iter10: final WR=0.653 (47-25-0, n=72, 123s)
+  [held-out] pspfix vs pspfix_iter10: final WR=0.583 (42-29-1, n=72, 143s)
+Held-out elapsed: 1069s (17.8 min)
+
+Wrote /home/ubuntu/CODE/FluxPhased-/experiments/crossplay_matrix.md
