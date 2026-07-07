@@ -206,6 +206,19 @@ class KalmanTracker:
     def is_initialized(self) -> bool:
         return self._initialized
 
+    @property
+    def trace_P(self) -> Optional[torch.Tensor]:
+        """Per-env per-team trace of the 2×2 enemy-track covariance.
+
+        Returns [E, T, 2] tensor (one trace per enemy) or None if uninitialized.
+        Consumed by Concerto composer (event trigger θ2) and noise-robust CTDE
+        (α_eff weighting) — both need a scalar uncertainty signal per team.
+        """
+        if not self._initialized or self._trk_P is None:
+            return None
+        # _trk_P shape: [E, T, 2_enemies, 2, 2]; trace each 2×2 → [E, T, 2]
+        return self._trk_P[..., 0, 0] + self._trk_P[..., 1, 1]
+
     def ensure_alloc(self, E: int, T: int, device: torch.device):
         if not self._initialized:
             self._trk_x = torch.zeros(E, T, 2, 2, device=device)
