@@ -9,6 +9,7 @@ One step = one pulse = 100μs = 20,000 IQ samples at 200 MHz.
 """
 
 import time
+from typing import Optional
 import numpy as np
 import torch
 
@@ -69,6 +70,7 @@ class MFARVecEnv:
         reward_config: dict = None,
         vehicle_speed_ms: float = 20.0,
         damage_config: dict = None,
+        qos_rrm_mode: bool = False,
     ):
         self.num_envs = num_envs
         self.n_radars = n_radars
@@ -101,6 +103,12 @@ class MFARVecEnv:
         # WP3.2 damage-injection config (None → all damages disabled)
         self.damage_config = damage_config or {}
         self._init_damage()
+
+        # Concerto-RRM mode: when True, step() surfaces spectrum/task_ids/
+        # comm_crc_ok/jsr_db for QoS metric computation. Default False →
+        # step() return dict is unchanged (bit-exact backward compat).
+        self.qos_rrm_mode = bool(qos_rrm_mode)
+        self._qos_rrm_last_actions: Optional[dict] = None  # cached for task_id decode
 
         E, R, N = num_envs, n_radars, self.n_elem
         S = self.n_samples
@@ -289,6 +297,7 @@ class MFARVecEnv:
         vehicle_actions: torch.Tensor = None,
         beam_az: torch.Tensor = None,
         beam_el: torch.Tensor = None,
+        radar_actions_raw: torch.Tensor = None,
     ) -> dict:
         """Process one pulse through the physical channel.
 
@@ -302,8 +311,15 @@ class MFARVecEnv:
                 If None, falls back to boresight (zeros) — backward compat for tasks
                 that don't use beam steering.
             beam_el: [E, R] optional — per-radar mean beam elevation (degrees).
+            radar_actions_raw: [E, R, action_dim] optional — RAW per-element actions
+                BEFORE beamforming. Only used when qos_rrm_mode=True; consumed to
+                decode task_id per element (argmax of dims [0:4] per elem) for
+                QoS-per-function attribution. Layout assumption (matches
+                LaserEpisodeRunner.assemble_tx): action_dim = N*22 with each
+                22-dim block = [task_id(4), beam_az(1), beam_el(1), wf(8), jam(4), comm(4)].
         Returns:
             dict with keys: rx_iq, events, kills, dones, winners, ...
+            When qos_rrm_mode=True, ALSO includes: task_ids, comm_crc_ok.
         """
         E, R, N, S = tx_signal.shape
         dev = torch.device(self.device)
@@ -437,7 +453,7 @@ class MFARVecEnv:
 
         elapsed = time.perf_counter() - t0
 
-        return {
+        out = {
             "rx_iq": self._buf_rx.clone(),
             "kills": kills,
             "dones": dones,
@@ -452,6 +468,33 @@ class MFARVecEnv:
             "radar_pos": self.radar_pos.clone(),
             "timing_ms": elapsed * 1000,
         }
+
+        # Concerto-RRM mode: surface task_ids and comm_crc_ok for QoS attribution.
+        # task_ids[E, R, N] decoded from radar_actions_raw argmax (dims [0:4] per elem).
+        # comm_crc_ok[E, n_teams] from BPSK decoder (already computed at line 428).
+        # When qos_rrm_mode=False these are omitted → bit-exact backward compat.
+        if self.qos_rrm_mode:
+            if radar_actions_raw is not None:
+                E_a, R_a, Adim = radar_actions_raw.shape
+                N_elem = self.n_elem
+                ACTION_PER_ELEM = 22
+                elem_actions = radar_actions_raw[:, :, :N_elem * ACTION_PER_ELEM].reshape(
+                    E_a, R_a, N_elem, ACTION_PER_ELEM,
+                )
+                task_logits = elem_actions[..., :4]  # [E, R, N, 4]
+                out["task_ids"] = task_logits.argmax(dim=-1)  # [E, R, N]
+            else:
+                out["task_ids"] = torch.zeros(
+                    E, R, self.n_elem, dtype=torch.long, device=dev,
+                )
+            drone = getattr(self.battlefield, "drone", None)
+            if drone is not None and hasattr(drone, "_last_comm_crc_ok"):
+                out["comm_crc_ok"] = drone._last_comm_crc_ok.clone()
+            else:
+                out["comm_crc_ok"] = torch.zeros(
+                    E, self.n_teams, dtype=torch.bool, device=dev,
+                )
+        return out
 
     def _apply_vehicle_actions(self, vehicle_actions: torch.Tensor, dt: float):
         """Update vehicle positions from action [E, R, 3].
