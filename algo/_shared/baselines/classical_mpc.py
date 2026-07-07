@@ -92,6 +92,8 @@ class ClassicalMPC:
         track_q_m: float = 0.02,
         track_burnin: int = 120,
         half_map_m: float = 10000.0,
+        jam_gain: float = 0.0,
+        exposure_gain: float = 0.0,
     ):
         self.env = env
         self.team = int(team)
@@ -101,6 +103,9 @@ class ClassicalMPC:
         self.track_q_m = float(track_q_m)
         self.track_burnin = int(track_burnin)
         self.half_map_m = float(half_map_m)
+        self.jam_gain = float(jam_gain)
+        self.exposure_gain = float(exposure_gain)
+        self.jam_level = None  # set externally by runner via set_jam_level
 
         E = env.num_envs
         R_team = env.n_radars // env.n_teams
@@ -160,6 +165,9 @@ class ClassicalMPC:
             range_sigma_m=self.range_sigma_m,
             crossrange_factor=self.crossrange_factor,
             tracker=self.kalman_tracker,
+            jam_gain=self.jam_gain,
+            exposure_gain=self.exposure_gain,
+            jam_level=self.jam_level,
         )
 
         team_obs = cmd_obs[:, team, :]  # [E, 76]

@@ -43,6 +43,8 @@ CKPT_FINAL = {
     "ippo":       "algorithms/ippo/data/checkpoints/iter_019.pt",
     "pspfix":     "algorithms/pspfix/data/checkpoints/iter_019.pt",
     "full_league": "algorithms/full_league/data/checkpoints/iter_019.pt",
+    "ew_mappo":   "algo/ew_mappo/data/checkpoints/iter_019.pt",
+    "ew_ippo":    "algo/ew_ippo/data/checkpoints/iter_019.pt",
 }
 
 
@@ -63,6 +65,8 @@ class NNPolicyAdapter:
         sensing_mode: str, range_sigma_m: float,
         crossrange_factor: float, track_q_m: float, track_burnin: int,
         min_radar_baseline_m: float,
+        jam_gain: float = 0.0, exposure_gain: float = 0.0,
+        hybrid_fire: bool = True,
     ):
         self.radar_ac = radar_ac
         self.commander_ac = commander_ac
@@ -74,6 +78,10 @@ class NNPolicyAdapter:
         self.range_sigma_m = float(range_sigma_m)
         self.crossrange_factor = float(crossrange_factor)
         self.min_radar_baseline_m = float(min_radar_baseline_m)
+        self.jam_gain = float(jam_gain)
+        self.exposure_gain = float(exposure_gain)
+        self.hybrid_fire = bool(hybrid_fire)
+        self.jam_level = None  # set externally via set_jam_level
 
         E = env.num_envs
         R_team = env.n_radars // env.n_teams
@@ -110,8 +118,7 @@ class NNPolicyAdapter:
         radar_latents = torch.zeros(E, env.n_radars, 32, device=dev)
         cmd_obs_all = env.battlefield.get_commander_observation(
             env.radar_pos, radar_latents,
-        )  # [E, n_teams, 76]
-        # fused_sensing writes Kalman-tracked enemy xy into cmd_obs[..., 68:72]
+        )  # [E, n_teams, 76]        # fused_sensing writes Kalman-tracked enemy xy into cmd_obs[..., 68:72]
         # in place. Operates on full [E, n_teams, 76] for both teams at once.
         if self.sensing_mode in ("fused", "tracked"):
             half_x = env.map_size[0] / 2.0
@@ -122,6 +129,9 @@ class NNPolicyAdapter:
                 range_sigma_m=self.range_sigma_m,
                 crossrange_factor=self.crossrange_factor,
                 tracker=self.kalman_tracker,
+                jam_gain=self.jam_gain,
+                exposure_gain=self.exposure_gain,
+                jam_level=self.jam_level,
             )
 
         team_cmd_obs = cmd_obs_all[:, team, :]  # [E, 76]
@@ -169,6 +179,11 @@ class NNPolicyAdapter:
             c_env[:, 3] = c_action[:, 3] * (self.residual_scale_m / 1000.0)
             c_action = c_env
 
+        # Update shared jam_level AFTER policy query: commander_action[4] = jam logit.
+        # Map [-1,1] → [0,1] (matches train_laser.py:1276 + 1372).
+        if self.jam_level is not None:
+            self.jam_level[:, team] = ((c_action[:, 4] + 1.0) * 0.5).clamp(0.0, 1.0).detach()
+
         return {
             "r_start": self.r_start,
             "r_end": self.r_end,
@@ -189,6 +204,7 @@ def make_nn_adapter(env, cfg, ckpt_path, team, device):
 
     scfg = cfg.get("sensing_noise", {})
     tcfg = cfg.get("training", {})
+    rcfg = cfg.get("reward_shaping", {})
     return NNPolicyAdapter(
         radar_ac, commander_ac, env, team=team,
         residual_aim=tcfg.get("residual_aim", True),
@@ -199,11 +215,15 @@ def make_nn_adapter(env, cfg, ckpt_path, team, device):
         track_q_m=scfg.get("track_q_m", 0.02),
         track_burnin=scfg.get("track_burnin", 120),
         min_radar_baseline_m=cfg.get("env", {}).get("min_radar_baseline_m", 5000.0),
+        jam_gain=rcfg.get("jam_gain", 0.0),
+        exposure_gain=rcfg.get("exposure_gain", 0.0),
+        hybrid_fire=tcfg.get("hybrid_fire", True),
     )
 
 
 def make_mpc(env, cfg, team):
     scfg = cfg.get("sensing_noise", {})
+    rcfg = cfg.get("reward_shaping", {})
     half_map = float(cfg["env"].get("map_size", [20000.0, 20000.0])[0]) / 2.0
     return ClassicalMPC(
         env, team=team,
@@ -213,6 +233,8 @@ def make_mpc(env, cfg, team):
         track_q_m=scfg.get("track_q_m", 0.02),
         track_burnin=scfg.get("track_burnin", 120),
         half_map_m=half_map,
+        jam_gain=rcfg.get("jam_gain", 0.0),
+        exposure_gain=rcfg.get("exposure_gain", 0.0),
     )
 
 
@@ -228,6 +250,13 @@ def directional_match(
     other = 1 - nn_team
     nn = make_nn_adapter(env, cfg, ckpt_path, team=nn_team, device=device)
     mpc = make_mpc(env, cfg, team=other)
+
+    # Shared jam_level tensor: both adapters read enemy_jam from this and
+    # write their own team's jam back into it. MPC's slot stays 0 (no jam).
+    # Semantics match train_laser.py:1276 — (c_action[:, 4]+1)*0.5 in [0,1].
+    jam_level = torch.zeros(env.num_envs, env.n_teams, device=device)
+    nn.jam_level = jam_level
+    mpc.jam_level = jam_level
 
     if nn_team == 0:
         red, blue = nn, mpc
@@ -247,6 +276,7 @@ def directional_match(
         runner.reset(red_trainer=red, blue_trainer=blue)
         nn.reset_episode(env.num_envs, env.n_teams)
         mpc.reset_episode(env.num_envs, env.n_teams)
+        jam_level.zero_()  # cold-start: no jam until first action
         if nn.min_radar_baseline_m > 0:
             enforce_radar_baseline(env, nn.min_radar_baseline_m)
 
@@ -259,6 +289,8 @@ def directional_match(
             result = out["result"]
             if result is None:
                 break
+            # MPC never jams — keep its slot pinned to 0 even after step.
+            jam_level[:, other].zero_()
             # Track illumination_progress for timeout tiebreaker
             last_progress = result.get("illumination_progress")
             if result["dones"].any():

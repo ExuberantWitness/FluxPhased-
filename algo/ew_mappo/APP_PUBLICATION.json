@@ -1,0 +1,33 @@
+{
+  "protocol": "APP",
+  "protocol_version": "1.0",
+  "algorithm": "ew_mappo",
+  "paper_title": "FluxLeague: AlphaStar-style Self-Play for Phased Array Laser Defense",
+  "authors": ["anonymous"],
+  "domain": "rl",
+  "commit_pinned": "a244f4c3c9c13c6e04c8767e12f604e3f54d0904",
+  "seed": 42,
+  "license": "TBD",
+  "ew_params": {
+    "jam_gain": 8.0,
+    "jam_cost": 0.01,
+    "exposure_gain": 50.0,
+    "race_time_cost": 0.01,
+    "race_death_penalty": 30.0,
+    "jam_kr_threshold_m": 0.5,
+    "jam_log_std": -1.0,
+    "commander_privileged_dim": 10
+  },
+  "kill_radius_m": 0.2,
+  "components": {
+    "agents_md": "AGENTS.md",
+    "readme": "README.md",
+    "license": "LICENSE",
+    "code": "code/",
+    "data": "data/",
+    "environment": "environment/"
+  },
+  "entry": "../../main.py",
+  "entry_cmd": "python main.py --config algo/ew_mappo/code/config.yaml",
+  "results_ref": "../../experiments/crossplay_mpc_ew_mappo.md"
+}

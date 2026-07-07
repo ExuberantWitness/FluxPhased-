@@ -1,0 +1,130 @@
+# ============================================================================
+# EW-MAPPO config — Gate 0 验证 EW 任务下 classical 是否失效
+# ============================================================================
+# WHAT: mappo base + EW 段(来自 configs/laser_25x25_ew_exposure.yaml):
+#   training.jam_log_std=-1, jam_kr_threshold_m=0.5, commander_privileged_dim=10
+#   reward_shaping: jam_gain=8, jam_cost=0.01, exposure_gain=50,
+#                   race_time_cost=0.01, race_death_penalty=30
+# WHY:  EAAI C2 路线 — phase1.5 已证无 EW 时 RL ≈ classical(good anchor 让 task
+#       "解掉了")。Gate 0:开 EW,jam → σ×5 → classical 瞄污染均值 + 一直开火
+#       → 打空 + home-on-jam 暴露 → 死。EW-MAPPO 应该反超 classical。
+# CHANGE vs mappo/code/config.yaml:
+#   - header             → EW-MAPPO gate-0 注释
+#   - checkpoint_dir     → algo/ew_mappo/data
+#   - training: +3 EW 字段 (jam_log_std, jam_kr_threshold_m, commander_privileged_dim)
+#   - reward_shaping: +5 EW 字段 (race_*, jam_gain, jam_cost, exposure_gain)
+#   - env.kill_radius_m: 0.5 → 0.2 (让 curriculum 经过 0.5 触发 jam_on;
+#                                 mappo 的 0.5 floor 会让 EW 永不激活)
+# ============================================================================
+
+sub_array_size: 5
+seed: 42                    # 同 mappo (bit-exact 可复现)
+
+league:
+  population_cap: 30
+  episodes_per_training: 10
+  max_steps_per_episode: 500
+  checkpoint_dir: "/home/ubuntu/CODE/FluxPhased-/algo/ew_mappo/data/checkpoints"
+  n_eval_games: 10
+  pfsp_p: 0                 # 关 PFSP → 均匀采样 (公平 EW-MAPPO/EW-IPPO baseline)
+
+ppo:
+  commander:
+    lr: 3.0e-4
+    clip_range: 0.2
+    entropy_coef: 0.01
+  radar:
+    lr: 1.0e-4
+    clip_range: 0.1
+    entropy_coef: 0.02
+  shared:
+    gamma: 0.999
+    gae_lambda: 0.99
+    n_epochs: 3
+    batch_size: 256
+    buffer_size: 2048
+    buffer_size_commander: 2048
+    buffer_size_radar: 2048
+    value_coef: 1.0
+    vf_clip_range: 10.0
+    max_grad_norm: 0.5
+
+training:
+  psro_iterations: 20
+  league: true
+  league_snapshot_every: 3
+  reward_normalize: true
+  use_mappo: true           # team critic (CTDE) — EW 下 EW-MAPPO
+  # --- EW 段(plan §Gate 0 step 1)---
+  jam_log_std: -1.0         # jam dim 持续探索,不被 anneal 压扁
+  jam_kr_threshold_m: 0.5   # 课程到达 0.5m 时开 EW(Phase B)
+  commander_privileged_dim: 10  # CTDE critic 看到 jam/exposure EW 状态
+  # --- below: IDENTICAL to mappo stable ---
+  hybrid_fire: true
+  residual_aim: true
+  residual_scale_m: 6.0
+  kill_radius_init: 50.0
+  bc_pretrain_iters: 0
+  cmd_bc_weight_init: 5.0
+  cmd_bc_weight_final: 2.0
+  cmd_bc_decay_iters: 24
+  log_std_init: -1.0
+  log_std_floor: -4.0
+  log_std_decay: 0.40
+
+reward_shaping:
+  detect_snr_weight: 0.1
+  beam_accuracy_weight: 5.0
+  illumination_progress_weight: 1.0
+  kill_bonus: 100.0
+  death_penalty: -10.0
+  emission_cost: -0.001
+  snr_threshold_db: 10.0
+  team_reward_weight: 0.1
+  team_kill_weight: 1.0
+  beam_guidance_weight: 2.0
+  illum_reward_weight: 50.0
+  fire_lock_bonus: 5.0
+  misfire_penalty: 0.5
+  beam_r_ref_m: 3000.0
+  beam_r_floor_m: 0.2
+  beam_reward_weight: 5.0
+  beam_hit_radius_m: 500.0
+  beam_spatial_cap: 1000.0
+  beam_temporal_epsilon: 0.05
+  dartboard_weight: 0.0
+  dartboard_scale_m: 5.0
+  # --- EW 段(plan §Gate 0 step 1)---
+  race_time_cost: 0.01      # per-step penalty until kill → 鼓励快杀
+  race_death_penalty: 30.0  # extra penalty when own radar dies → 保存自己
+  jam_gain: 8.0             # enemy jam ×(1+8·jam) on MY σ → 半干扰 σ×5
+  jam_cost: 0.01            # per-step cost per unit jam
+  exposure_gain: 50.0       # home-on-jam/ESM — 我 jam 越响敌人越能定位我
+
+env:
+  min_radar_baseline_m: 5000.0
+  rows: 25
+  cols: 25
+  num_envs: 12
+  n_radars: 4
+  n_teams: 2
+  pulses_per_cpi: 4
+  fft_size: 64
+  device: "cuda"
+  tx_power_w: 1.0
+  prf: 10000.0
+  pulses_per_control: 5
+  bandwidth: 200000000.0
+  vehicle_speed_ms: 20.0
+  kill_radius_m: 0.2        # 0.5→0.2:让 curriculum 经过 0.5 触发 jam_on
+  illumination_time_s: 0.002
+  drone_altitude_m: 3000.0
+  map_size: [20000.0, 20000.0]
+
+sensing_noise:
+  mode: tracked
+  track_q_m: 0.02
+  track_burnin: 120
+  acq_baseline_m: 0.0
+  range_sigma_m: 0.05
+  crossrange_factor: 7.4e-5
