@@ -1,0 +1,104 @@
+# Concerto-RRM Pilot configuration (A12).
+#
+# Single config shared by all 4 methods × 3 difficulties × 5 seeds cells.
+# Method- and difficulty-specific overrides are applied via the run_pilot.py
+# CLI (--methods, --difficulties, --seeds flags). This file documents the
+# shared defaults and the per-axis knobs.
+#
+# Usage:
+#   python -m algo._shared.pilot.run_pilot --config configs/pilot/concerto_pilot.yaml
+
+pilot:
+  # Method × difficulty × seed matrix
+  methods: [classical, mappo, concerto_v1, concerto_v2]
+  difficulties: [L0, L1, L3]
+  seeds: [42, 43, 44, 45, 46]
+
+  # Eval
+  max_steps: 100             # control steps per episode
+  n_eval_episodes: 50        # episodes per cell
+  num_envs: 2                # parallel envs (vec)
+
+  # MAPPO checkpoint (shared across all RL cells; trained offline)
+  mppo_checkpoint: checkpoints/laser_mappo/iter_019.pt
+
+  # Output
+  out_csv: experiments/concerto_pilot_results.csv
+  out_verdict: experiments/concerto_pilot_verdict.md
+
+# Env (overrides MFARVecEnv defaults for Concerto pilot)
+env:
+  qos_rrm_mode: true       # required: surface task_ids/comm_crc_ok
+  rows: 5
+  cols: 5
+  pulses_per_cpi: 4
+  fft_size: 64
+  n_radars: 4
+  n_teams: 2
+  tx_power_w: 100.0        # boosted (pilot detectability — see pd_at_pfa)
+  target_rcs_dbsm: 20.0
+  kill_radius_m: 0.2
+  illumination_time_s: 0.002
+  drone_altitude_m: 3000.0
+  map_size: [20000.0, 20000.0]
+  device: cuda
+
+# QoS-RRM env wrapper
+qos_env:
+  jam_gain: 8.0
+  exposure_gain: 50.0
+  qos_thresholds:
+    pd_thresh: 0.5         # pilot-lenient (absolute calibration deferred)
+    trace_thresh: 0.6
+    crc_thresh: 0.5
+    jsr_target_db: 3.0
+
+# Classical QoS scheduler (ClassicalQoSRRM)
+classical_qos_rrm:
+  qos_floor_per_fn: 3
+  priorities: {detect: 1.0, track: 0.9, comm: 0.6, jam: 0.4}
+  min_radar_baseline_m: 5000.0
+  range_sigma_m: 0.05
+  crossrange_factor: 7.4e-5
+  track_q_m: 0.02
+  track_burnin: 120
+  jam_amplitude: 0.5
+  comm_amplitude: 0.5
+  jam_spread_deg: 15.0
+
+# Difficulty axis (per-axis overrides)
+difficulty_overrides:
+  L0:
+    # Static jammer (constant)
+    jammer: {level: L0, jam_level: 0.3}
+  L1:
+    # Reactive jammer (tau-step delay EMA on red task histogram)
+    jammer: {level: L1, tau: 4, base_jam: 0.3, max_jam: 1.0, adaptivity: 0.7}
+  L3:
+    # Learned jammer (small MLP; pilot uses random init — full self-play is WP-A)
+    jammer: {level: L3, base_jam: 0.3, hidden: 64, device: cuda}
+    # NOTE: R4 risk — L3 may not converge in pilot budget. Fallback: ReactiveJammer(tau=1).
+
+# Composer (Concerto v1 / v2 only)
+composer:
+  v1:
+    n_classical_per_rl: 3   # CCCR cycle → 25% RL slots
+  v2:
+    theta1_jsr_db: 10.0
+    theta2_trace: 0.6
+    epsilon_margin: 0.2
+    k_commitment: 5
+
+# Pilot verdict thresholds (per plan §B7)
+criteria:
+  c1:
+    l0_floor: 0.9
+    l3_collapse: 0.6
+  c2:
+    classical_gap: 0.10
+    mappo_gap: 0.05
+    p_thresh: 0.05
+  c3:
+    min_dwell_frac: 0.05
+  c4:
+    wallclock_ratio: 0.7
