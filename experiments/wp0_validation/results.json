@@ -1,0 +1,149 @@
+{
+  "elapsed_sec": 92.92081499099731,
+  "results": [
+    {
+      "cell": "n1_l0",
+      "n_targets": 1,
+      "jammer": "L0",
+      "n_seeds": 5,
+      "summary": {
+        "kill_rate_mean": 1.0,
+        "kill_rate_std": 0.0,
+        "ttk_first_mean": 20.0,
+        "ttk_first_std": 0.0,
+        "survived_mean": 1.0,
+        "survived_std": 0.0,
+        "track_loss_rate_mean": 0.0,
+        "track_loss_rate_std": 0.0,
+        "E_progress_end_mean": 0.0,
+        "E_progress_end_std": 0.0,
+        "exposure_end_mean": 0.2500000298023224,
+        "exposure_end_std": 0.0,
+        "trace_P_over_pcrlb_mean": 1.7684909017462478,
+        "trace_P_over_pcrlb_std": 0.009059573037146355,
+        "n_steps_mean": 20.0,
+        "n_steps_std": 0.0
+      }
+    },
+    {
+      "cell": "n4_l0",
+      "n_targets": 4,
+      "jammer": "L0",
+      "n_seeds": 5,
+      "summary": {
+        "kill_rate_mean": 1.0,
+        "kill_rate_std": 0.0,
+        "ttk_first_mean": 20.0,
+        "ttk_first_std": 0.0,
+        "survived_mean": 1.0,
+        "survived_std": 0.0,
+        "track_loss_rate_mean": 0.0,
+        "track_loss_rate_std": 0.0,
+        "E_progress_end_mean": 0.0,
+        "E_progress_end_std": 0.0,
+        "exposure_end_mean": 0.9999993443489075,
+        "exposure_end_std": 0.0,
+        "trace_P_over_pcrlb_mean": 3.526599063148981,
+        "trace_P_over_pcrlb_std": 0.027996085281221952,
+        "n_steps_mean": 80.0,
+        "n_steps_std": 0.0
+      }
+    },
+    {
+      "cell": "n4_l1",
+      "n_targets": 4,
+      "jammer": "L1",
+      "n_seeds": 5,
+      "summary": {
+        "kill_rate_mean": 0.8875,
+        "kill_rate_std": 0.082915619758885,
+        "ttk_first_mean": 27.1,
+        "ttk_first_std": 1.9595917942265426,
+        "survived_mean": 0.85,
+        "survived_std": 0.1224744871391589,
+        "track_loss_rate_mean": 0.5934212966126434,
+        "track_loss_rate_std": 0.0892286234829634,
+        "E_progress_end_mean": 0.012500004768371653,
+        "E_progress_end_std": 0.024999997615815877,
+        "exposure_end_mean": 2.326879346370697,
+        "exposure_end_std": 0.3274296763339869,
+        "trace_P_over_pcrlb_mean": 48.41762951034178,
+        "trace_P_over_pcrlb_std": 1.1239046686755818,
+        "n_steps_mean": 276.15,
+        "n_steps_std": 99.96069227451359
+      }
+    },
+    {
+      "cell": "n4_l3",
+      "n_targets": 4,
+      "jammer": "L3",
+      "n_seeds": 5,
+      "summary": {
+        "kill_rate_mean": 0.3875,
+        "kill_rate_std": 0.40194837977033815,
+        "ttk_first_mean": 315.0,
+        "ttk_first_std": 236.78888276268376,
+        "survived_mean": 0.65,
+        "survived_std": 0.33911649915626346,
+        "track_loss_rate_mean": 0.8153154464440883,
+        "track_loss_rate_std": 0.2574268351995784,
+        "E_progress_end_mean": 3.686288006836175e-20,
+        "E_progress_end_std": 7.37257601367235e-20,
+        "exposure_end_mean": 2.5706302762031554,
+        "exposure_end_std": 0.43639132715221474,
+        "trace_P_over_pcrlb_mean": 55.92762031912763,
+        "trace_P_over_pcrlb_std": 7.671717987033832,
+        "n_steps_mean": 377.55,
+        "n_steps_std": 158.8712056982007
+      }
+    },
+    {
+      "cell": "n8_l0",
+      "n_targets": 8,
+      "jammer": "L0",
+      "n_seeds": 5,
+      "summary": {
+        "kill_rate_mean": 0.96875,
+        "kill_rate_std": 0.04841229182759271,
+        "ttk_first_mean": 20.0,
+        "ttk_first_std": 0.0,
+        "survived_mean": 0.9,
+        "survived_std": 0.1224744871391589,
+        "track_loss_rate_mean": 0.0,
+        "track_loss_rate_std": 0.0,
+        "E_progress_end_mean": 0.016250000149011613,
+        "E_progress_end_std": 0.024238399302451023,
+        "exposure_end_mean": 1.944377887248993,
+        "exposure_end_std": 0.08966987423442395,
+        "trace_P_over_pcrlb_mean": 4.007945627787203,
+        "trace_P_over_pcrlb_std": 0.05776932079497361,
+        "n_steps_mean": 155.55,
+        "n_steps_std": 7.173562573784381
+      }
+    },
+    {
+      "cell": "n8_l3",
+      "n_targets": 8,
+      "jammer": "L3",
+      "n_seeds": 5,
+      "summary": {
+        "kill_rate_mean": 0.225,
+        "kill_rate_std": 0.18264548995253074,
+        "ttk_first_mean": 267.1,
+        "ttk_first_std": 187.5071731961207,
+        "survived_mean": 0.55,
+        "survived_std": 0.33166247903554,
+        "track_loss_rate_mean": 0.9275399194616455,
+        "track_loss_rate_std": 0.07490666246634962,
+        "E_progress_end_mean": 0.002500000037429605,
+        "E_progress_end_std": 0.005000000074417455,
+        "exposure_end_mean": 2.778131067752838,
+        "exposure_end_std": 0.16233226280333277,
+        "trace_P_over_pcrlb_mean": 56.35346617947592,
+        "trace_P_over_pcrlb_std": 2.52392079233405,
+        "n_steps_mean": 452.95,
+        "n_steps_std": 105.88961233284405
+      }
+    }
+  ]
+}
