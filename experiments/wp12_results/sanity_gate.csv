@@ -1,0 +1,17 @@
+cell,method,kill_count_mean,kill_count_std,kill_rate_mean,survival_rate_mean
+n1_L0,ippo,1.000,0.000,1.000,1.000
+n1_L0,mappo,1.000,0.000,1.000,1.000
+n1_L0,static_classical,1.000,0.000,1.000,1.000
+n1_L0,strong_classical,1.000,0.000,1.000,1.000
+n4_L0,ippo,4.000,0.000,1.000,0.958
+n4_L0,mappo,4.000,0.000,1.000,1.000
+n4_L0,static_classical,4.000,0.000,1.000,0.833
+n4_L0,strong_classical,4.000,0.000,1.000,0.833
+n4_L3-trained,ippo,3.958,0.072,0.958,0.833
+n4_L3-trained,mappo,3.542,0.072,0.667,0.583
+n4_L3-trained,static_classical,3.000,0.000,0.250,0.375
+n4_L3-trained,strong_classical,3.583,0.072,0.583,0.375
+n8_L0,ippo,4.750,0.125,0.000,0.625
+n8_L0,mappo,5.583,0.402,0.000,0.542
+n8_L0,static_classical,7.625,0.250,0.750,0.542
+n8_L0,strong_classical,8.000,0.000,1.000,0.833

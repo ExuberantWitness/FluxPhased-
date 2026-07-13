@@ -62,13 +62,24 @@ class TaesCommanderActorCritic(nn.Module):
             nn.Linear(hidden, hidden), nn.Tanh(),
             nn.Linear(hidden, 1),
         )
+        # Local critic (decentralized, obs-only) — for noise-robust α_eff blending
+        # Used by IPPO ablation as the sole critic; used by MAPPO α_eff as A_agent source
+        self.local_critic_trunk = nn.Sequential(
+            nn.Linear(obs_dim, hidden), nn.Tanh(),
+            nn.Linear(hidden, hidden), nn.Tanh(),
+            nn.Linear(hidden, 1),
+        )
 
-    def forward(self, obs: torch.Tensor, privileged: torch.Tensor = None):
+    def forward(self, obs: torch.Tensor, privileged: torch.Tensor = None,
+                target_alive_mask: torch.Tensor = None):
         """Returns action dict, log_prob, value.
 
         Args:
             obs: [B, obs_dim]
             privileged: [B, privileged_dim] or None (use zeros)
+            target_alive_mask: [B, N_max] bool — if set, dead slots get -inf logits
+                in beam_target / laser_target heads (prevents sampling padded targets
+                in mixed-N training).
 
         Returns:
             action: dict of [B] tensors
@@ -83,6 +94,12 @@ class TaesCommanderActorCritic(nn.Module):
         beam_logits = self.beam_target_head(h)             # [B, N_max]
         laser_logits = self.laser_target_head(h)           # [B, N_max]
         emission_logit = self.emission_head(h).squeeze(-1)  # [B]
+
+        # Mask dead target slots in mixed-N settings
+        if target_alive_mask is not None:
+            mask = ~target_alive_mask  # True where dead
+            beam_logits = beam_logits.masked_fill(mask, -1e9)
+            laser_logits = laser_logits.masked_fill(mask, -1e9)
 
         task_dist = torch.distributions.Categorical(logits=task_logits)
         beam_dist = torch.distributions.Categorical(logits=beam_logits)
@@ -105,6 +122,7 @@ class TaesCommanderActorCritic(nn.Module):
         if privileged is None:
             privileged = torch.zeros(B, self.privileged_dim, device=obs.device)
         value = self.critic_trunk(torch.cat([obs, privileged], dim=-1)).squeeze(-1)
+        value_local = self.local_critic_trunk(obs).squeeze(-1)
 
         action = {
             "task_alloc_idx": task_action,        # [B] long, 0..3
@@ -112,13 +130,14 @@ class TaesCommanderActorCritic(nn.Module):
             "laser_target_idx": laser_action,      # [B] long
             "emission_on": emission_action,        # [B] float 0/1
         }
-        return action, log_prob, value
+        return action, log_prob, value, value_local
 
     def evaluate_actions(
         self,
         obs: torch.Tensor,
         action: Dict[str, torch.Tensor],
         privileged: torch.Tensor = None,
+        target_alive_mask: torch.Tensor = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """For PPO update: return (log_prob, value) for given (obs, action)."""
         B = obs.shape[0]
@@ -128,6 +147,12 @@ class TaesCommanderActorCritic(nn.Module):
         beam_logits = self.beam_target_head(h)
         laser_logits = self.laser_target_head(h)
         emission_logit = self.emission_head(h).squeeze(-1)
+
+        # Mask dead target slots (mixed-N)
+        if target_alive_mask is not None:
+            mask = ~target_alive_mask
+            beam_logits = beam_logits.masked_fill(mask, -1e9)
+            laser_logits = laser_logits.masked_fill(mask, -1e9)
 
         task_dist = torch.distributions.Categorical(logits=task_logits)
         beam_dist = torch.distributions.Categorical(logits=beam_logits)
@@ -144,6 +169,7 @@ class TaesCommanderActorCritic(nn.Module):
         if privileged is None:
             privileged = torch.zeros(B, self.privileged_dim, device=obs.device)
         value = self.critic_trunk(torch.cat([obs, privileged], dim=-1)).squeeze(-1)
+        value_local = self.local_critic_trunk(obs).squeeze(-1)
 
         entropy = (
             task_dist.entropy()
@@ -151,12 +177,13 @@ class TaesCommanderActorCritic(nn.Module):
             + laser_dist.entropy()
             + emission_dist.entropy()
         )
-        return log_prob, value, entropy
+        return log_prob, value, entropy, value_local
 
     def get_action_for_env(
         self,
         obs: torch.Tensor,
         deterministic: bool = False,
+        target_alive_mask: torch.Tensor = None,
     ) -> Dict[str, torch.Tensor]:
         """Convert internal action representation to env's expected dict.
 
@@ -168,6 +195,12 @@ class TaesCommanderActorCritic(nn.Module):
         beam_logits = self.beam_target_head(h)
         laser_logits = self.laser_target_head(h)
         emission_logit = self.emission_head(h).squeeze(-1)
+
+        # Mask dead target slots (mixed-N)
+        if target_alive_mask is not None:
+            mask = ~target_alive_mask
+            beam_logits = beam_logits.masked_fill(mask, -1e9)
+            laser_logits = laser_logits.masked_fill(mask, -1e9)
 
         if deterministic:
             task_alloc = F.softmax(task_logits, dim=-1)
@@ -216,7 +249,8 @@ def build_privileged(env, jam_level: torch.Tensor) -> torch.Tensor:
     priv[:, 3] = env.step_idx.float() / float(env.episode_steps)
     trace_P = env.tracker_P[..., 0, 0] + env.tracker_P[..., 2, 2]
     alive_f = env.target_alive_mask.float()
-    priv[:, 4] = (trace_P * alive_f).sum(dim=1) / alive_f.sum(dim=1).clamp(min=1.0)
+    mean_trace_P = (trace_P * alive_f).sum(dim=1) / alive_f.sum(dim=1).clamp(min=1.0)
+    priv[:, 4] = mean_trace_P / max(env.tau_track_nominal, 1e-3)
     priv[:, 5] = (env.target_E * alive_f).sum(dim=1) / alive_f.sum(dim=1).clamp(min=1.0) / max(env.e_kill, 1e-6)
     priv[:, 6] = alive_f.sum(dim=1) / float(env.N_max)
     return priv

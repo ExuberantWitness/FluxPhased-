@@ -84,7 +84,7 @@ def eval_method(method_fn, jammer_level: str, n_envs: int, n_targets: int,
         if done.all():
             break
 
-    n_actual = float(env.N)
+    n_actual = float(env.target_n_actual.float().mean())
     return {
         "kill_count": float(ep_kills.mean()),
         "kill_rate": float((ep_kills >= n_actual).float().mean()),
@@ -120,7 +120,8 @@ def make_rl(ac: TaesCommanderActorCritic, deterministic: bool = True):
     def fn(env):
         obs_dict = env.get_obs()
         obs = obs_dict["obs"]
-        action = ac.get_action_for_env(obs, deterministic=deterministic)
+        action = ac.get_action_for_env(obs, deterministic=deterministic,
+                                        target_alive_mask=env.target_alive_mask)
         return action
     return fn
 
@@ -133,18 +134,47 @@ def train_rl_curriculum(save_dir: str, log_prefix: str = "taes_rl",
                          n_iters_l0: int = 100, n_iters_l1: int = 200,
                          n_iters_l3: int = 200, horizon: int = 600,
                          n_envs: int = 16, n_targets: int = 4,
-                         seed: int = 42, device: str = "cuda"):
-    """Curriculum: L0 → L1 → L3."""
+                         seed: int = 42, device: str = "cuda",
+                         use_mixed_n: bool = True,
+                         l1_tau_mix: bool = True,
+                         l3_jammer_path: Optional[str] = None,
+                         log_std_floor: float = -6.0,
+                         critic_mode: str = "ctde",
+                         alpha_eff_alpha_max: float = 0.5,
+                         alpha_eff_beta: float = 2.0):
+    """Curriculum: L0 → (L1-τ-mixed if l1_tau_mix) → L3 (if l3_jammer_path).
+
+    use_mixed_n: if True, env uses per-env random N ∈ {1,2,4,8} each reset.
+                 If False, env uses fixed n_targets (legacy behavior).
+    l1_tau_mix:  if True, L1 phase samples τ ∈ {16,8,4,2,1} per rollout iter.
+                 If False, uses L1 with default τ=8.
+    l3_jammer_path: path to trained LearnedJammer checkpoint from Step 2a.
+                 If None, L3 phase is skipped.
+    log_std_floor: applied to jammer trainer (Step 2); for commander AC
+                   (discrete heads) this is documented as N/A.
+    critic_mode: "ctde" for MAPPO (CTDE central + α_eff blend); "ippo" for IPPO.
+    """
     os.makedirs(save_dir, exist_ok=True)
     torch.manual_seed(seed)
 
+    # Mixed-N sampler: random N ∈ {1,2,4,8} per env per reset
+    if use_mixed_n:
+        N_CHOICES = torch.tensor([1, 2, 4, 8], device=device)
+        n_targets_sampler = lambda E: N_CHOICES[torch.randint(0, 4, (E,), device=device)]
+    else:
+        n_targets_sampler = None
+
     env = TAESVecEnv(n_envs=n_envs, n_targets=n_targets, device=device,
-                    seed=seed, episode_steps=horizon)
+                    seed=seed, episode_steps=horizon,
+                    n_targets_sampler=n_targets_sampler)
     ac = TaesCommanderActorCritic(obs_dim=env.obs_dim, n_targets_max=env.N_max,
                                    privileged_dim=10).to(device)
     trainer = TaesPPOTrainer(env, ac, horizon=horizon, n_epochs=4,
                               minibatch_size=128, lr_actor=3e-4, lr_critic=1e-3,
-                              device=device)
+                              device=device,
+                              critic_mode=critic_mode,
+                              alpha_eff_alpha_max=alpha_eff_alpha_max,
+                              alpha_eff_beta=alpha_eff_beta)
 
     csv_path = os.path.join(save_dir, f"{log_prefix}_train.csv")
     with open(csv_path, "w", newline="") as f:
@@ -152,18 +182,39 @@ def train_rl_curriculum(save_dir: str, log_prefix: str = "taes_rl",
         w.writerow(["phase", "iter", "ep_rew", "n_kills_total", "trackloss",
                     "exposure", "homejam", "value_loss", "entropy", "approx_kl"])
 
-    for phase, (level, n_iters) in enumerate(
-        [("L0", n_iters_l0), ("L1", n_iters_l1), ("L3", n_iters_l3)]
-    ):
+    phases = [("L0", n_iters_l0)]
+    if n_iters_l1 > 0:
+        phases.append(("L1-mix" if l1_tau_mix else "L1", n_iters_l1))
+    if n_iters_l3 > 0:
+        if l3_jammer_path is None:
+            print(f"WARN: n_iters_l3={n_iters_l3} but no l3_jammer_path; skipping L3 phase.")
+        else:
+            phases.append(("L3-trained", n_iters_l3))
+
+    tau_choices = [16, 8, 4, 2, 1]
+
+    for phase, (level, n_iters) in enumerate(phases):
         print(f"\n=== Phase {phase}: curriculum jammer={level} for {n_iters} iters ===",
               flush=True)
-        jammer = make_jammer(level, device=device)
-        jammer.reset(env.E, 1, env.device)
-        # Reset env at phase start to break any state leakage
-        obs_dict = env.reset()
-        trainer._last_obs = obs_dict["obs"]
 
         for it in range(n_iters):
+            # Determine jammer for this iter
+            if level == "L0":
+                jammer = make_jammer("L0", device=device)
+            elif level in ("L1", "L1-mix"):
+                if level == "L1-mix":
+                    tau = tau_choices[it % len(tau_choices)]  # cycle through τ
+                else:
+                    tau = 8
+                jammer = make_jammer("L1", tau=tau, device=device)
+            elif level == "L3-trained":
+                jammer = make_jammer("L3", device=device, policy_path=l3_jammer_path)
+            jammer.reset(env.E, 1, env.device)
+
+            # Fresh reset each iter (mixed-N re-samples N here)
+            obs_dict = env.reset()
+            trainer._last_obs = obs_dict["obs"]
+
             rm = trainer.collect_rollout(jammer=jammer)
             um = trainer.update()
             with open(csv_path, "a", newline="") as f:
@@ -254,7 +305,9 @@ class JammerPPOTrainer:
     def __init__(self, jammer_module, lr=1e-3, gamma=0.99,
                  gae_lambda=0.95, clip=0.2, entropy_coef=0.01,
                  value_coef=0.5, max_grad_norm=0.5, n_epochs=4,
-                 minibatch_size=128, device="cuda"):
+                 minibatch_size=128, device="cuda",
+                 log_std_floor: float = -6.0,
+                 log_std_ceiling: float = -1.0):
         from env.gpu.qos_rrm.adversary import _JammerPolicy
         self.jammer = jammer_module  # already-instantiated LearnedJammer
         self.policy = jammer_module.policy  # _JammerPolicy
@@ -281,6 +334,8 @@ class JammerPPOTrainer:
         self.n_epochs = n_epochs
         self.mb = minibatch_size
         self.device = torch.device(device)
+        self.log_std_floor = float(log_std_floor)
+        self.log_std_ceiling = float(log_std_ceiling)
 
     @torch.no_grad()
     def collect_rollout(self, env, commander_fn, horizon):
@@ -423,6 +478,8 @@ class JammerPPOTrainer:
                          list(self.value_head.parameters()) + [self.log_std]
                 torch.nn.utils.clip_grad_norm_(params, self.max_grad_norm)
                 self.opt.step()
+                with torch.no_grad():
+                    self.log_std.data.clamp_(self.log_std_floor, self.log_std_ceiling)
 
                 metrics["policy_loss"] += policy_loss.item()
                 metrics["value_loss"] += value_loss.item()
@@ -603,6 +660,13 @@ def main():
     parser.add_argument("--br-seeds", nargs="+", type=int, default=[42, 43, 44])
     parser.add_argument("--ckpt", default=None,
                         help="if set, skip training and load this checkpoint for eval")
+    parser.add_argument("--critic-mode", choices=["ctde", "ippo"], default="ctde",
+                        help="ctde=MAPPO (central+α_eff blend); ippo=IPPO (local only)")
+    parser.add_argument("--l3-jammer-path", default=None,
+                        help="path to trained L3 jammer ckpt; if set, enables L3 phase")
+    parser.add_argument("--no-mixed-n", action="store_true",
+                        help="disable mixed-N curriculum (use fixed n_targets)")
+    parser.add_argument("--log-prefix", default="taes_rl")
     args = parser.parse_args()
 
     os.makedirs(args.save_dir, exist_ok=True)
@@ -619,11 +683,15 @@ def main():
     elif args.phase in ("train", "all"):
         ac = train_rl_curriculum(
             save_dir=args.save_dir,
-            log_prefix="taes_rl",
+            log_prefix=args.log_prefix,
             n_iters_l0=args.n_iters_l0, n_iters_l1=args.n_iters_l1,
             n_iters_l3=args.n_iters_l3,
             horizon=args.horizon, n_envs=args.n_envs, n_targets=4,
             seed=42, device=device,
+            use_mixed_n=not args.no_mixed_n,
+            l1_tau_mix=True,
+            l3_jammer_path=args.l3_jammer_path,
+            critic_mode=args.critic_mode,
         )
     else:
         # Try default checkpoint

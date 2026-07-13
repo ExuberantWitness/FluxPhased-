@@ -45,28 +45,36 @@ class _RolloutBuffer:
         self.device = device
         self.obs = torch.zeros(horizon, n_envs, obs_dim, device=device)
         self.priv = torch.zeros(horizon, n_envs, priv_dim, device=device)
+        self.alive_mask = torch.zeros(horizon, n_envs, n_targets_max,
+                                       dtype=torch.bool, device=device)
         self.task_idx = torch.zeros(horizon, n_envs, dtype=torch.long, device=device)
         self.beam_idx = torch.zeros(horizon, n_envs, dtype=torch.long, device=device)
         self.laser_idx = torch.zeros(horizon, n_envs, dtype=torch.long, device=device)
         self.emission = torch.zeros(horizon, n_envs, device=device)
         self.log_prob = torch.zeros(horizon, n_envs, device=device)
         self.value = torch.zeros(horizon, n_envs, device=device)
+        self.value_local = torch.zeros(horizon, n_envs, device=device)
         self.reward = torch.zeros(horizon, n_envs, device=device)
         self.done = torch.zeros(horizon, n_envs, device=device)
         self.advantage = torch.zeros(horizon, n_envs, device=device)
+        self.advantage_local = torch.zeros(horizon, n_envs, device=device)
         self.ret = torch.zeros(horizon, n_envs, device=device)
+        self.ret_local = torch.zeros(horizon, n_envs, device=device)
         self.t = 0
 
-    def add(self, obs, priv, action, log_prob, value, reward, done):
+    def add(self, obs, priv, action, log_prob, value, value_local,
+            reward, done, alive_mask):
         t = self.t
         self.obs[t] = obs
         self.priv[t] = priv
+        self.alive_mask[t] = alive_mask
         self.task_idx[t] = action["task_alloc_idx"]
         self.beam_idx[t] = action["beam_target_idx"]
         self.laser_idx[t] = action["laser_target_idx"]
         self.emission[t] = action["emission_on"]
         self.log_prob[t] = log_prob
         self.value[t] = value
+        self.value_local[t] = value_local
         self.reward[t] = reward
         self.done[t] = done
         self.t = (self.t + 1) % self.horizon
@@ -96,6 +104,9 @@ class TaesPPOTrainer:
         target_kl: float = 0.03,
         device: str = "cuda",
         log_std_floor: float = -6.0,
+        critic_mode: str = "ctde",
+        alpha_eff_alpha_max: float = 0.5,
+        alpha_eff_beta: float = 2.0,
     ):
         self.env = env
         self.ac = ac.to(device)
@@ -108,6 +119,9 @@ class TaesPPOTrainer:
         self.n_epochs = int(n_epochs)
         self.mb_size = int(minibatch_size)
         self.target_kl = float(target_kl)
+        self.critic_mode = str(critic_mode)
+        self.alpha_max = float(alpha_eff_alpha_max)
+        self.beta = float(alpha_eff_beta)
         self.device = torch.device(device)
         self.log_std_floor = float(log_std_floor)
 
@@ -127,7 +141,8 @@ class TaesPPOTrainer:
                    ["task_alloc_head", "beam_target_head",
                     "laser_target_head", "emission_head"])
         ]
-        critic_params = list(ac.critic_trunk.parameters())
+        critic_params = list(ac.critic_trunk.parameters()) + \
+                        list(ac.local_critic_trunk.parameters())
         self.opt_actor = torch.optim.Adam(actor_params, lr=lr_actor)
         self.opt_critic = torch.optim.Adam(critic_params, lr=lr_critic)
 
@@ -168,10 +183,12 @@ class TaesPPOTrainer:
         for t in range(self.horizon):
             obs = self._last_obs
             priv = build_privileged(env, env._last_jam if hasattr(env, "_last_jam") and env._last_jam is not None else torch.zeros(env.E, device=dev))
-            action, log_prob, value = ac(obs, priv)
+            alive_mask = env.target_alive_mask
+            action, log_prob, value, value_local = ac(obs, priv, target_alive_mask=alive_mask)
             # action: dict with internal indices (task_alloc_idx, beam, laser, emission)
             # env needs one-hot task_alloc + indices
-            env_action = ac.get_action_for_env(obs, deterministic=False)
+            env_action = ac.get_action_for_env(obs, deterministic=False,
+                                                target_alive_mask=alive_mask)
             # Override with sampled indices to match log_prob
             env_action["task_alloc"] = F.one_hot(
                 action["task_alloc_idx"], ac.n_task_alloc).float()
@@ -180,7 +197,8 @@ class TaesPPOTrainer:
             env_action["emission_on"] = action["emission_on"]
 
             obs_dict_new, reward, done, info = env.step(env_action, jammer=jammer)
-            self.buf.add(obs, priv, action, log_prob, value, reward, done.float())
+            self.buf.add(obs, priv, action, log_prob, value, value_local,
+                         reward, done.float(), alive_mask)
 
             ep_returns += reward
             ep_lens += 1
@@ -218,8 +236,9 @@ class TaesPPOTrainer:
                 env._last_jam if hasattr(env, "_last_jam") and env._last_jam is not None else torch.zeros(env.E, device=dev))
             last_value = ac.critic_trunk(
                 torch.cat([self._last_obs, last_priv], dim=-1)).squeeze(-1)
+            last_value_local = ac.local_critic_trunk(self._last_obs).squeeze(-1)
 
-        self._compute_gae(last_value)
+        self._compute_gae(last_value, last_value_local)
 
         return {
             "ep_rew_mean": float(ep_returns.mean()),
@@ -232,20 +251,49 @@ class TaesPPOTrainer:
             "n_resets": n_resets,
         }
 
-    def _compute_gae(self, last_value: torch.Tensor):
-        """GAE-λ advantage + discounted returns."""
+    def _compute_gae(self, last_value: torch.Tensor, last_value_local: torch.Tensor):
+        """GAE-λ for central critic (A_team) and local critic (A_agent),
+        then blend via noise-robust α_eff:
+            α_eff[t] = α_max · exp(-β · trace_P_norm[t])
+            adv[t]   = (1 - α_eff) · A_agent[t] + α_eff · A_team[t]
+        priv[:,4] is trace_P / tau_track_nominal (verified in patch ④).
+
+        critic_mode="ctde": blend as above (MAPPO per spec §3.2).
+        critic_mode="ippo": use only A_agent (no central critic), no blend.
+        """
         gamma, lam = self.gamma, self.gae_lambda
-        E = self.buf.E
         H = self.horizon
-        adv = torch.zeros(E, device=self.device)
+        E = self.buf.E
+        adv_team = torch.zeros(E, device=self.device)
+        adv_agent = torch.zeros(E, device=self.device)
         for t in reversed(range(H)):
             non_term = 1.0 - self.buf.done[t]
             next_value = last_value if t == H - 1 else self.buf.value[t + 1]
-            delta = self.buf.reward[t] + gamma * next_value * non_term - self.buf.value[t]
-            adv = delta + gamma * lam * non_term * adv
-            self.buf.advantage[t] = adv
-            # Returns for value target
-            self.buf.ret[t] = adv + self.buf.value[t]
+            next_value_local = (last_value_local if t == H - 1
+                                else self.buf.value_local[t + 1])
+            delta_team = (self.buf.reward[t]
+                          + gamma * next_value * non_term
+                          - self.buf.value[t])
+            adv_team = delta_team + gamma * lam * non_term * adv_team
+            self.buf.advantage[t] = adv_team
+            self.buf.ret[t] = adv_team + self.buf.value[t]
+
+            delta_agent = (self.buf.reward[t]
+                           + gamma * next_value_local * non_term
+                           - self.buf.value_local[t])
+            adv_agent = delta_agent + gamma * lam * non_term * adv_agent
+            self.buf.advantage_local[t] = adv_agent
+            self.buf.ret_local[t] = adv_agent + self.buf.value_local[t]
+
+        # Blend via α_eff (skip for IPPO mode)
+        if self.critic_mode == "ippo":
+            self.buf.advantage = self.buf.advantage_local.clone()
+        else:
+            trace_P_norm = self.buf.priv[..., 4].clamp(0.0, 50.0)  # [H, E]
+            alpha_eff = self.alpha_max * torch.exp(-self.beta * trace_P_norm)
+            self.buf.advantage = ((1.0 - alpha_eff) * self.buf.advantage_local
+                                  + alpha_eff * self.buf.advantage)
+
         # Normalize advantages (helps PPO stability)
         adv_flat = self.buf.advantage.reshape(-1)
         adv_mean = adv_flat.mean()
@@ -268,13 +316,16 @@ class TaesPPOTrainer:
         # Flatten
         obs_flat = self.buf.obs.reshape(N, -1)
         priv_flat = self.buf.priv.reshape(N, -1)
+        alive_mask_flat = self.buf.alive_mask.reshape(N, -1)
         task_flat = self.buf.task_idx.reshape(-1)
         beam_flat = self.buf.beam_idx.reshape(-1)
         laser_flat = self.buf.laser_idx.reshape(-1)
         emission_flat = self.buf.emission.reshape(-1)
         log_prob_old = self.buf.log_prob.reshape(-1)
         value_old = self.buf.value.reshape(-1)
+        value_old_local = self.buf.value_local.reshape(-1)
         ret_flat = self.buf.ret.reshape(-1)
+        ret_local_flat = self.buf.ret_local.reshape(-1)
         adv_flat = self.buf.advantage.reshape(-1)
 
         action_old = {
@@ -285,6 +336,7 @@ class TaesPPOTrainer:
         }
 
         metrics_acc = {"policy_loss": 0.0, "value_loss": 0.0,
+                       "value_loss_local": 0.0,
                        "entropy": 0.0, "approx_kl": 0.0, "clip_frac": 0.0}
         n_updates = 0
 
@@ -296,14 +348,17 @@ class TaesPPOTrainer:
                     continue
                 obs_b = obs_flat[b]
                 priv_b = priv_flat[b]
+                mask_b = alive_mask_flat[b]
                 act_b = {k: v[b] for k, v in action_old.items()}
                 lp_old_b = log_prob_old[b]
                 v_old_b = value_old[b]
+                v_old_local_b = value_old_local[b]
                 ret_b = ret_flat[b]
+                ret_local_b = ret_local_flat[b]
                 adv_b = adv_flat[b]
 
-                log_prob_b, value_b, entropy_b = self.ac.evaluate_actions(
-                    obs_b, act_b, privileged=priv_b)
+                log_prob_b, value_b, entropy_b, value_local_b = self.ac.evaluate_actions(
+                    obs_b, act_b, privileged=priv_b, target_alive_mask=mask_b)
 
                 # PPO clipped surrogate
                 ratio = torch.exp(log_prob_b - lp_old_b)
@@ -311,17 +366,28 @@ class TaesPPOTrainer:
                 surr2 = torch.clamp(ratio, 1 - self.clip, 1 + self.clip) * adv_b
                 policy_loss = -torch.min(surr1, surr2).mean()
 
-                # Value loss (clipped)
-                value_clipped = v_old_b + torch.clamp(
-                    value_b - v_old_b, -self.clip, self.clip)
-                v1 = (value_b - ret_b).pow(2)
-                v2 = (value_clipped - ret_b).pow(2)
-                value_loss = 0.5 * torch.max(v1, v2).mean()
+                # Central value loss (clipped) — only in ctde mode
+                if self.critic_mode == "ctde":
+                    value_clipped = v_old_b + torch.clamp(
+                        value_b - v_old_b, -self.clip, self.clip)
+                    v1 = (value_b - ret_b).pow(2)
+                    v2 = (value_clipped - ret_b).pow(2)
+                    value_loss = 0.5 * torch.max(v1, v2).mean()
+                else:
+                    value_loss = torch.tensor(0.0, device=device)
+
+                # Local value loss (always trained — IPPO uses only this)
+                value_local_clipped = v_old_local_b + torch.clamp(
+                    value_local_b - v_old_local_b, -self.clip, self.clip)
+                vl1 = (value_local_b - ret_local_b).pow(2)
+                vl2 = (value_local_clipped - ret_local_b).pow(2)
+                value_loss_local = 0.5 * torch.max(vl1, vl2).mean()
 
                 entropy = entropy_b.mean()
                 loss = (policy_loss
                         - self.entropy_coef * entropy
-                        + self.value_coef * value_loss)
+                        + self.value_coef * value_loss
+                        + self.value_coef * value_loss_local)
 
                 # Joint backward
                 self.opt_actor.zero_grad(set_to_none=True)
@@ -330,6 +396,7 @@ class TaesPPOTrainer:
                 # Gradient clip on combined params
                 params = (list(self.ac.actor_trunk.parameters()) +
                           list(self.ac.critic_trunk.parameters()) +
+                          list(self.ac.local_critic_trunk.parameters()) +
                           [p for n, p in self.ac.named_parameters()
                            if any(n.startswith(h) for h in
                                   ["task_alloc_head", "beam_target_head",
@@ -344,6 +411,7 @@ class TaesPPOTrainer:
 
                 metrics_acc["policy_loss"] += policy_loss.item()
                 metrics_acc["value_loss"] += value_loss.item()
+                metrics_acc["value_loss_local"] += value_loss_local.item()
                 metrics_acc["entropy"] += entropy.item()
                 metrics_acc["approx_kl"] += approx_kl
                 metrics_acc["clip_frac"] += clip_frac
@@ -352,8 +420,9 @@ class TaesPPOTrainer:
             # Early stop on large KL
             with torch.no_grad():
                 # Recompute KL over full buffer (cheap)
-                lp_full, _, _ = self.ac.evaluate_actions(
-                    obs_flat, action_old, privileged=priv_flat)
+                lp_full, _, _, _ = self.ac.evaluate_actions(
+                    obs_flat, action_old, privileged=priv_flat,
+                    target_alive_mask=alive_mask_flat)
                 approx_kl_full = (log_prob_old - lp_full).mean().item()
                 if approx_kl_full > 1.5 * self.target_kl:
                     break

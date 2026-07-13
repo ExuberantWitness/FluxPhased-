@@ -44,7 +44,7 @@ from __future__ import annotations
 import math
 import torch
 import numpy as np
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Callable
 
 
 __all__ = ["TAESVecEnv"]
@@ -119,6 +119,9 @@ class TAESVecEnv:
         p0_vel: float = 500.0,             # initial velocity uncertainty (m^2/s^2)
         # Logging
         log_metrics: bool = True,
+        # Mixed-N training: optional callable that returns [E] long tensor of per-env actual target counts.
+        # If None, every env uses self.N. If set, self.N becomes the max default; target_alive_mask is per-env.
+        n_targets_sampler: Optional[Callable[[int], torch.Tensor]] = None,
     ):
         self.E = int(n_envs)
         self.N = int(n_targets)
@@ -126,6 +129,7 @@ class TAESVecEnv:
         self.device = torch.device(device)
         self.dt = float(dt)
         self.episode_steps = int(episode_steps)
+        self.n_targets_sampler = n_targets_sampler
 
         # Bookkeeping constants
         self.map_size_m = float(map_size_m)
@@ -329,10 +333,14 @@ class TAESVecEnv:
         vy = sin_p * rx + cos_p * ry
         self.target_vel = torch.stack([vx * speed, vy * speed], dim=-1)
 
-        # Target alive mask: first n_actual=N targets real, rest padding
-        self.target_alive_mask = torch.zeros(E, N_max, dtype=torch.bool, device=dev)
-        self.target_alive_mask[:, :self.N] = True
-        self.target_n_actual = torch.full((E,), self.N, dtype=torch.long, device=dev)
+        # Target alive mask: support per-env mixed-N via sampler (default: all envs use self.N).
+        # Per-env n_actual ∈ {1,...,N_max}; alive = first n_actual[e] slots.
+        if self.n_targets_sampler is not None:
+            self.target_n_actual = self.n_targets_sampler(E).to(dev).long().clamp(1, self.N_max)
+        else:
+            self.target_n_actual = torch.full((E,), self.N, dtype=torch.long, device=dev)
+        arange_N_max = torch.arange(N_max, device=dev).unsqueeze(0)  # [1, N_max]
+        self.target_alive_mask = arange_N_max < self.target_n_actual.unsqueeze(1)  # [E, N_max]
 
         self.target_E = torch.zeros(E, N_max, device=dev)
         self.target_killed = torch.zeros(E, N_max, dtype=torch.bool, device=dev)

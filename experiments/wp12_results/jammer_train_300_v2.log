@@ -1,0 +1,50 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 101.9 GB
+Training L3 jammer for 300 iters (first 300 vs frozen classical)
+  it=   0 jam_rew=-0.03 v_loss=4.040 H=0.422 kl=2.4115 log_std=-1.000
+  it=  10 jam_rew=+0.85 v_loss=2.758 H=0.334 kl=0.0018 log_std=-1.089
+  it=  20 jam_rew=+1.06 v_loss=4.004 H=0.270 kl=0.0036 log_std=-1.149
+  it=  30 jam_rew=+1.03 v_loss=3.959 H=0.234 kl=0.0012 log_std=-1.182
+  it=  40 jam_rew=+0.92 v_loss=3.244 H=0.186 kl=0.0028 log_std=-1.235
+  saved checkpoints/appint/jammer_L3_it50.pt
+  it=  50 jam_rew=+1.06 v_loss=3.883 H=0.209 kl=0.0018 log_std=-1.210
+  it=  60 jam_rew=+1.07 v_loss=3.521 H=0.162 kl=0.0021 log_std=-1.248
+  it=  70 jam_rew=+1.06 v_loss=3.983 H=0.193 kl=0.0017 log_std=-1.206
+  it=  80 jam_rew=+0.97 v_loss=3.560 H=0.239 kl=0.0007 log_std=-1.178
+  it=  90 jam_rew=+0.90 v_loss=4.075 H=0.301 kl=0.0005 log_std=-1.111
+  saved checkpoints/appint/jammer_L3_it100.pt
+  it= 100 jam_rew=+1.00 v_loss=2.781 H=0.389 kl=0.0013 log_std=-1.018
+  it= 110 jam_rew=+0.99 v_loss=3.698 H=0.418 kl=0.0003 log_std=-1.000
+  it= 120 jam_rew=+0.93 v_loss=3.176 H=0.417 kl=0.0016 log_std=-1.002
+  it= 130 jam_rew=+0.84 v_loss=2.548 H=0.393 kl=0.0010 log_std=-1.011
+  it= 140 jam_rew=+1.17 v_loss=4.686 H=0.358 kl=0.0012 log_std=-1.057
+  saved checkpoints/appint/jammer_L3_it150.pt
+  it= 150 jam_rew=+0.94 v_loss=2.031 H=0.377 kl=0.0021 log_std=-1.016
+  it= 160 jam_rew=+0.97 v_loss=3.536 H=0.375 kl=0.0022 log_std=-1.052
+  it= 170 jam_rew=+0.90 v_loss=2.826 H=0.360 kl=0.0002 log_std=-1.047
+  it= 180 jam_rew=+1.01 v_loss=3.532 H=0.396 kl=0.0013 log_std=-1.019
+  it= 190 jam_rew=+0.80 v_loss=2.498 H=0.395 kl=0.0009 log_std=-1.018
+  saved checkpoints/appint/jammer_L3_it200.pt
+  it= 200 jam_rew=+0.91 v_loss=3.176 H=0.410 kl=0.0030 log_std=-1.013
+  it= 210 jam_rew=+0.86 v_loss=2.794 H=0.383 kl=0.0000 log_std=-1.029
+  it= 220 jam_rew=+0.98 v_loss=3.189 H=0.417 kl=0.0024 log_std=-1.002
+  it= 230 jam_rew=+0.82 v_loss=3.271 H=0.377 kl=0.0038 log_std=-1.043
+  it= 240 jam_rew=+0.79 v_loss=2.446 H=0.368 kl=0.0014 log_std=-1.043
+  saved checkpoints/appint/jammer_L3_it250.pt
+  it= 250 jam_rew=+0.65 v_loss=2.496 H=0.326 kl=0.0020 log_std=-1.093
+  it= 260 jam_rew=+0.74 v_loss=4.029 H=0.373 kl=0.0022 log_std=-1.050
+  it= 270 jam_rew=-0.43 v_loss=2.921 H=0.379 kl=0.0004 log_std=-1.029
+  it= 280 jam_rew=-0.65 v_loss=4.564 H=0.398 kl=0.0002 log_std=-1.015
+  it= 290 jam_rew=-0.37 v_loss=4.563 H=0.382 kl=0.0018 log_std=-1.038
+  saved checkpoints/appint/jammer_L3_it300.pt
+Final jammer checkpoint: checkpoints/appint/jammer_L3_final.pt
+
+=== Jammer kill-drop eval (vs frozen classical) ===
+  kill_classical_vs_L0: 4.0
+  kill_classical_vs_L1_tau1: 3.625
+  kill_classical_vs_L3_trained: 3.5833333333333335
+  L3_kill_drop_vs_L0: 0.4166666666666665
+  L3_kill_drop_vs_L1_tau1: 0.04166666666666652
+  monotonicity_pass: False
+  gate_pass: False

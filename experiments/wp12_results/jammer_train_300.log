@@ -1,0 +1,54 @@
+Traceback (most recent call last):
+  File "/home/ubuntu/CODE/FluxPhased-/algo/_shared/pilot/taes/train_jammer.py", line 261, in <module>
+    main()
+  File "/home/ubuntu/CODE/FluxPhased-/algo/_shared/pilot/taes/train_jammer.py", line 255, in main
+    results = eval_jammer_kill_drop(final_ckpt, seeds=(42, 43, 44))
+  File "/home/ubuntu/CODE/FluxPhased-/algo/_shared/pilot/taes/train_jammer.py", line 165, in eval_jammer_kill_drop
+    m = eval_method(classical_fn, level="L0" if level == "L0" else "L1",  # jam level passed below
+  File "/home/ubuntu/miniconda3/envs/fluxphased/lib/python3.10/site-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+    return func(*args, **kwargs)
+TypeError: eval_method() got an unexpected keyword argument 'level'
+ERROR conda.cli.main_run:execute(148): `conda run python -u algo/_shared/pilot/taes/train_jammer.py --save-dir checkpoints/appint --n-iters 300 --horizon 600 --n-envs 16 --n-targets 4 --snapshot-every 50 --bootstrap-iters 300 --log-std-floor -6.0 --lr 1e-3 --seed 42 --device cuda --eval-after` failed. (See above for error)
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 101.9 GB
+Training L3 jammer for 300 iters (first 300 vs frozen classical)
+  it=   0 jam_rew=-0.03 v_loss=4.040 H=1.435 kl=0.0051 log_std=0.020
+  it=  10 jam_rew=+0.79 v_loss=2.805 H=1.462 kl=0.0005 log_std=0.045
+  it=  20 jam_rew=-0.28 v_loss=3.455 H=1.549 kl=0.0023 log_std=0.135
+  it=  30 jam_rew=-1.34 v_loss=5.738 H=1.576 kl=0.0023 log_std=0.152
+  it=  40 jam_rew=-1.42 v_loss=5.270 H=1.677 kl=0.0006 log_std=0.267
+  saved checkpoints/appint/jammer_L3_it50.pt
+  it=  50 jam_rew=-0.76 v_loss=4.466 H=1.794 kl=0.0008 log_std=0.383
+  it=  60 jam_rew=-1.59 v_loss=4.625 H=1.808 kl=0.0034 log_std=0.383
+  it=  70 jam_rew=-0.97 v_loss=4.730 H=1.855 kl=0.0004 log_std=0.445
+  it=  80 jam_rew=-0.45 v_loss=3.593 H=1.919 kl=0.0024 log_std=0.512
+  it=  90 jam_rew=-0.45 v_loss=3.921 H=2.018 kl=0.0003 log_std=0.602
+  saved checkpoints/appint/jammer_L3_it100.pt
+  it= 100 jam_rew=-0.49 v_loss=3.227 H=2.109 kl=0.0001 log_std=0.684
+  it= 110 jam_rew=-1.31 v_loss=6.684 H=2.197 kl=0.0014 log_std=0.776
+  it= 120 jam_rew=-3.02 v_loss=10.129 H=2.276 kl=0.0017 log_std=0.852
+  it= 130 jam_rew=-3.69 v_loss=12.852 H=2.301 kl=0.0004 log_std=0.881
+  it= 140 jam_rew=-2.03 v_loss=8.066 H=2.397 kl=0.0013 log_std=0.980
+  saved checkpoints/appint/jammer_L3_it150.pt
+  it= 150 jam_rew=-1.44 v_loss=8.183 H=2.456 kl=0.0013 log_std=1.035
+  it= 160 jam_rew=-0.91 v_loss=3.356 H=2.607 kl=0.0011 log_std=1.196
+  it= 170 jam_rew=-3.66 v_loss=12.051 H=2.816 kl=0.0021 log_std=1.392
+  it= 180 jam_rew=-0.55 v_loss=3.685 H=2.919 kl=0.0013 log_std=1.513
+  it= 190 jam_rew=-3.38 v_loss=11.318 H=2.870 kl=0.0004 log_std=1.462
+  saved checkpoints/appint/jammer_L3_it200.pt
+  it= 200 jam_rew=-3.47 v_loss=10.245 H=2.990 kl=0.0001 log_std=1.571
+  it= 210 jam_rew=-4.26 v_loss=15.122 H=3.005 kl=0.0004 log_std=1.594
+  it= 220 jam_rew=-3.53 v_loss=13.558 H=2.995 kl=0.0011 log_std=1.578
+  it= 230 jam_rew=-5.04 v_loss=18.010 H=3.061 kl=0.0009 log_std=1.640
+  it= 240 jam_rew=-5.99 v_loss=18.196 H=3.112 kl=0.0012 log_std=1.707
+  saved checkpoints/appint/jammer_L3_it250.pt
+  it= 250 jam_rew=-5.05 v_loss=16.502 H=3.154 kl=0.0016 log_std=1.726
+  it= 260 jam_rew=-6.75 v_loss=19.739 H=3.155 kl=0.0005 log_std=1.741
+  it= 270 jam_rew=-4.55 v_loss=17.802 H=3.193 kl=0.0008 log_std=1.781
+  it= 280 jam_rew=-5.05 v_loss=18.664 H=3.314 kl=0.0019 log_std=1.890
+  it= 290 jam_rew=-5.86 v_loss=19.881 H=3.330 kl=0.0014 log_std=1.921
+  saved checkpoints/appint/jammer_L3_it300.pt
+Final jammer checkpoint: checkpoints/appint/jammer_L3_final.pt
+
+=== Jammer kill-drop eval (vs frozen classical) ===

@@ -1,0 +1,37 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 101.9 GB
+
+=== Phase 0: curriculum jammer=L0 for 60 iters ===
+  [L0] it=   0 rew=+0.00 kill=37.0 trackloss=0.206 v_loss=3.079 H=3.224 kl=0.0112
+  [L0] it=  10 rew=+0.00 kill=35.0 trackloss=0.140 v_loss=2.231 H=3.058 kl=0.0105
+  [L0] it=  20 rew=+0.00 kill=37.0 trackloss=0.125 v_loss=2.597 H=2.912 kl=0.0137
+  [L0] it=  30 rew=+0.00 kill=52.0 trackloss=0.191 v_loss=2.408 H=2.948 kl=0.0093
+  [L0] it=  40 rew=+0.00 kill=50.0 trackloss=0.200 v_loss=1.936 H=3.040 kl=0.0135
+  [L0] it=  50 rew=+0.00 kill=58.0 trackloss=0.170 v_loss=3.019 H=2.749 kl=0.0085
+  saved /home/ubuntu/CODE/FluxPhased-/checkpoints/appint/mappo_phase0_L0.pt
+
+=== Phase 1: curriculum jammer=L1-mix for 100 iters ===
+  [L1-mix] it=   0 rew=+0.00 kill=34.0 trackloss=0.442 v_loss=10.897 H=3.258 kl=0.0157
+  [L1-mix] it=  10 rew=+0.00 kill=54.0 trackloss=0.219 v_loss=2.323 H=2.674 kl=0.0068
+  [L1-mix] it=  20 rew=+0.00 kill=45.0 trackloss=0.123 v_loss=1.478 H=2.218 kl=0.0037
+  [L1-mix] it=  30 rew=+0.00 kill=46.0 trackloss=0.230 v_loss=1.800 H=2.960 kl=0.0100
+  [L1-mix] it=  40 rew=+0.00 kill=50.0 trackloss=0.221 v_loss=2.063 H=2.820 kl=0.0073
+  [L1-mix] it=  50 rew=+0.00 kill=39.0 trackloss=0.179 v_loss=1.809 H=2.694 kl=0.0075
+  [L1-mix] it=  60 rew=+0.00 kill=62.0 trackloss=0.315 v_loss=3.468 H=3.114 kl=0.0086
+  [L1-mix] it=  70 rew=+15.04 kill=75.0 trackloss=0.179 v_loss=2.980 H=2.775 kl=0.0074
+  [L1-mix] it=  80 rew=+0.00 kill=42.0 trackloss=0.244 v_loss=1.761 H=3.162 kl=0.0097
+  [L1-mix] it=  90 rew=+0.00 kill=46.0 trackloss=0.179 v_loss=3.132 H=2.633 kl=0.0075
+  saved /home/ubuntu/CODE/FluxPhased-/checkpoints/appint/mappo_phase1_L1-mix.pt
+
+=== Phase 2: curriculum jammer=L3-trained for 80 iters ===
+  [L3-trained] it=   0 rew=+0.00 kill=30.0 trackloss=0.465 v_loss=2.316 H=3.564 kl=0.0166
+  [L3-trained] it=  10 rew=+0.00 kill=35.0 trackloss=0.295 v_loss=2.350 H=2.730 kl=0.0061
+  [L3-trained] it=  20 rew=+0.00 kill=40.0 trackloss=0.471 v_loss=3.134 H=3.527 kl=0.0164
+  [L3-trained] it=  30 rew=+0.00 kill=43.0 trackloss=0.436 v_loss=2.188 H=2.813 kl=0.0097
+  [L3-trained] it=  40 rew=+0.00 kill=40.0 trackloss=0.334 v_loss=1.074 H=2.654 kl=0.0114
+  [L3-trained] it=  50 rew=+0.00 kill=33.0 trackloss=0.397 v_loss=1.107 H=2.763 kl=0.0115
+  [L3-trained] it=  60 rew=+0.00 kill=31.0 trackloss=0.362 v_loss=2.259 H=3.064 kl=0.0146
+  [L3-trained] it=  70 rew=+0.00 kill=36.0 trackloss=0.270 v_loss=1.000 H=2.379 kl=0.0054
+  saved /home/ubuntu/CODE/FluxPhased-/checkpoints/appint/mappo_phase2_L3-trained.pt
+Saved final checkpoint: /home/ubuntu/CODE/FluxPhased-/checkpoints/appint/mappo_final.pt

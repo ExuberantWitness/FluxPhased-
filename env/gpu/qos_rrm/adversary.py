@@ -217,28 +217,46 @@ class LearnedJammer:
 # ---------------------------------------------------------------------------
 
 def make_jammer(level: str = "L0", **kwargs):
-    """Factory for the three difficulty levels.
+    """Factory for the difficulty levels.
 
     Args:
-        level: "L0" / "L1" / "L3" (case-insensitive).
+        level: "L0" / "L1" / "L1-tau{N}" / "L3" / "L3-trained" (case-insensitive).
+            L1-tau{N} selects ReactiveJammer with explicit τ ∈ {16,8,4,2,1}.
+            "L3-trained" is an alias for "L3" with a required policy_path kwarg.
         **kwargs: passed to the underlying jammer constructor.
     """
-    level = level.upper()
-    if level == "L0":
+    level_norm = level.upper()
+    # Parse L1-tau{N} variant
+    if level_norm.startswith("L1-TAU"):
+        try:
+            tau = int(level_norm.split("TAU")[1])
+        except (IndexError, ValueError):
+            tau = kwargs.get("tau", 8)
+        return ReactiveJammer(
+            tau=tau,
+            base_jam=kwargs.get("base_jam", 0.3),
+            max_jam=kwargs.get("max_jam", 1.0),
+            adaptivity=kwargs.get("adaptivity", 0.7),
+        )
+    if level_norm == "L0":
         return StaticJammer(jam_level=kwargs.get("jam_level", 0.3))
-    elif level == "L1":
+    elif level_norm == "L1":
         return ReactiveJammer(
             tau=kwargs.get("tau", 8),
             base_jam=kwargs.get("base_jam", 0.3),
             max_jam=kwargs.get("max_jam", 1.0),
             adaptivity=kwargs.get("adaptivity", 0.7),
         )
-    elif level == "L3":
+    elif level_norm in ("L3", "L3-TRAINED"):
+        policy_path = kwargs.get("policy_path", None)
+        # "L3-trained" without policy_path = error (don't silently random-init)
+        if level_norm == "L3-TRAINED" and policy_path is None:
+            raise ValueError("L3-trained requires policy_path kwarg (don't use random init).")
         return LearnedJammer(
             base_jam=kwargs.get("base_jam", 0.3),
             hidden=kwargs.get("hidden", 64),
             device=kwargs.get("device", "cuda"),
-            policy_path=kwargs.get("policy_path", None),
+            policy_path=policy_path,
         )
     else:
         raise ValueError(f"Unknown jammer level: {level}")

@@ -1,0 +1,50 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 101.9 GB
+League opponent pool: ['classical', 'mappo_final', 'ippo_final', 'mappo_phase0_L0', 'mappo_phase1_L1-mix', 'mappo_phase2_L3-trained', 'ippo_phase0_L0', 'ippo_phase1_L1-mix', 'ippo_phase2_L3-trained']
+Training L3 league jammer for 200 iters (9 opponents, rotation)
+  it=   0 opp=classical                      jam_rew=-0.48 H=0.422 kl=2.2756 log_std=-1.000
+  it=  10 opp=mappo_final                    jam_rew=+0.13 H=0.412 kl=0.0009 log_std=-1.011
+  it=  20 opp=ippo_final                     jam_rew=+0.25 H=0.401 kl=0.0008 log_std=-1.011
+  saved /home/ubuntu/CODE/FluxPhased-/checkpoints/appint/jammer_L3_league_it25.pt
+  it=  30 opp=mappo_phase0_L0                jam_rew=+0.28 H=0.418 kl=0.0004 log_std=-1.000
+  it=  40 opp=mappo_phase1_L1-mix            jam_rew=-0.46 H=0.396 kl=0.0016 log_std=-1.016
+  saved /home/ubuntu/CODE/FluxPhased-/checkpoints/appint/jammer_L3_league_it50.pt
+  it=  50 opp=mappo_phase2_L3-trained        jam_rew=-0.46 H=0.353 kl=0.0012 log_std=-1.057
+  it=  60 opp=ippo_phase0_L0                 jam_rew=-2.26 H=0.414 kl=0.0018 log_std=-1.009
+  it=  70 opp=ippo_phase1_L1-mix             jam_rew=-1.02 H=0.418 kl=0.0023 log_std=-1.000
+  saved /home/ubuntu/CODE/FluxPhased-/checkpoints/appint/jammer_L3_league_it75.pt
+  it=  80 opp=ippo_phase2_L3-trained         jam_rew=-1.33 H=0.415 kl=0.0021 log_std=-1.003
+  it=  90 opp=classical                      jam_rew=-0.66 H=0.406 kl=0.0007 log_std=-1.015
+  saved /home/ubuntu/CODE/FluxPhased-/checkpoints/appint/jammer_L3_league_it100.pt
+  it= 100 opp=mappo_final                    jam_rew=-1.27 H=0.406 kl=0.0015 log_std=-1.015
+  it= 110 opp=ippo_final                     jam_rew=-2.43 H=0.416 kl=0.0008 log_std=-1.001
+  it= 120 opp=mappo_phase0_L0                jam_rew=-1.44 H=0.406 kl=0.0027 log_std=-1.016
+  saved /home/ubuntu/CODE/FluxPhased-/checkpoints/appint/jammer_L3_league_it125.pt
+  it= 130 opp=mappo_phase1_L1-mix            jam_rew=-1.72 H=0.418 kl=0.0009 log_std=-1.000
+  it= 140 opp=mappo_phase2_L3-trained        jam_rew=-0.85 H=0.407 kl=0.0030 log_std=-1.018
+  saved /home/ubuntu/CODE/FluxPhased-/checkpoints/appint/jammer_L3_league_it150.pt
+  it= 150 opp=ippo_phase0_L0                 jam_rew=-2.06 H=0.415 kl=0.0007 log_std=-1.000
+  it= 160 opp=ippo_phase1_L1-mix             jam_rew=-0.94 H=0.400 kl=0.0028 log_std=-1.026
+  it= 170 opp=ippo_phase2_L3-trained         jam_rew=-1.23 H=0.398 kl=0.0019 log_std=-1.019
+  saved /home/ubuntu/CODE/FluxPhased-/checkpoints/appint/jammer_L3_league_it175.pt
+  it= 180 opp=classical                      jam_rew=-1.46 H=0.418 kl=0.0003 log_std=-1.000
+  it= 190 opp=mappo_final                    jam_rew=-0.94 H=0.419 kl=0.0013 log_std=-1.000
+  saved /home/ubuntu/CODE/FluxPhased-/checkpoints/appint/jammer_L3_league_it200.pt
+Final league jammer: /home/ubuntu/CODE/FluxPhased-/checkpoints/appint/jammer_L3_league_final.pt
+
+=== Jammer kill-drop eval (vs frozen classical) ===
+  kill_classical_vs_L0: 4.0
+  kill_classical_vs_L1_tau1: 3.625
+  kill_classical_vs_L3_trained: 3.5833333333333335
+  L3_kill_drop_vs_L0: 0.4166666666666665
+  L3_kill_drop_vs_L1_tau1: 0.04166666666666652
+  monotonicity_pass: False
+  gate_pass: False
+
+=== Input-adaptive check ===
+  means_per_N: {1: 0.47549583594004313, 2: 0.47549583594004313, 4: 0.47549583594004313, 8: 0.47549583594004313}
+  within_N_std: {1: 9.18235408130108e-05, 2: 9.18235408130108e-05, 4: 9.18235408130108e-05, 8: 9.18235408130108e-05}
+  output_range_across_N: 0.0
+  output_std_across_N: 0.0
+  is_input_adaptive: False
