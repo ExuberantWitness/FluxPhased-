@@ -33,6 +33,7 @@ from algo._shared.baselines.twoteam_strong_rule_commander import TwoTeamStrongRu
 from algo._shared.pilot.twoteam.commander_actor_critic import TwoTeamCommanderActorCritic
 from algo._shared.pilot.twoteam.br_trainer import TwoTeamBRTrainer
 from algo._shared.pilot.twoteam.extreme_commanders import combine_team_actions, STRATEGIES
+from algo._shared.pilot.twoteam.bc_pretrain import TwoTeamBCPretrainer
 
 
 # ----------------------------------------------------------------------
@@ -190,6 +191,11 @@ def bootstrap_ci(samples: np.ndarray, n_boot: int = 10000, alpha: float = 0.05):
 def main(br_iters: int = 200, horizon: int = 200, n_envs: int = 8,
          n_episodes: int = 30, br_lr_actor: float = 3e-4,
          br_lr_critic: float = 1e-3, br_entropy_coef: float = 0.01,
+         br_lr_decay_iters: int = 0,
+         bc_pretrain_samples: int = 0,
+         bc_pretrain_epochs: int = 10,
+         bc_pretrain_batch_size: int = 256,
+         bc_pretrain_lr: float = 1e-3,
          out_dir: str = "/home/ubuntu/CODE/FluxPhased-/experiments/twoteam"):
 
     os.makedirs(out_dir, exist_ok=True)
@@ -226,13 +232,56 @@ def main(br_iters: int = 200, horizon: int = 200, n_envs: int = 8,
     # === Step C: BR training ===
     print(f"\n=== BR training: BR(π_rule) vs π_rule frozen ({br_iters} iters) ===",
           flush=True)
+    print(f"  hyperparams: lr_actor={br_lr_actor} lr_critic={br_lr_critic} "
+          f"entropy_coef={br_entropy_coef} lr_decay_iters={br_lr_decay_iters}", flush=True)
+
+    br_ac = TwoTeamCommanderActorCritic().to("cuda")
+
+    # === Step C0: BC pretrain (NEW) ===
+    bc_history: List = []
+    bc_save_path = os.path.join(ckpt_dir, "bc_pretrained.pt")
+    if bc_pretrain_samples > 0:
+        print(f"\n=== Step C0: BC pretrain (collect {bc_pretrain_samples} samples from StrongRule) ===",
+              flush=True)
+        print(f"  BC hyperparams: epochs={bc_pretrain_epochs} batch_size={bc_pretrain_batch_size} "
+              f"lr={bc_pretrain_lr}", flush=True)
+        bc_env = TwoTeamVecEnv(n_envs=n_envs, device="cuda", episode_steps=horizon,
+                                geometry=RANDOM_GEOMETRY, seed=100)
+        bc_trainer = TwoTeamBCPretrainer(
+            br_ac, lr=bc_pretrain_lr, batch_size=bc_pretrain_batch_size)
+        samples = bc_trainer.collect_samples(
+            bc_env, rule, n_samples=bc_pretrain_samples, episode_steps=horizon)
+        print(f"  collected {samples['obs'].shape[0]} samples", flush=True)
+
+        bc_history = bc_trainer.train(samples, n_epochs=bc_pretrain_epochs)
+        bc_trainer.save(bc_save_path, bc_history)
+
+        # Sanity: BC'd AC deterministic policy snapshot
+        print(f"\n  BC sanity check — deterministic action profile (1 episode, 5 steps):",
+              flush=True)
+        sanity_env = TwoTeamVecEnv(n_envs=2, device="cuda", episode_steps=horizon,
+                                    geometry=RANDOM_GEOMETRY, seed=200)
+        sanity_env.reset()
+        obs_dict = sanity_env.get_obs()
+        with torch.no_grad():
+            bc_action, _ = br_ac.get_action_for_env(
+                obs_dict["obs"][:, 0], obs_dict["privileged"][:, 0], deterministic=True)
+        ta_profile = bc_action["task_alloc"][0].mean(dim=0)   # [n_fn] averaged over apertures
+        hop_mean = bc_action["freq_hop_rate"][0].mean().item()
+        print(f"    BC task_alloc profile (4 fns, avg over 2 apertures): "
+              f"[{ta_profile[0]:.2f}, {ta_profile[1]:.2f}, {ta_profile[2]:.2f}, {ta_profile[3]:.2f}]",
+              flush=True)
+        print(f"    BC freq_hop mean: {hop_mean:.2f}", flush=True)
+        print(f"    Rule task_alloc profile: [0.10, 0.71, 0.09, 0.10] (approx, varies by scenario)",
+              flush=True)
     br_env = TwoTeamVecEnv(n_envs=n_envs, device="cuda", episode_steps=horizon,
                             geometry=RANDOM_GEOMETRY, seed=43)
-    br_ac = TwoTeamCommanderActorCritic().to("cuda")
     trainer = TwoTeamBRTrainer(
         br_ac, frozen_opponent=rule,
         lr_actor=br_lr_actor, lr_critic=br_lr_critic,
-        entropy_coef=br_entropy_coef, device="cuda")
+        entropy_coef=br_entropy_coef,
+        lr_decay_iters=br_lr_decay_iters,
+        device="cuda")
     history: List = []
     br_save_path = os.path.join(ckpt_dir, "br_vs_strong_rule_final.pt")
     trainer.train(br_env, n_iterations=br_iters, horizon=horizon,
@@ -381,6 +430,20 @@ def main(br_iters: int = 200, horizon: int = 200, n_envs: int = 8,
                 f"t1={float((mirror_metrics['winner']==1).mean()):.2f}, "
                 f"draw={float((mirror_metrics['winner']==-1).mean()):.2f}\n")
 
+        f.write("\n## BC pretrain (AlphaStar SL → RL paradigm)\n\n")
+        if bc_pretrain_samples > 0 and bc_history:
+            f.write(f"- samples collected: {bc_pretrain_samples}\n")
+            f.write(f"- epochs: {bc_pretrain_epochs}, batch_size: {bc_pretrain_batch_size}, lr: {bc_pretrain_lr}\n")
+            f.write(f"- final train_loss: {bc_history[-1]['train_loss']:+.3f}\n")
+            f.write(f"- final val_loss:   {bc_history[-1]['val_loss']:+.3f}\n")
+            f.write(f"- checkpoint: `{bc_save_path}`\n\n")
+            f.write("| epoch | train_loss | val_loss |\n")
+            f.write("|---|---|---|\n")
+            for row in bc_history:
+                f.write(f"| {row['epoch']+1} | {row['train_loss']:+.3f} | {row['val_loss']:+.3f} |\n")
+        else:
+            f.write("(skipped — set --bc-pretrain-samples > 0 to enable)\n")
+
         f.write("\n## BR training\n\n")
         f.write(f"- iters: {br_iters}, horizon: {horizon}, n_envs: {n_envs}\n")
         f.write(f"- lr_actor={br_lr_actor}, lr_critic={br_lr_critic}, entropy_coef={br_entropy_coef}\n")
@@ -462,6 +525,13 @@ if __name__ == "__main__":
     p.add_argument("--br-lr-actor", type=float, default=3e-4)
     p.add_argument("--br-lr-critic", type=float, default=1e-3)
     p.add_argument("--br-entropy-coef", type=float, default=0.01)
+    p.add_argument("--br-lr-decay-iters", type=int, default=0,
+                   help=">0 enables cosine LR decay over this many iters")
+    p.add_argument("--bc-pretrain-samples", type=int, default=0,
+                   help=">0 enables BC pretrain; collects this many (obs, action) pairs from StrongRule")
+    p.add_argument("--bc-pretrain-epochs", type=int, default=10)
+    p.add_argument("--bc-pretrain-batch-size", type=int, default=256)
+    p.add_argument("--bc-pretrain-lr", type=float, default=1e-3)
     p.add_argument("--out", type=str,
                    default="/home/ubuntu/CODE/FluxPhased-/experiments/twoteam/g0_gate_report.md")
     args = p.parse_args()
@@ -469,4 +539,9 @@ if __name__ == "__main__":
     main(br_iters=args.br_iters, horizon=args.horizon, n_envs=args.n_envs,
          n_episodes=args.n_episodes, br_lr_actor=args.br_lr_actor,
          br_lr_critic=args.br_lr_critic, br_entropy_coef=args.br_entropy_coef,
+         br_lr_decay_iters=args.br_lr_decay_iters,
+         bc_pretrain_samples=args.bc_pretrain_samples,
+         bc_pretrain_epochs=args.bc_pretrain_epochs,
+         bc_pretrain_batch_size=args.bc_pretrain_batch_size,
+         bc_pretrain_lr=args.bc_pretrain_lr,
          out_dir=out_dir)

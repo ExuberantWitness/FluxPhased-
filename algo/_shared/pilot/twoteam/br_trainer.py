@@ -18,6 +18,7 @@ from __future__ import annotations
 import os
 import sys
 import time
+import math
 import torch
 import torch.nn as nn
 import numpy as np
@@ -45,6 +46,7 @@ class _RolloutBuffer:
         self.beam_target = torch.zeros(horizon, n_envs, n_aperture, dtype=torch.long, device=device)
         self.laser_target = torch.zeros(horizon, n_envs, dtype=torch.long, device=device)
         self.emission_on = torch.zeros(horizon, n_envs, n_aperture, device=device)
+        self.freq_hop_rate = torch.zeros(horizon, n_envs, n_aperture, device=device)   # FIX 1
         # PPO bookkeeping
         self.log_prob = torch.zeros(horizon, n_envs, device=device)
         self.value = torch.zeros(horizon, n_envs, device=device)
@@ -78,6 +80,8 @@ class TwoTeamBRTrainer:
         alpha_eff_beta: float = 2.0,
         reward_scale: float = 0.1,   # divide per-step reward (env cumulative-kill makes magnitude large)
         value_huber_delta: float = 1.0,   # use Huber for value loss (robust to large returns)
+        lr_decay_iters: int = 0,   # >0 enables cosine annealing over n_iterations
+        lr_decay_min_frac: float = 0.1,   # min LR = lr_init * frac
         device: str = "cuda",
     ):
         self.br_ac = br_ac
@@ -97,6 +101,8 @@ class TwoTeamBRTrainer:
         self.beta = float(alpha_eff_beta)
         self.reward_scale = float(reward_scale)
         self.value_huber_delta = float(value_huber_delta)
+        self.lr_decay_iters = int(lr_decay_iters)
+        self.lr_decay_min_frac = float(lr_decay_min_frac)
         self.device = torch.device(device)
 
         # Separate actor/critic LRs via param groups
@@ -104,7 +110,8 @@ class TwoTeamBRTrainer:
                        list(br_ac.task_alloc_head.parameters()) + \
                        list(br_ac.beam_target_head.parameters()) + \
                        list(br_ac.laser_target_head.parameters()) + \
-                       list(br_ac.emission_on_head.parameters())
+                       list(br_ac.emission_on_head.parameters()) + \
+                       list(br_ac.freq_hop_head.parameters())
         critic_params = list(br_ac.central_trunk.parameters()) + \
                         list(br_ac.local_trunk.parameters())
         self.opt = torch.optim.Adam([
@@ -150,6 +157,7 @@ class TwoTeamBRTrainer:
             buf.beam_target[t] = br_action["beam_target"]
             buf.laser_target[t] = br_action["laser_target"]
             buf.emission_on[t] = br_action["emission_on"]
+            buf.freq_hop_rate[t] = br_action["freq_hop_rate"]   # FIX 1
             buf.log_prob[t] = br_logp
             buf.value[t] = br_value
             buf.value_local[t] = br_value_local
@@ -219,11 +227,13 @@ class TwoTeamBRTrainer:
         beam_flat = buf.beam_target.reshape(N, self.br_ac.n_aperture)
         laser_flat = buf.laser_target.reshape(N,)
         emit_flat = buf.emission_on.reshape(N, self.br_ac.n_aperture)
+        fh_flat = buf.freq_hop_rate.reshape(N, self.br_ac.n_aperture)   # FIX 1
         action_flat = {
             "task_alloc": task_flat,
             "beam_target": beam_flat,
             "laser_target": laser_flat,
             "emission_on": emit_flat,
+            "freq_hop_rate": fh_flat,
         }
         lp_old = buf.log_prob.reshape(N)
         v_old = buf.value.reshape(N)
@@ -309,7 +319,17 @@ class TwoTeamBRTrainer:
         if log_history is None:
             log_history = []
         t0 = time.time()
+        # Cosine LR decay (helps Dirichlet concentration in high-dim action space).
+        # Scale from initial LRs each iter — not from current — so the schedule is
+        # deterministic regardless of any external LR modifications.
+        init_lrs = [g["lr"] for g in self.opt.param_groups]
+        decay_total = max(self.lr_decay_iters, n_iterations) if self.lr_decay_iters > 0 else n_iterations
         for it in range(n_iterations):
+            if self.lr_decay_iters > 0:
+                frac = 0.5 * (1 + math.cos(math.pi * it / decay_total))
+                lr_scale = self.lr_decay_min_frac + (1 - self.lr_decay_min_frac) * frac
+                for g, lr0 in zip(self.opt.param_groups, init_lrs):
+                    g["lr"] = lr0 * lr_scale
             buf = self.collect_rollout(env, horizon, learning_team=learning_team)
             self._compute_gae(buf)
             metrics = self.update(buf)

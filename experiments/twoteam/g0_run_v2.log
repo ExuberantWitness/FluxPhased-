@@ -1,0 +1,100 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 101.9 GB
+======================================================================
+G0 EXPLOITABILITY GATE — Two-team WP1
+======================================================================
+
+=== Anti-strawman check: StrongRule vs ExtremeCommanders ===
+  rule vs pure_track               : WR=1.00 draws=0.00 kills 2.00 vs 0.97
+  rule vs pure_jam                 : WR=0.38 draws=0.62 kills 0.38 vs 0.00
+  rule vs pure_comm                : WR=1.00 draws=0.00 kills 2.00 vs 0.00
+  rule vs pure_detect              : WR=1.00 draws=0.00 kills 1.90 vs 0.00
+  rule vs balanced                 : WR=0.97 draws=0.03 kills 1.93 vs 0.93
+  rule vs balanced_jam_heavy       : WR=0.90 draws=0.10 kills 1.88 vs 0.93
+  verdict: TOO_WEAK (extreme wins ≥80%: 3/4, balanced WR: 0.97, jam_heavy WR: 0.90)
+
+=== Cell 1: π_rule vs π_rule (mirror, 30 eps × 8 envs) ===
+  mirror margin: +0.000 (95% CI [+0.000, +0.000])
+  kills: rule_t0=1.95, rule_t1=1.95
+  winner: t0=0.00, t1=0.00, draw=1.00
+
+=== BR training: BR(π_rule) vs π_rule frozen (500 iters) ===
+  hyperparams: lr_actor=0.0001 lr_critic=0.001 entropy_coef=0.03 lr_decay_iters=500
+  [BR] it=  0/500 r=-1.832 v_loss=40.448 pi_loss=-0.010 ent=-0.026 kl=0.0032 adv_std=1.00 clip=0.10 es=0 t=0.0min
+  [BR] it= 10/500 r=-1.807 v_loss=27.799 pi_loss=-0.012 ent=-0.037 kl=-0.0026 adv_std=1.00 clip=0.10 es=0 t=0.3min
+  [BR] it= 20/500 r=-1.816 v_loss=29.723 pi_loss=-0.010 ent=-0.044 kl=0.0019 adv_std=1.00 clip=0.07 es=0 t=0.6min
+  [BR] it= 30/500 r=-1.815 v_loss=29.577 pi_loss=-0.007 ent=-0.058 kl=0.0012 adv_std=1.00 clip=0.07 es=0 t=0.9min
+  [BR] it= 40/500 r=-1.825 v_loss=28.882 pi_loss=-0.009 ent=-0.067 kl=0.0046 adv_std=1.00 clip=0.06 es=0 t=1.2min
+  [BR] it= 50/500 r=-1.811 v_loss=33.003 pi_loss=-0.001 ent=-0.091 kl=0.0103 adv_std=1.00 clip=0.09 es=0 t=1.6min
+  [BR] it= 60/500 r=-1.823 v_loss=19.140 pi_loss=-0.006 ent=-0.085 kl=0.0069 adv_std=1.00 clip=0.08 es=0 t=1.9min
+  [BR] it= 70/500 r=-1.803 v_loss=42.727 pi_loss=-0.007 ent=-0.111 kl=0.0164 adv_std=1.00 clip=0.17 es=0 t=2.2min
+  [BR] it= 80/500 r=-1.828 v_loss=25.542 pi_loss=-0.007 ent=-0.105 kl=0.0039 adv_std=1.00 clip=0.07 es=0 t=2.5min
+  [BR] it= 90/500 r=-1.793 v_loss=34.749 pi_loss=-0.008 ent=-0.098 kl=0.0063 adv_std=1.00 clip=0.06 es=0 t=2.8min
+  [BR] it=100/500 r=-1.817 v_loss=32.044 pi_loss=-0.011 ent=-0.132 kl=0.0065 adv_std=1.00 clip=0.11 es=0 t=3.1min
+  [BR] it=110/500 r=-1.688 v_loss=39.575 pi_loss=-0.007 ent=-0.175 kl=0.0054 adv_std=1.00 clip=0.07 es=0 t=3.4min
+  [BR] it=120/500 r=-1.426 v_loss=65.838 pi_loss=-0.015 ent=-0.218 kl=0.0088 adv_std=1.00 clip=0.19 es=0 t=3.7min
+  [BR] it=130/500 r=-1.253 v_loss=50.966 pi_loss=-0.005 ent=-0.313 kl=0.0073 adv_std=1.00 clip=0.13 es=0 t=4.0min
+  [BR] it=140/500 r=-1.328 v_loss=43.948 pi_loss=-0.004 ent=-0.368 kl=0.0139 adv_std=1.00 clip=0.10 es=0 t=4.3min
+  [BR] it=150/500 r=-1.163 v_loss=23.501 pi_loss=-0.007 ent=-0.383 kl=0.0110 adv_std=1.00 clip=0.13 es=0 t=4.6min
+  [BR] it=160/500 r=-1.077 v_loss=24.539 pi_loss=-0.006 ent=-0.418 kl=0.0060 adv_std=1.00 clip=0.11 es=0 t=4.9min
+  [BR] it=170/500 r=-1.104 v_loss=24.860 pi_loss=-0.007 ent=-0.403 kl=0.0056 adv_std=1.00 clip=0.12 es=0 t=5.2min
+  [BR] it=180/500 r=-1.085 v_loss=31.794 pi_loss=-0.006 ent=-0.432 kl=0.0105 adv_std=1.00 clip=0.10 es=0 t=5.5min
+  [BR] it=190/500 r=-0.958 v_loss=48.682 pi_loss=-0.008 ent=-0.391 kl=0.0115 adv_std=1.00 clip=0.14 es=0 t=5.8min
+  [BR] it=200/500 r=-1.242 v_loss=29.635 pi_loss=-0.008 ent=-0.444 kl=0.0085 adv_std=1.00 clip=0.13 es=0 t=6.1min
+  [BR] it=210/500 r=-1.078 v_loss=35.381 pi_loss=-0.005 ent=-0.424 kl=0.0071 adv_std=1.00 clip=0.12 es=0 t=6.4min
+  [BR] it=220/500 r=-1.058 v_loss=24.076 pi_loss=-0.007 ent=-0.483 kl=0.0105 adv_std=1.00 clip=0.08 es=0 t=6.7min
+  [BR] it=230/500 r=-0.982 v_loss=33.515 pi_loss=-0.009 ent=-0.503 kl=0.0058 adv_std=1.00 clip=0.08 es=0 t=7.0min
+  [BR] it=240/500 r=-0.976 v_loss=18.860 pi_loss=-0.006 ent=-0.538 kl=0.0101 adv_std=1.00 clip=0.08 es=0 t=7.3min
+  [BR] it=250/500 r=-0.924 v_loss=32.816 pi_loss=-0.006 ent=-0.525 kl=0.0103 adv_std=1.00 clip=0.11 es=0 t=7.6min
+  [BR] it=260/500 r=-0.836 v_loss=39.092 pi_loss=-0.006 ent=-0.510 kl=0.0057 adv_std=1.00 clip=0.11 es=0 t=7.9min
+  [BR] it=270/500 r=-0.856 v_loss=29.501 pi_loss=-0.009 ent=-0.524 kl=0.0108 adv_std=1.00 clip=0.13 es=0 t=8.2min
+  [BR] it=280/500 r=-0.849 v_loss=24.361 pi_loss=-0.008 ent=-0.543 kl=0.0156 adv_std=1.00 clip=0.15 es=0 t=8.5min
+  [BR] it=290/500 r=-0.865 v_loss=21.111 pi_loss=-0.003 ent=-0.553 kl=0.0030 adv_std=1.00 clip=0.06 es=0 t=8.8min
+  [BR] it=300/500 r=-0.864 v_loss=22.080 pi_loss=-0.008 ent=-0.559 kl=0.0044 adv_std=1.00 clip=0.08 es=0 t=9.2min
+  [BR] it=310/500 r=-0.567 v_loss=18.597 pi_loss=-0.008 ent=-0.589 kl=0.0098 adv_std=1.00 clip=0.09 es=0 t=9.5min
+  [BR] it=320/500 r=-0.871 v_loss=20.432 pi_loss=-0.003 ent=-0.531 kl=0.0054 adv_std=1.00 clip=0.04 es=0 t=9.8min
+  [BR] it=330/500 r=-0.860 v_loss=21.721 pi_loss=-0.004 ent=-0.531 kl=0.0058 adv_std=1.00 clip=0.05 es=0 t=10.1min
+  [BR] it=340/500 r=-0.866 v_loss=26.219 pi_loss=-0.005 ent=-0.529 kl=0.0058 adv_std=1.00 clip=0.07 es=0 t=10.4min
+  [BR] it=350/500 r=-0.843 v_loss=30.858 pi_loss=-0.005 ent=-0.516 kl=0.0023 adv_std=1.00 clip=0.05 es=0 t=10.7min
+  [BR] it=360/500 r=-0.855 v_loss=28.450 pi_loss=-0.006 ent=-0.539 kl=0.0053 adv_std=1.00 clip=0.07 es=0 t=11.0min
+  [BR] it=370/500 r=-0.869 v_loss=19.673 pi_loss=-0.006 ent=-0.569 kl=0.0038 adv_std=1.00 clip=0.05 es=0 t=11.3min
+  [BR] it=380/500 r=-0.759 v_loss=28.477 pi_loss=-0.004 ent=-0.550 kl=0.0082 adv_std=1.00 clip=0.06 es=0 t=11.6min
+  [BR] it=390/500 r=-0.859 v_loss=30.717 pi_loss=-0.006 ent=-0.567 kl=0.0043 adv_std=1.00 clip=0.05 es=0 t=11.9min
+  [BR] it=400/500 r=-0.864 v_loss=22.308 pi_loss=-0.003 ent=-0.589 kl=0.0036 adv_std=1.00 clip=0.01 es=0 t=12.2min
+  [BR] it=410/500 r=-0.757 v_loss=27.069 pi_loss=-0.007 ent=-0.605 kl=0.0064 adv_std=1.00 clip=0.04 es=0 t=12.5min
+  [BR] it=420/500 r=-0.861 v_loss=30.859 pi_loss=-0.003 ent=-0.618 kl=0.0042 adv_std=1.00 clip=0.02 es=0 t=12.8min
+  [BR] it=430/500 r=-0.754 v_loss=33.217 pi_loss=-0.003 ent=-0.630 kl=0.0046 adv_std=1.00 clip=0.02 es=0 t=13.1min
+  [BR] it=440/500 r=-0.759 v_loss=26.696 pi_loss=-0.002 ent=-0.648 kl=0.0042 adv_std=1.00 clip=0.01 es=0 t=13.5min
+  [BR] it=450/500 r=-0.737 v_loss=32.514 pi_loss=-0.005 ent=-0.651 kl=0.0014 adv_std=1.00 clip=0.01 es=0 t=13.8min
+  [BR] it=460/500 r=-0.867 v_loss=25.000 pi_loss=-0.004 ent=-0.649 kl=0.0004 adv_std=1.00 clip=0.01 es=0 t=14.1min
+  [BR] it=470/500 r=-0.765 v_loss=24.491 pi_loss=-0.002 ent=-0.645 kl=0.0019 adv_std=1.00 clip=0.00 es=0 t=14.4min
+  [BR] it=480/500 r=-0.874 v_loss=20.478 pi_loss=-0.003 ent=-0.638 kl=0.0017 adv_std=1.00 clip=0.01 es=0 t=14.7min
+  [BR] it=490/500 r=-0.987 v_loss=33.151 pi_loss=-0.003 ent=-0.629 kl=0.0023 adv_std=1.00 clip=0.01 es=0 t=15.0min
+  [BR] it=499/500 r=-0.877 v_loss=19.646 pi_loss=-0.005 ent=-0.636 kl=-0.0003 adv_std=1.00 clip=0.02 es=0 t=15.3min
+
+=== Cell 2: π_rule vs BR(π_rule) (30 eps × 8 envs) ===
+  br margin (rule POV): +0.979 (95% CI [+0.958, +1.000])
+  kills: rule_t0=1.96, br_t1=0.98
+  winner: rule=0.98, BR=0.00, draw=0.02
+
+=== Exploitability ===
+  mirror_margin = +0.000
+  br_margin     = +0.979
+  exploit_gap   = -0.979 (95% CI [-1.000, -0.958])
+
+=== G0 VERDICT ===
+  exploit_gap >= 0.5 AND CI excludes 0: False
+  CI excludes 0:                        False
+  BR win rate >= 0.55:                  False (actual=0.00)
+  BR training healthy:                  True
+  adv_std (last):                       0.9999999403953552
+  entropy (last):                       -0.6356719493865967
+
+  ❌ G0 FAIL — exploitability not confirmed.
+     → Recommend: pause. Either BR undertrained, or rule is genuinely
+       not exploitable (root A present). Discuss IET retreat.
+
+Report: /home/ubuntu/CODE/FluxPhased-/experiments/twoteam/g0_gate_report.md
+CSVs: /home/ubuntu/CODE/FluxPhased-/experiments/twoteam/g0_mirror_metrics.csv, /home/ubuntu/CODE/FluxPhased-/experiments/twoteam/g0_br_metrics.csv, /home/ubuntu/CODE/FluxPhased-/experiments/twoteam/g0_br_training_log.csv
+BR checkpoint: /home/ubuntu/CODE/FluxPhased-/checkpoints/twoteam/br_vs_strong_rule_final.pt

@@ -76,15 +76,20 @@ class TwoTeamVecEnv:
         n_subarrays: int = 25,
         comm_threshold: float = 0.10,
         # Jam coupling
-        jam_gain: float = 8.0,
+        jam_gain: float = 6.0,   # FIX 1: was 8 → 6 (let anti-jam actually win at hop=8)
         # Kill chain
         e_kill: float = 2.0,
         dwell_rate: float = 1.0,
         decay_factor: float = 0.95,
         tau_track: float = 0.04,
         # Exposure / home-on-jam
-        exposure_gain: float = 50.0,
+        exposure_gain: float = 200.0,   # FIX 2: was 50 → 200 (4× more sensitive, breaks duck lock)
         emit_power_per_subarray: float = 0.005,
+        # Exposure overload (FIX 2: direct tracker decay when exposure extreme)
+        exposure_overload_threshold: float = 50.0,
+        exposure_decay_rate: float = 0.5,
+        # FIX 1: frequency agility (anti-jam skill dimension)
+        freq_hop_max: float = 8.0,   # max frequency-hop rate (N_FREQ_MAX in spec)
         # Rewards
         w_kill: float = 10.0,
         w_survive: float = 1.0,
@@ -117,6 +122,9 @@ class TwoTeamVecEnv:
 
         self.exposure_gain = float(exposure_gain)
         self.emit_power_per_subarray = float(emit_power_per_subarray)
+        self.exposure_overload_threshold = float(exposure_overload_threshold)
+        self.exposure_decay_rate = float(exposure_decay_rate)
+        self.freq_hop_max = float(freq_hop_max)
 
         self.w_kill = float(w_kill)
         self.w_survive = float(w_survive)
@@ -149,6 +157,7 @@ class TwoTeamVecEnv:
         self.first_kill_step = torch.full((E,), float(self.episode_steps), device=dev)
         self._last_jam_matrix = torch.zeros(E, T, R, device=dev)
         self._last_task_alloc = torch.full((E, T, R, 4), 0.25, device=dev)
+        self._last_freq_hop = torch.ones(E, T, R, device=dev)   # FIX 1: default 1.0 = no hopping
 
     def reset(self) -> Dict[str, torch.Tensor]:
         dev = self.device
@@ -217,6 +226,14 @@ class TwoTeamVecEnv:
             obs[:, t, own_base + 4] = (self.step_idx.float() / self.episode_steps).clamp(0.0, 1.0)
             ta_flat = self._last_task_alloc[:, t].reshape(E, -1)
             obs[:, t, own_base + 5:own_base + 13] = ta_flat
+            # FIX 1: freq_hop exposure in obs (own + enemy). Normalized to [0, 1] by freq_hop_max.
+            # Own hop rate per aperture (passive observation of own action memory):
+            obs[:, t, own_base + 13] = (self._last_freq_hop[:, t, 0] / self.freq_hop_max).clamp(0.0, 1.0)
+            obs[:, t, own_base + 14] = (self._last_freq_hop[:, t, 1] / self.freq_hop_max).clamp(0.0, 1.0)
+            # Enemy hop rate per aperture (passive sensing: detect emission pattern):
+            et = 1 - t
+            obs[:, t, own_base + 15] = (self._last_freq_hop[:, et, 0] / self.freq_hop_max).clamp(0.0, 1.0)
+            obs[:, t, own_base + 16] = (self._last_freq_hop[:, et, 1] / self.freq_hop_max).clamp(0.0, 1.0)
 
         priv = torch.zeros(E, T, self.privileged_dim, device=dev)
         for t in range(T):
@@ -260,12 +277,16 @@ class TwoTeamVecEnv:
         beam_target = action["beam_target"]
         laser_target = action["laser_target"]
         emission_on = action["emission_on"].float()
+        # FIX 1: freq_hop_rate per aperture; default to 1.0 (no hopping) for backward compat
+        freq_hop_rate = action.get("freq_hop_rate",
+                                    torch.ones(E, T, R, device=dev)).float().clamp(1.0, self.freq_hop_max)
+        self._last_freq_hop = freq_hop_rate
 
         # Normalize task_alloc
         task_alloc = task_alloc / (task_alloc.sum(dim=-1, keepdim=True) + 1e-8)
         self._last_task_alloc = task_alloc
 
-        # 1. Jam matrix (with emission gate)
+        # 1. Jam matrix (with emission gate) — unchanged base computation
         jam_level = torch.zeros(E, T, R, device=dev)
         for t in range(T):
             et = 1 - t
@@ -275,14 +296,36 @@ class TwoTeamVecEnv:
                 for r in range(R):
                     jam_level[:, t, r] += (tgt == r).float() * f_jam_k
         self._last_jam_matrix = jam_level
-        jam_mul = 1.0 + self.jam_gain * jam_level
+
+        # FIX 1: aggregate freq_hop per (team, enemy_tracker) — max hop rate among
+        # apertures beaming at that enemy (most agile signal wins).
+        freq_hop_per_tracker = torch.ones(E, T, R, device=dev)
+        for t in range(T):
+            for r in range(R):
+                hop_contribs = []
+                for k in range(R):
+                    beam_at = beam_target[:, t, k]
+                    contrib = freq_hop_rate[:, t, k] * (beam_at == r).float() * emission_on[:, t, k]
+                    hop_contribs.append(contrib)
+                # Max across contributing apertures (1.0 if none contribute — no agility)
+                stacked = torch.stack(hop_contribs, dim=-1)   # [E, R]
+                freq_hop_per_tracker[:, t, r] = stacked.max(dim=-1).values.clamp(min=1.0)
+
+        # FIX 1: effective_jam = jam_level / freq_hop (jammer spreads power across hops)
+        # Physical basis: frequency agility forces jammer to spread power over hop_rate
+        # frequencies → per-frequency JNR drops linearly with hop_rate.
+        effective_jam = jam_level / freq_hop_per_tracker
+        jam_mul = 1.0 + self.jam_gain * effective_jam
 
         # 2. Comm link
         for t in range(T):
             f_comm_both = task_alloc[:, t, :, 3]
             self.comm_link_ok[:, t] = (f_comm_both >= self.comm_threshold).all(dim=-1)
 
-        # 3. Tracker update
+        # 3. Tracker update — FIX 1: add processing_overhead = 1/sqrt(freq_hop)
+        # (high hop rate dilutes per-frequency coherent integration → fewer effective
+        # pulses per frequency → SNR penalty when not jammed). This creates the
+        # non-monotonic skill trade: hop only when jam is high enough to justify overhead.
         for t in range(T):
             et = 1 - t
             for r in range(R):
@@ -293,7 +336,14 @@ class TwoTeamVecEnv:
                     beam_at = beam_target[:, t, k]
                     f_track += task_alloc[:, t, k, 1] * (beam_at == r).float() * emission_on[:, t, k]
                 base_sigma = self.range_sigma_m
-                track_sigma = base_sigma / (f_track + 1e-3).sqrt() * jam_mul[:, t, r]
+                # Processing overhead: high hop rate dilutes per-frequency coherent
+                # integration. Penalty is sub-linear (1/hop^0.25) — modern radar
+                # matched-filter bank recovers most SNR at small hop counts (≤16).
+                # This makes anti-jam a viable skill: hop=8 → 0.13s overhead but 8×
+                # jam reduction → net positive when jam is high.
+                processing_overhead = 1.0 / freq_hop_per_tracker[:, t, r].pow(0.25).clamp(min=1.0)
+                f_track_eff = f_track * processing_overhead
+                track_sigma = base_sigma / (f_track_eff + 1e-3).sqrt() * jam_mul[:, t, r]
                 fusion_factor = torch.where(self.comm_link_ok[:, t], 1.0, 1.5)
                 track_sigma = track_sigma * fusion_factor
                 track_sigma = torch.where(enemy_alive, track_sigma, torch.full_like(track_sigma, 1e6))
@@ -333,7 +383,7 @@ class TwoTeamVecEnv:
 
         self.team_alive = self.radar_alive.any(dim=-1)
 
-        # 5. Exposure + home-on-jam
+        # 5. Exposure + home-on-jam (FIX 2: exposure_gain 50→200, add overload decay)
         emit_increment = self.emit_power_per_subarray * self.n_subarrays * emission_on * dt
         radiating_fraction = task_alloc[..., 0] + task_alloc[..., 1] + task_alloc[..., 2]
         emit_increment = emit_increment * radiating_fraction
@@ -348,6 +398,22 @@ class TwoTeamVecEnv:
         homejam_roll = torch.rand(E, 1, R, device=dev).expand(E, T, R)
         homejam_death = (homejam_roll < p_homejam.unsqueeze(-1)) & self.radar_alive
         self.radar_alive = self.radar_alive & (~homejam_death)
+
+        # FIX 2: exposure overload — extreme exposure directly inflates own tracker_P,
+        # representing geolocation backfire (you radiate too much → enemy cues your
+        # position → your own tracking suffers from counter-fire EM contamination).
+        # This is asymmetric (depends on per-team exposure), so it breaks the mirror
+        # duck lock without depending on RNG.
+        for t in range(T):
+            overloaded = (self.exposure[:, t] > self.exposure_overload_threshold).float()   # [E]
+            decay = overloaded * self.exposure_decay_rate * dt   # [E]
+            # Inflate diag of own tracker_P (position uncertainty grows)
+            for r in range(R):
+                # Only inflate if tracker is on alive enemy (dead enemy tracker P grows via Q anyway)
+                enemy_alive = self.radar_alive[:, 1 - t, r].float()
+                self.tracker_P[:, t, r, 0, 0] = self.tracker_P[:, t, r, 0, 0] + decay * enemy_alive * 0.5
+                self.tracker_P[:, t, r, 2, 2] = self.tracker_P[:, t, r, 2, 2] + decay * enemy_alive * 0.5
+
         self.team_alive = self.radar_alive.any(dim=-1)
 
         # 6. Reward (zero-sum)

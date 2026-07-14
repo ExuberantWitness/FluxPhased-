@@ -171,14 +171,19 @@ def check_mirror_symmetry(n_episodes: int = 30, episode_steps: int = 200, seed: 
 def check_tradeoff_matrix(strategies: List[str], n_episodes: int = 10, episode_steps: int = 200):
     """Build N×N win-rate matrix for extreme strategies.
 
-    Critical: if any single strategy wins > 90% against ALL others → trivial
-    dominant strategy → game is "calm sea" → root A → fail WP0.
+    Three sub-checks (WP0-decisive upgrade, 2026-07-14):
+      2a. Dominant strategy: NONE — no single strategy wins >90% vs ALL others
+          (root-A "calm sea" guard, original check).
+      2b. Decisive rate: ≥ 0.50 of matchups produce ≥1 kill. Catches the
+          0-0 stalemate false PASS where every cell draws (root-A mimic).
+      2c. Kill density: mean kills/episode ≥ 0.5 across all matchups. Catches
+          the degenerate case where kills happen but are vanishingly rare.
     """
     print(f"\n=== Check 2: Four-function tradeoff matrix ({len(strategies)} strategies) ===", flush=True)
     env = TwoTeamVecEnv(n_envs=8, device="cuda", episode_steps=episode_steps,
                          geometry=RANDOM_GEOMETRY, seed=42)
 
-    matrix = {}   # {(strat_t0, strat_t1): win_rate_t0}
+    matrix = {}   # {(strat_t0, strat_t1): metrics dict}
     for s0 in strategies:
         for s1 in strategies:
             fn0 = lambda env, team, _s=s0: STRATEGIES[_s].get_action(env, team)
@@ -188,6 +193,7 @@ def check_tradeoff_matrix(strategies: List[str], n_episodes: int = 10, episode_s
             draws = 0
             kills_t0_list = []
             kills_t1_list = []
+            any_kill_per_ep_env = []   # 1.0 if (kills_t0+kills_t1)>0 per env per ep
             for ep in range(n_episodes):
                 env.seed = 42 + ep
                 env._reset_count = ep
@@ -197,20 +203,29 @@ def check_tradeoff_matrix(strategies: List[str], n_episodes: int = 10, episode_s
                 draws += int((result["winner"] == -1).sum().item())
                 kills_t0_list.append(result["kills_t0"].float().mean().item())
                 kills_t1_list.append(result["kills_t1"].float().mean().item())
+                # Per-env-per-ep "any kill" indicator (decisive games)
+                k_total = result["kills_t0"].float() + result["kills_t1"].float()
+                any_kill_per_ep_env.extend((k_total > 0).float().cpu().tolist())
 
             total = wins_t0 + wins_t1 + draws
             wr0 = wins_t0 / max(total, 1)
+            mean_k0 = sum(kills_t0_list) / len(kills_t0_list)
+            mean_k1 = sum(kills_t1_list) / len(kills_t1_list)
+            decisive_cell = float(np.mean(any_kill_per_ep_env))   # ∈ [0, 1]
             matrix[(s0, s1)] = {
                 "wr_t0": wr0,
-                "kills_t0": sum(kills_t0_list) / len(kills_t0_list),
-                "kills_t1": sum(kills_t1_list) / len(kills_t1_list),
+                "kills_t0": mean_k0,
+                "kills_t1": mean_k1,
+                "decisive_rate": decisive_cell,
+                "kill_density": mean_k0 + mean_k1,
             }
             if s0 != s1:
                 print(f"  {s0:25s} vs {s1:25s}: WR_t0={wr0:.2f}  "
-                      f"kills {matrix[(s0,s1)]['kills_t0']:.2f} vs {matrix[(s0,s1)]['kills_t1']:.2f}",
+                      f"kills {mean_k0:.2f} vs {mean_k1:.2f}  "
+                      f"decisive={decisive_cell:.2f}",
                       flush=True)
 
-    # Check: no single strategy dominates all others (>0.90 vs ALL)
+    # === Check 2a: no dominant strategy ===
     dominant = None
     for s in strategies:
         wins_all = all(matrix[(s, other)]["wr_t0"] > 0.90 for other in strategies if other != s)
@@ -218,14 +233,85 @@ def check_tradeoff_matrix(strategies: List[str], n_episodes: int = 10, episode_s
             dominant = s
             break
 
-    print(f"\n  Dominant strategy: {dominant if dominant else 'NONE'}", flush=True)
-    pass_ = dominant is None
-    if pass_:
-        print(f"  ✅ PASS: no dominant single strategy (root A not present)", flush=True)
-    else:
-        print(f"  ❌ FAIL: '{dominant}' dominates all → trivial game (root A)", flush=True)
+    # === Check 2b: decisive rate across all matchups ===
+    # Exclude diagonal (strategy vs itself = forced mirror draw inflates draws)
+    off_diag_cells = [(s0, s1) for s0 in strategies for s1 in strategies if s0 != s1]
+    decisive_rates_off_diag = [matrix[k]["decisive_rate"] for k in off_diag_cells]
+    decisive_rate_mean = float(np.mean(decisive_rates_off_diag))
 
-    return {"matrix": matrix, "dominant": dominant, "pass": pass_}
+    # === Check 2c: kill density across all matchups (off-diagonal) ===
+    kill_densities_off_diag = [matrix[k]["kill_density"] for k in off_diag_cells]
+    kill_density_mean = float(np.mean(kill_densities_off_diag))
+
+    # === Check 2d: per-strategy "unbeatable" detector ===
+    # FIX (refined 2026-07-14): original "stalemate_rate > 0.50" was too strict —
+    # legitimate pure-vs-pure matchups (pure_jam vs pure_comm = both passive)
+    # can be 0-0 without indicating env degeneracy.
+    # New criterion: a strategy S is degenerate iff NO opponent T can produce
+    # decisive games against it (best_opponent_decisive_rate < 0.30).
+    # Pure_jam with no anti-jam skill in any opponent → best_opponent=0 → FAIL.
+    # Pure_jam once track_agile exists → best_opponent ≥ 0.5 → PASS even though
+    # naive pures still stalemate.
+    stalemate_rates = {}   # kept for reporting
+    unbeatable_suspects = []
+    best_opponent_decisive = {}
+    for s in strategies:
+        s_cells = [k for k in off_diag_cells if k[0] == s or k[1] == s]
+        s_decisive = [matrix[k]["decisive_rate"] for k in s_cells]
+        smr = float(np.mean([1.0 - d for d in s_decisive]))
+        stalemate_rates[s] = smr
+        best_d = float(np.max(s_decisive)) if s_decisive else 0.0
+        best_opponent_decisive[s] = best_d
+        if best_d < 0.30:
+            unbeatable_suspects.append((s, best_d))
+
+    print(f"\n  Dominant strategy: {dominant if dominant else 'NONE'}", flush=True)
+    print(f"  Decisive rate (off-diag mean): {decisive_rate_mean:.3f}  (target ≥ 0.50)", flush=True)
+    print(f"  Kill density (off-diag mean):  {kill_density_mean:.3f}  kills/ep (target ≥ 0.5)", flush=True)
+    print(f"  Per-strategy diagnostics (stalemate_rate / best_opponent_decisive):", flush=True)
+    for s in strategies:
+        smr = stalemate_rates[s]
+        bod = best_opponent_decisive[s]
+        flag = " ❌ UNBEATABLE" if bod < 0.30 else ""
+        print(f"    {s:25s}: stale={smr:.3f}  best_opp_decisive={bod:.3f}{flag}", flush=True)
+
+    dominant_pass = dominant is None
+    decisive_pass = decisive_rate_mean >= 0.50
+    density_pass = kill_density_mean >= 0.5
+    stalemate_pass = len(unbeatable_suspects) == 0
+    pass_ = dominant_pass and decisive_pass and density_pass and stalemate_pass
+
+    if dominant_pass:
+        print(f"\n  ✅ 2a PASS: no dominant single strategy", flush=True)
+    else:
+        print(f"\n  ❌ 2a FAIL: '{dominant}' dominates all → trivial game (root A)", flush=True)
+    if decisive_pass:
+        print(f"  ✅ 2b PASS: games are decisive (kills happen)", flush=True)
+    else:
+        print(f"  ❌ 2b FAIL: only {decisive_rate_mean*100:.1f}% of matchups have ≥1 kill "
+              f"— 0-0 stalemate (root-A mimic)", flush=True)
+    if density_pass:
+        print(f"  ✅ 2c PASS: kill density adequate", flush=True)
+    else:
+        print(f"  ❌ 2c FAIL: kill density {kill_density_mean:.3f} < 0.5 — env near-non-lethal", flush=True)
+    if stalemate_pass:
+        print(f"  ✅ 2d PASS: every strategy has ≥1 opponent producing decisive games", flush=True)
+    else:
+        for s, bod in unbeatable_suspects:
+            print(f"  ❌ 2d FAIL: '{s}' best_opponent_decisive={bod:.2f} < 0.30 → "
+                  f"no strategy breaks it (pure_jam with no anti-jam skill in any opponent)", flush=True)
+
+    return {
+        "matrix": matrix, "dominant": dominant,
+        "dominant_pass": dominant_pass,
+        "decisive_rate": decisive_rate_mean, "decisive_pass": decisive_pass,
+        "kill_density": kill_density_mean, "density_pass": density_pass,
+        "stalemate_rates": stalemate_rates,
+        "best_opponent_decisive": best_opponent_decisive,
+        "unbeatable_suspects": unbeatable_suspects,
+        "stalemate_pass": stalemate_pass,
+        "pass": pass_,
+    }
 
 
 # ----------------------------------------------------------------------
@@ -315,7 +401,8 @@ def main():
     mirror = check_mirror_symmetry(n_episodes=20, episode_steps=150)
     # Check 2
     strategies = ["pure_track", "pure_jam", "pure_comm", "pure_detect",
-                  "balanced", "balanced_jam_heavy"]
+                  "balanced", "balanced_jam_heavy",
+                  "track_agile"]   # FIX 1 verification: pure_track with freq_hop=8
     tradeoff = check_tradeoff_matrix(strategies, n_episodes=5, episode_steps=150)
     # Check 3
     crlb = check_crlb_anchor(episode_steps=80)
@@ -327,8 +414,8 @@ def main():
     report_path = os.path.join(out_dir, "wp0_check_report.md")
     with open(report_path, "w") as f:
         f.write("# WP0 Verification Report — Two-team symmetric multifunction env\n\n")
-        f.write(f"**Date**: 2026-07-13\n")
-        f.write(f"**Spec**: TWOTEAM_MULTIFUNCTION_PLAN.md commit 4329bae\n")
+        f.write(f"**Date**: 2026-07-14\n")
+        f.write(f"**Spec**: TWOTEAM_MULTIFUNCTION_PLAN.md + TWOTEAM_ENV_FIX_SPEC.md (WP0-decisive upgrade)\n")
         f.write(f"**Overall**: {'✅ PASS — proceed to WP1 BR training' if overall_pass else '❌ FAIL — diagnose before WP1'}\n\n")
         f.write("## Check 1: Mirror self-play physics symmetry (D3-A)\n\n")
         f.write("With both teams playing IDENTICAL actions under MIRROR_GEOMETRY, physics must be mirror-symmetric.\n")
@@ -340,7 +427,12 @@ def main():
         f.write(f"- max |mean_trace_P_t0 - mean_trace_P_t1|: {mirror['traceP_diff_max']:.4f}\n")
         f.write(f"- mean |reward_t0| (zero-sum → should be ~0): {mirror['reward_t0_mean_abs']:.4f}\n")
         f.write(f"- {'✅ PASS' if mirror['pass'] else '❌ FAIL'} (targets: all metrics < 0.5/1.0/0.1/0.5)\n\n")
-        f.write("## Check 2: Four-function tradeoff matrix\n\n")
+        f.write("## Check 2: Four-function tradeoff matrix (WP0-decisive upgrade)\n\n")
+        f.write("Four sub-checks: (2a) no dominant strategy; (2b) decisive rate ≥ 0.50;\n")
+        f.write("(2c) kill density ≥ 0.5/ep; (2d) no strategy with stalemate_rate > 0.50.\n")
+        f.write("The 2b/2c/2d upgrades catch 0-0 stalemates that the original 2a check\n")
+        f.write("alone misclassified as PASS.\n\n")
+        f.write("### Win-rate matrix\n\n")
         f.write("| strategy |")
         for s in strategies:
             f.write(f" {s.split('_')[0][:6]} |")
@@ -354,8 +446,31 @@ def main():
                 wr = tradeoff["matrix"][(s0, s1)]["wr_t0"]
                 f.write(f" {wr:.2f} |")
             f.write("\n")
+        f.write("\n### Decisive-rate matrix (fraction of episodes with ≥1 kill)\n\n")
+        f.write("| strategy |")
+        for s in strategies:
+            f.write(f" {s.split('_')[0][:6]} |")
+        f.write("\n|----------|")
+        for _ in strategies:
+            f.write("--------|")
+        f.write("\n")
+        for s0 in strategies:
+            f.write(f"| {s0} |")
+            for s1 in strategies:
+                dr = tradeoff["matrix"][(s0, s1)]["decisive_rate"]
+                f.write(f" {dr:.2f} |")
+            f.write("\n")
         f.write(f"\n**Dominant strategy**: {tradeoff['dominant'] or 'NONE'}\n")
-        f.write(f"- {'✅ PASS' if tradeoff['pass'] else '❌ FAIL'} (target: no strategy >0.90 vs ALL)\n\n")
+        f.write(f"- 2a {'✅ PASS' if tradeoff['dominant_pass'] else '❌ FAIL'} (target: no strategy >0.90 vs ALL)\n")
+        f.write(f"- 2b {'✅ PASS' if tradeoff['decisive_pass'] else '❌ FAIL'}: decisive_rate={tradeoff['decisive_rate']:.3f} (target ≥ 0.50)\n")
+        f.write(f"- 2c {'✅ PASS' if tradeoff['density_pass'] else '❌ FAIL'}: kill_density={tradeoff['kill_density']:.3f}/ep (target ≥ 0.5)\n")
+        f.write(f"- 2d {'✅ PASS' if tradeoff['stalemate_pass'] else '❌ FAIL'}: per-strategy diagnostics —\n")
+        for s in strategies:
+            smr = tradeoff["stalemate_rates"][s]
+            bod = tradeoff["best_opponent_decisive"][s]
+            flag = " ❌ UNBEATABLE" if bod < 0.30 else ""
+            f.write(f"    - {s}: stalemate_rate={smr:.3f}  best_opp_decisive={bod:.3f}{flag}\n")
+        f.write("\n")
         f.write("## Check 3: CRLB anchor\n\n")
         f.write(f"- Theoretical CRLB trace_P: {crlb['crlb_theoretical']:.6f}\n")
         f.write(f"- Achieved trace_P (split-beam pure_track): {crlb['achieved']:.6f}\n")
@@ -370,7 +485,18 @@ def main():
             if not mirror["pass"]:
                 f.write("- Mirror symmetry broken → env has hidden asymmetry bug.\n")
             if not tradeoff["pass"]:
-                f.write(f"- Dominant strategy '{tradeoff['dominant']}' → trivial game (root A present).\n")
+                if not tradeoff["dominant_pass"]:
+                    f.write(f"- 2a FAIL: Dominant strategy '{tradeoff['dominant']}' → trivial game (root A present).\n")
+                if not tradeoff["decisive_pass"]:
+                    f.write(f"- 2b FAIL: Decisive rate {tradeoff['decisive_rate']:.3f} < 0.50 → "
+                            f"0-0 stalemate (root-A mimic, likely mutual-jamming lock).\n")
+                if not tradeoff["density_pass"]:
+                    f.write(f"- 2c FAIL: Kill density {tradeoff['kill_density']:.3f} < 0.5 → "
+                            f"env near-non-lethal under extreme strategies.\n")
+                if not tradeoff["stalemate_pass"]:
+                    for s, bod in tradeoff["unbeatable_suspects"]:
+                        f.write(f"- 2d FAIL: '{s}' best_opponent_decisive={bod:.2f} < 0.30 → "
+                                f"no opponent breaks it (pure_jam with no anti-jam skill anywhere).\n")
             if not crlb["pass"]:
                 f.write("- CRLB anchor disconnected → tracker or comm fusion broken.\n")
 

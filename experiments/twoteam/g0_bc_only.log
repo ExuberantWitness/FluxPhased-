@@ -1,0 +1,78 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 101.9 GB
+======================================================================
+G0 EXPLOITABILITY GATE — Two-team WP1
+======================================================================
+
+=== Anti-strawman check: StrongRule vs ExtremeCommanders ===
+  rule vs pure_track               : WR=0.95 draws=0.05 kills 1.95 vs 0.97
+  rule vs pure_jam                 : WR=0.38 draws=0.62 kills 0.35 vs 0.00
+  rule vs pure_comm                : WR=1.00 draws=0.00 kills 2.00 vs 0.00
+  rule vs pure_detect              : WR=1.00 draws=0.00 kills 1.95 vs 0.00
+  rule vs balanced                 : WR=0.95 draws=0.05 kills 1.95 vs 0.95
+  rule vs balanced_jam_heavy       : WR=0.95 draws=0.05 kills 1.95 vs 1.00
+  verdict: TOO_WEAK (extreme wins ≥80%: 3/4, balanced WR: 0.95, jam_heavy WR: 0.95)
+
+=== Cell 1: π_rule vs π_rule (mirror, 30 eps × 8 envs) ===
+  mirror margin: +0.000 (95% CI [+0.000, +0.000])
+  kills: rule_t0=1.94, rule_t1=1.94
+  winner: t0=0.00, t1=0.00, draw=1.00
+
+=== BR training: BR(π_rule) vs π_rule frozen (0 iters) ===
+  hyperparams: lr_actor=0.0003 lr_critic=0.001 entropy_coef=0.01 lr_decay_iters=0
+
+=== Step C0: BC pretrain (collect 50000 samples from StrongRule) ===
+  BC hyperparams: epochs=15 batch_size=256 lr=0.001
+  [BC collect] ep=5 total=16000/50000 opp=balanced t=12.8s
+  [BC collect] ep=10 total=32000/50000 opp=pure_comm t=25.6s
+  [BC collect] ep=15 total=48000/50000 opp=pure_track t=38.6s
+  [BC collect] ep=16 total=50000/50000 opp=pure_jam t=40.2s
+  [BC collect] DONE: 50000 samples in 40.2s (16 episodes)
+  collected 50000 samples
+  [BC train] epoch=1/15 train_loss=-16.189 val_loss=-19.551 best=-19.551 patience=3
+  [BC train] epoch=2/15 train_loss=-21.711 val_loss=-23.018 best=-23.018 patience=3
+  [BC train] epoch=3/15 train_loss=-23.773 val_loss=-24.279 best=-24.279 patience=3
+  [BC train] epoch=4/15 train_loss=-24.767 val_loss=-25.091 best=-25.091 patience=3
+  [BC train] epoch=5/15 train_loss=-25.484 val_loss=-25.734 best=-25.734 patience=3
+  [BC train] epoch=6/15 train_loss=-26.048 val_loss=-26.221 best=-26.221 patience=3
+  [BC train] epoch=7/15 train_loss=-26.521 val_loss=-26.685 best=-26.685 patience=3
+  [BC train] epoch=8/15 train_loss=-26.936 val_loss=-27.063 best=-27.063 patience=3
+  [BC train] epoch=9/15 train_loss=-27.284 val_loss=-27.387 best=-27.387 patience=3
+  [BC train] epoch=10/15 train_loss=-27.610 val_loss=-27.709 best=-27.709 patience=3
+  [BC train] epoch=11/15 train_loss=-27.909 val_loss=-27.997 best=-27.997 patience=3
+  [BC train] epoch=12/15 train_loss=-28.183 val_loss=-28.252 best=-28.252 patience=3
+  [BC train] epoch=13/15 train_loss=-28.442 val_loss=-28.479 best=-28.479 patience=3
+  [BC train] epoch=14/15 train_loss=-28.690 val_loss=-28.750 best=-28.750 patience=3
+  [BC train] epoch=15/15 train_loss=-28.918 val_loss=-28.961 best=-28.961 patience=3
+
+  BC sanity check — deterministic action profile (1 episode, 5 steps):
+    BC task_alloc profile (4 fns, avg over 2 apertures): [0.08, 0.71, 0.12, 0.10]
+    BC freq_hop mean: 1.03
+    Rule task_alloc profile: [0.10, 0.71, 0.09, 0.10] (approx, varies by scenario)
+
+=== Cell 2: π_rule vs BR(π_rule) (30 eps × 8 envs) ===
+  br margin (rule POV): +0.138 (95% CI [+0.087, +0.192])
+  kills: rule_t0=1.95, br_t1=1.81
+  winner: rule=0.11, BR=0.00, draw=0.89
+
+=== Exploitability ===
+  mirror_margin = +0.000
+  br_margin     = +0.138
+  exploit_gap   = -0.138 (95% CI [-0.192, -0.087])
+
+=== G0 VERDICT ===
+  exploit_gap >= 0.5 AND CI excludes 0: False
+  CI excludes 0:                        False
+  BR win rate >= 0.55:                  False (actual=0.00)
+  BR training healthy:                  False
+  adv_std (last):                       NA
+  entropy (last):                       NA
+
+  ❌ G0 FAIL — exploitability not confirmed.
+     → Recommend: pause. Either BR undertrained, or rule is genuinely
+       not exploitable (root A present). Discuss IET retreat.
+
+Report: experiments/twoteam/g0_gate_report.md
+CSVs: experiments/twoteam/g0_mirror_metrics.csv, experiments/twoteam/g0_br_metrics.csv, experiments/twoteam/g0_br_training_log.csv
+BR checkpoint: /home/ubuntu/CODE/FluxPhased-/checkpoints/twoteam/br_vs_strong_rule_final.pt

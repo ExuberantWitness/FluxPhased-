@@ -40,15 +40,20 @@ def test_ac_action_shapes():
     assert a_t0["beam_target"].shape == (4, 2), f"beam_target shape: {a_t0['beam_target'].shape}"
     assert a_t0["laser_target"].shape == (4,), f"laser_target shape: {a_t0['laser_target'].shape}"
     assert a_t0["emission_on"].shape == (4, 2), f"emission_on shape: {a_t0['emission_on'].shape}"
+    assert a_t0["freq_hop_rate"].shape == (4, 2), f"freq_hop_rate shape: {a_t0['freq_hop_rate'].shape}"
     # task_alloc sums to 1
     sums = a_t0["task_alloc"].sum(dim=-1)
     assert torch.allclose(sums, torch.ones_like(sums), atol=1e-4), f"task_alloc sum: {sums}"
+    # FIX 1: freq_hop_rate in [1, freq_hop_max]
+    fh_min, fh_max = a_t0["freq_hop_rate"].min().item(), a_t0["freq_hop_rate"].max().item()
+    assert 1.0 <= fh_min and fh_max <= ac.freq_hop_max + 1e-4, \
+        f"freq_hop_rate out of [1, {ac.freq_hop_max}]: min={fh_min}, max={fh_max}"
     # Action fits env.step
     a_t1, _, _, _ = ac(obs["obs"][:, 1], obs["privileged"][:, 1])
     action = combine_team_actions(env, a_t0, a_t1)
     obs2, r, d, info = env.step(action)
     assert not torch.isnan(obs2["obs"]).any(), "NaN after AC step"
-    print(f"✅ AC action shapes OK; task_alloc sums to 1; env step NaN-free")
+    print(f"✅ AC action shapes OK; task_alloc sums to 1; freq_hop ∈ [{fh_min:.2f}, {fh_max:.2f}]; env step NaN-free")
 
 
 def test_evaluate_actions_consistent():

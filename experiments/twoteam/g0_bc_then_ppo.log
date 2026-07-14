@@ -1,0 +1,129 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 101.9 GB
+======================================================================
+G0 EXPLOITABILITY GATE — Two-team WP1
+======================================================================
+
+=== Anti-strawman check: StrongRule vs ExtremeCommanders ===
+  rule vs pure_track               : WR=0.97 draws=0.03 kills 1.98 vs 1.00
+  rule vs pure_jam                 : WR=0.33 draws=0.68 kills 0.33 vs 0.00
+  rule vs pure_comm                : WR=1.00 draws=0.00 kills 2.00 vs 0.00
+  rule vs pure_detect              : WR=1.00 draws=0.00 kills 1.95 vs 0.00
+  rule vs balanced                 : WR=1.00 draws=0.00 kills 2.00 vs 0.97
+  rule vs balanced_jam_heavy       : WR=0.95 draws=0.05 kills 1.95 vs 1.00
+  verdict: TOO_WEAK (extreme wins ≥80%: 3/4, balanced WR: 1.00, jam_heavy WR: 0.95)
+
+=== Cell 1: π_rule vs π_rule (mirror, 30 eps × 8 envs) ===
+  mirror margin: +0.000 (95% CI [+0.000, +0.000])
+  kills: rule_t0=1.95, rule_t1=1.95
+  winner: t0=0.00, t1=0.00, draw=1.00
+
+=== BR training: BR(π_rule) vs π_rule frozen (500 iters) ===
+  hyperparams: lr_actor=0.0001 lr_critic=0.001 entropy_coef=0.01 lr_decay_iters=0
+
+=== Step C0: BC pretrain (collect 50000 samples from StrongRule) ===
+  BC hyperparams: epochs=15 batch_size=256 lr=0.001
+  [BC collect] ep=5 total=16000/50000 opp=balanced t=12.3s
+  [BC collect] ep=10 total=32000/50000 opp=pure_comm t=25.0s
+  [BC collect] ep=15 total=48000/50000 opp=pure_track t=37.8s
+  [BC collect] ep=16 total=50000/50000 opp=pure_jam t=39.4s
+  [BC collect] DONE: 50000 samples in 39.4s (16 episodes)
+  collected 50000 samples
+  [BC train] epoch=1/15 train_loss=-16.296 val_loss=-20.652 best=-20.652 patience=3
+  [BC train] epoch=2/15 train_loss=-22.175 val_loss=-23.242 best=-23.242 patience=3
+  [BC train] epoch=3/15 train_loss=-23.881 val_loss=-24.388 best=-24.388 patience=3
+  [BC train] epoch=4/15 train_loss=-24.833 val_loss=-25.214 best=-25.214 patience=3
+  [BC train] epoch=5/15 train_loss=-25.509 val_loss=-25.797 best=-25.797 patience=3
+  [BC train] epoch=6/15 train_loss=-26.072 val_loss=-26.296 best=-26.296 patience=3
+  [BC train] epoch=7/15 train_loss=-26.531 val_loss=-26.733 best=-26.733 patience=3
+  [BC train] epoch=8/15 train_loss=-26.940 val_loss=-27.119 best=-27.119 patience=3
+  [BC train] epoch=9/15 train_loss=-27.302 val_loss=-27.470 best=-27.470 patience=3
+  [BC train] epoch=10/15 train_loss=-27.633 val_loss=-27.787 best=-27.787 patience=3
+  [BC train] epoch=11/15 train_loss=-27.927 val_loss=-28.067 best=-28.067 patience=3
+  [BC train] epoch=12/15 train_loss=-28.198 val_loss=-28.332 best=-28.332 patience=3
+  [BC train] epoch=13/15 train_loss=-28.457 val_loss=-28.572 best=-28.572 patience=3
+  [BC train] epoch=14/15 train_loss=-28.694 val_loss=-28.801 best=-28.801 patience=3
+  [BC train] epoch=15/15 train_loss=-28.921 val_loss=-29.012 best=-29.012 patience=3
+
+  BC sanity check — deterministic action profile (1 episode, 5 steps):
+    BC task_alloc profile (4 fns, avg over 2 apertures): [0.08, 0.70, 0.12, 0.10]
+    BC freq_hop mean: 1.03
+    Rule task_alloc profile: [0.10, 0.71, 0.09, 0.10] (approx, varies by scenario)
+  [BR] it=  0/500 r=-0.682 v_loss=12.607 pi_loss=-0.010 ent=-2.379 kl=0.0332 adv_std=1.00 clip=0.10 es=0 t=0.0min
+  [BR] it= 10/500 r=-0.527 v_loss=12.802 pi_loss=-0.004 ent=-2.354 kl=0.0267 adv_std=1.00 clip=0.09 es=0 t=0.3min
+  [BR] it= 20/500 r=-0.499 v_loss=9.124 pi_loss=-0.004 ent=-2.364 kl=0.0187 adv_std=1.00 clip=0.09 es=0 t=0.6min
+  [BR] it= 30/500 r=-0.637 v_loss=9.937 pi_loss=+0.001 ent=-2.350 kl=0.0100 adv_std=1.00 clip=0.05 es=0 t=0.9min
+  [BR] it= 40/500 r=-0.772 v_loss=11.076 pi_loss=-0.001 ent=-2.420 kl=0.0443 adv_std=1.00 clip=0.05 es=0 t=1.1min
+  [BR] it= 50/500 r=-0.746 v_loss=8.041 pi_loss=+0.008 ent=-2.456 kl=0.0456 adv_std=1.00 clip=0.05 es=1 t=1.4min
+  [BR] it= 60/500 r=-0.441 v_loss=7.895 pi_loss=+0.021 ent=-2.313 kl=0.0607 adv_std=1.00 clip=0.15 es=1 t=1.7min
+  [BR] it= 70/500 r=-0.299 v_loss=2.452 pi_loss=-0.008 ent=-2.309 kl=0.0249 adv_std=1.00 clip=0.14 es=0 t=1.9min
+  [BR] it= 80/500 r=-0.260 v_loss=1.877 pi_loss=-0.001 ent=-2.251 kl=0.0389 adv_std=1.00 clip=0.13 es=0 t=2.2min
+  [BR] it= 90/500 r=-0.242 v_loss=2.579 pi_loss=-0.006 ent=-2.276 kl=0.0391 adv_std=1.00 clip=0.12 es=0 t=2.5min
+  [BR] it=100/500 r=-0.253 v_loss=2.815 pi_loss=-0.008 ent=-2.267 kl=0.0333 adv_std=1.00 clip=0.18 es=0 t=2.8min
+  [BR] it=110/500 r=-0.214 v_loss=2.690 pi_loss=-0.010 ent=-2.229 kl=0.0358 adv_std=1.00 clip=0.12 es=0 t=3.1min
+  [BR] it=120/500 r=-0.203 v_loss=2.376 pi_loss=-0.013 ent=-2.228 kl=0.0360 adv_std=1.00 clip=0.15 es=0 t=3.4min
+  [BR] it=130/500 r=-0.187 v_loss=2.229 pi_loss=-0.001 ent=-2.258 kl=0.0174 adv_std=1.00 clip=0.08 es=0 t=3.7min
+  [BR] it=140/500 r=-0.168 v_loss=1.711 pi_loss=-0.000 ent=-2.242 kl=0.0395 adv_std=1.00 clip=0.12 es=0 t=3.9min
+  [BR] it=150/500 r=-0.169 v_loss=2.433 pi_loss=+0.009 ent=-2.349 kl=0.0602 adv_std=1.00 clip=0.09 es=1 t=4.1min
+  [BR] it=160/500 r=-0.098 v_loss=1.798 pi_loss=+0.009 ent=-2.344 kl=0.0777 adv_std=1.00 clip=0.18 es=1 t=4.3min
+  [BR] it=170/500 r=-0.073 v_loss=1.663 pi_loss=+0.003 ent=-2.323 kl=0.0741 adv_std=1.00 clip=0.11 es=1 t=4.5min
+  [BR] it=180/500 r=-0.170 v_loss=2.557 pi_loss=+0.012 ent=-2.360 kl=0.0790 adv_std=1.00 clip=0.10 es=1 t=4.8min
+  [BR] it=190/500 r=-0.098 v_loss=1.586 pi_loss=+0.007 ent=-2.320 kl=0.0649 adv_std=1.00 clip=0.08 es=1 t=5.0min
+  [BR] it=200/500 r=-0.099 v_loss=1.632 pi_loss=-0.003 ent=-2.349 kl=0.0358 adv_std=1.00 clip=0.09 es=0 t=5.2min
+  [BR] it=210/500 r=-0.102 v_loss=1.535 pi_loss=+0.013 ent=-2.327 kl=0.0753 adv_std=1.00 clip=0.09 es=1 t=5.4min
+  [BR] it=220/500 r=-0.090 v_loss=1.774 pi_loss=+0.008 ent=-2.338 kl=0.0735 adv_std=1.00 clip=0.10 es=1 t=5.6min
+  [BR] it=230/500 r=-0.064 v_loss=1.294 pi_loss=+0.010 ent=-2.323 kl=0.0530 adv_std=1.00 clip=0.12 es=1 t=5.8min
+  [BR] it=240/500 r=-0.062 v_loss=0.509 pi_loss=+0.006 ent=-2.338 kl=0.0721 adv_std=1.00 clip=0.09 es=1 t=6.0min
+  [BR] it=250/500 r=-0.040 v_loss=0.378 pi_loss=+0.016 ent=-2.344 kl=0.0820 adv_std=1.00 clip=0.10 es=1 t=6.2min
+  [BR] it=260/500 r=-0.083 v_loss=1.437 pi_loss=+0.007 ent=-2.363 kl=0.0943 adv_std=1.00 clip=0.08 es=1 t=6.4min
+  [BR] it=270/500 r=-0.049 v_loss=1.558 pi_loss=+0.006 ent=-2.351 kl=0.0528 adv_std=1.00 clip=0.04 es=1 t=6.6min
+  [BR] it=280/500 r=-0.093 v_loss=1.635 pi_loss=+0.004 ent=-2.332 kl=0.0986 adv_std=1.00 clip=0.11 es=1 t=6.9min
+  [BR] it=290/500 r=-0.191 v_loss=3.643 pi_loss=+0.005 ent=-2.371 kl=0.0725 adv_std=1.00 clip=0.08 es=1 t=7.1min
+  [BR] it=300/500 r=-0.189 v_loss=3.691 pi_loss=+0.006 ent=-2.316 kl=0.0550 adv_std=1.00 clip=0.07 es=1 t=7.3min
+  [BR] it=310/500 r=-0.120 v_loss=1.612 pi_loss=-0.002 ent=-2.315 kl=0.0249 adv_std=1.00 clip=0.05 es=0 t=7.5min
+  [BR] it=320/500 r=-0.166 v_loss=1.321 pi_loss=-0.002 ent=-2.335 kl=0.0442 adv_std=1.00 clip=0.15 es=0 t=7.7min
+  [BR] it=330/500 r=-0.056 v_loss=1.563 pi_loss=+0.004 ent=-2.345 kl=0.0875 adv_std=1.00 clip=0.10 es=1 t=7.9min
+  [BR] it=340/500 r=-0.101 v_loss=1.339 pi_loss=+0.003 ent=-2.336 kl=0.0470 adv_std=1.00 clip=0.05 es=1 t=8.1min
+  [BR] it=350/500 r=-0.127 v_loss=3.156 pi_loss=+0.010 ent=-2.358 kl=0.1011 adv_std=1.00 clip=0.16 es=1 t=8.3min
+  [BR] it=360/500 r=-0.048 v_loss=1.848 pi_loss=-0.001 ent=-2.336 kl=0.0507 adv_std=1.00 clip=0.08 es=1 t=8.5min
+  [BR] it=370/500 r=-0.077 v_loss=1.373 pi_loss=+0.008 ent=-2.361 kl=0.0851 adv_std=1.00 clip=0.10 es=1 t=8.7min
+  [BR] it=380/500 r=-0.103 v_loss=1.366 pi_loss=-0.004 ent=-2.329 kl=0.0344 adv_std=1.00 clip=0.08 es=0 t=9.0min
+  [BR] it=390/500 r=-0.031 v_loss=0.130 pi_loss=+0.000 ent=-2.353 kl=0.1131 adv_std=1.00 clip=0.16 es=1 t=9.2min
+  [BR] it=400/500 r=-0.070 v_loss=1.162 pi_loss=+0.011 ent=-2.355 kl=0.0890 adv_std=1.00 clip=0.08 es=1 t=9.4min
+  [BR] it=410/500 r=-0.034 v_loss=0.131 pi_loss=+0.012 ent=-2.363 kl=0.1279 adv_std=1.00 clip=0.12 es=1 t=9.6min
+  [BR] it=420/500 r=-0.041 v_loss=1.661 pi_loss=+0.001 ent=-2.357 kl=0.1053 adv_std=1.00 clip=0.12 es=1 t=9.8min
+  [BR] it=430/500 r=-0.071 v_loss=1.055 pi_loss=+0.008 ent=-2.357 kl=0.0764 adv_std=1.00 clip=0.16 es=1 t=10.0min
+  [BR] it=440/500 r=-0.293 v_loss=1.765 pi_loss=-0.004 ent=-2.351 kl=0.0296 adv_std=1.00 clip=0.11 es=0 t=10.2min
+  [BR] it=450/500 r=-0.096 v_loss=1.210 pi_loss=+0.003 ent=-2.358 kl=0.0748 adv_std=1.00 clip=0.08 es=1 t=10.4min
+  [BR] it=460/500 r=-0.056 v_loss=1.453 pi_loss=+0.003 ent=-2.382 kl=0.0929 adv_std=1.00 clip=0.10 es=1 t=10.6min
+  [BR] it=470/500 r=-0.025 v_loss=0.860 pi_loss=+0.006 ent=-2.373 kl=0.1068 adv_std=1.00 clip=0.12 es=1 t=10.9min
+  [BR] it=480/500 r=-0.099 v_loss=2.329 pi_loss=+0.001 ent=-2.370 kl=0.1106 adv_std=1.00 clip=0.10 es=1 t=11.1min
+  [BR] it=490/500 r=-0.062 v_loss=0.720 pi_loss=+0.009 ent=-2.354 kl=0.0670 adv_std=1.00 clip=0.15 es=1 t=11.3min
+  [BR] it=499/500 r=-0.049 v_loss=0.819 pi_loss=+0.008 ent=-2.374 kl=0.0946 adv_std=1.00 clip=0.10 es=1 t=11.5min
+
+=== Cell 2: π_rule vs BR(π_rule) (30 eps × 8 envs) ===
+  br margin (rule POV): +0.017 (95% CI [-0.017, +0.050])
+  kills: rule_t0=1.95, br_t1=1.93
+  winner: rule=0.05, BR=0.03, draw=0.93
+
+=== Exploitability ===
+  mirror_margin = +0.000
+  br_margin     = +0.017
+  exploit_gap   = -0.016 (95% CI [-0.050, +0.017])
+
+=== G0 VERDICT ===
+  exploit_gap >= 0.5 AND CI excludes 0: False
+  CI excludes 0:                        False
+  BR win rate >= 0.55:                  False (actual=0.03)
+  BR training healthy:                  True
+  adv_std (last):                       0.9999998807907104
+  entropy (last):                       -2.3740459156036375
+
+  ❌ G0 FAIL — exploitability not confirmed.
+     → Recommend: pause. Either BR undertrained, or rule is genuinely
+       not exploitable (root A present). Discuss IET retreat.
+
+Report: experiments/twoteam/g0_gate_report.md
+CSVs: experiments/twoteam/g0_mirror_metrics.csv, experiments/twoteam/g0_br_metrics.csv, experiments/twoteam/g0_br_training_log.csv
+BR checkpoint: /home/ubuntu/CODE/FluxPhased-/checkpoints/twoteam/br_vs_strong_rule_final.pt
