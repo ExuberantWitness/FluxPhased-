@@ -54,6 +54,47 @@
 
 ---
 
+## 详细实验计划(实验矩阵 + 图表清单)
+**统一变量(除算法外全控)**:同一 IQ 物理、同一干扰生成、同一几何分布集、同一计算预算、同 seed 集(≥5)、同 held-out 对手集。
+
+### 方法集(4)
+| 方法 | 说明 | 消融角色 |
+|---|---|---|
+| **学习式 MARL** | CTDE 协同 + 自博弈/league | 主方法 |
+| **强经典多智能体** | robust 估计 + 捷变/波束置零 + 中心化/规则协同 | anti-strawman(thesis:高干扰崩) |
+| **MAPPO(无 league)** | CTDE 但无对抗自博弈 | 证 league/对抗价值 |
+| **IPPO** | 无 CTDE | 证队内协同价值 |
+
+### 干扰 regime 轴(主自变量,量级标定于 WP-B)
+敌扰(定向 JSR)low→high 扫全程(含 low=经典够用区,诚实报)× 他扰密度(共道多辐射源,含队内)× 几何(镜像+随机)× (次轴)目标数/机动。**姿态:配到实践现实的高干扰(经典已知失效);经典没崩=加大到现实。**
+
+### 实验序列(每个产论文图/表)
+| # | 实验 | 产物 |
+|---|---|---|
+| **E0**(WP-A 验证) | 干扰物理生效:敌扰使 track 退化 / **队友同频→你他扰 σ 升(队内互扰)** / 4 源共道叠加 / 镜像无偏 | **Fig2** |
+| **E1(headline)**(WP-B+E) | 4 方法 × 干扰全扫 → mission(kill/survival)vs 干扰强度 → **操作包线图**(经典在 D_c 崩,学习式 MARL 扩 ΔD) | **Fig3 + Table1** |
+| **E2**(WP-C) | 强经典崩的**双轴分解**:估计轴(robust 估计在重非平稳干扰发散)+ **协同轴**(中心化/规则协同做不了"去中心避互扰+穿透敌扰") | **Fig4** |
+| **E3(立命点)**(WP-D/E) | **协同分析**:学习式 MARL 的 2 雷达做了什么——频率/波束分集避队内互扰、互补角色(一传感一保护)、被压制时接管 → 定性轨迹 + 定量协同指标 | **Fig5** |
+| **E4(消融)** | −CTDE / −league / **−队内他扰建模** / −频率选择 / −belief → 每个掉多少 gap(证价值来源在协同) | **Fig6 + Table2** |
+| **E5** | cross-play 锦标赛 + Elo + exploitability(对抗鲁棒) | **Fig7** |
+| **E6** | track 质量 vs 多基地 CRLB/PCRLB across 干扰(物理锚) | **Fig8** |
+
+### 指标定义
+- **mission**:kill-rate、time-to-kill、survival-rate;
+- **协同(立命点)**:队内互扰事件率↓、功能分配多样性、mutual-protection 触发率;
+- **估计**:track RMSE / trace_P vs CRLB;
+- **对抗**:cross-play 胜率、Elo、exploitability/Nash-gap;
+- **统计**:mean±95%CI(bootstrap 1e4)、Welch-t/Mann-Whitney、Cohen's d、Holm-Bonferroni、D_c bootstrap CI。
+
+### 论文骨架(图表→章节)
+1 Intro(认知雷达一体化 under 高干扰 + 多 AGENT 协同缺口)· 2 Related(Li'22/Xiong'23/Dolinger'25 + SMAC/CTDE + 认知雷达抗干扰)· 3 系统/testbed(Fig1-2,IQ 原生干扰 + MATLAB 校验 + CRLB)· 4 方法(学习式 MARL:CTDE+自博弈+避互扰频率选择)· 5 实验(Fig3-8:操作包线 + 经典双轴崩 + 协同分析 + 消融 + cross-play + CRLB)· 6 讨论(工程可部署 + 局限仿真 + 双用途)。
+
+### 诚实标注(TBD,不造假精确)
+- **干扰 dB 级别、hop 参数、hyperparams:标定于 WP-A/B,现不编数字**;
+- **IQ sim 接口/吞吐:WP-A 落地时定;若 IQ 全物理训 RL 太慢,派生"忠实保留敌扰+他扰"的降维态(非标量 jam_mul)**。
+
+---
+
 ## 决策(demonstrate,不是 retreat-gate)
 | 结果 | 去向 |
 |---|---|
