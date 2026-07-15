@@ -55,7 +55,13 @@ class IqInterference:
         aperture_eta: float = 0.6,
         n_subarrays: int = 25,
         polarization_loss_db: float = 3.0,
-        jnr_total_clamp: float = 1e4,
+        # WP-B Step 0: clamp raised 1e4 → 1e8 (80 dB).
+        # At 1e4 (40 dB), full-power boresight coupling at 5km geometry saturated
+        # immediately (JNR=82.7dB), flattening the [10,50]dB useful regime into a
+        # single σ=5m point — "saturated calm sea". 1e8 keeps saturation reachable
+        # only at extreme boresight-main-beam scenarios; tracker_P.clamp(-1e3,1e3)
+        # in env still caps numerical blowup downstream.
+        jnr_total_clamp: float = 1e8,
         distance_floor_m: float = 100.0,
     ):
         self.fc_hz = float(fc_hz)
