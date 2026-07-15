@@ -1,0 +1,68 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 101.9 GB
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 101.9 GB
+======================================================================
+Bet B Step 0 — Rule Sensitivity Sweep (Cheap Gate)
+======================================================================
+
+Sweep: 14 grid points (1 nominal + 13 variants)
+Each grid: 100 ep x 2 directions x horizon=200 = 200 ep total
+Estimated total: ~2800 episodes
+
+[1/14] nominal
+  WR=0.983 CI=[0.978, 0.987]  draw=0.03  kills=1.95 vs 0.97  (219.8s)
+
+[2/14] jam_gain=3.0
+  WR=0.980 CI=[0.975, 0.984]  draw=0.04  kills=1.95 vs 0.99  Δ=-0.003  (221.7s)
+
+[3/14] jam_gain=9.0
+  WR=0.998 CI=[0.997, 1.000]  draw=0.00  kills=1.95 vs 0.93  Δ=+0.016  (222.4s)
+
+[4/14] range_sigma=0.02
+  WR=0.982 CI=[0.978, 0.987]  draw=0.04  kills=1.95 vs 0.99  Δ=-0.001  (221.7s)
+
+[5/14] range_sigma=0.10
+  WR=0.999 CI=[0.998, 1.000]  draw=0.00  kills=1.94 vs 0.92  Δ=+0.016  (221.9s)
+
+[6/14] sigma_q=1.0
+  WR=0.976 CI=[0.971, 0.981]  draw=0.05  kills=1.94 vs 0.96  Δ=-0.007  (221.4s)
+
+[7/14] sigma_q=4.0
+  WR=1.000 CI=[0.999, 1.000]  draw=0.00  kills=1.95 vs 0.92  Δ=+0.017  (222.9s)
+
+[8/14] exposure=100
+  WR=0.991 CI=[0.988, 0.994]  draw=0.02  kills=1.97 vs 0.98  Δ=+0.008  (221.9s)
+
+[9/14] exposure=400
+  WR=0.964 CI=[0.957, 0.970]  draw=0.07  kills=1.90 vs 0.93  Δ=-0.019  (215.4s)
+
+[10/14] radar_sep=1000
+  WR=0.981 CI=[0.976, 0.986]  draw=0.04  kills=1.94 vs 0.96  Δ=-0.002  (221.6s)
+
+[11/14] radar_sep=2000
+  WR=0.978 CI=[0.972, 0.983]  draw=0.04  kills=1.95 vs 0.96  Δ=-0.005  (221.4s)
+
+[12/14] map_size=6000
+  WR=0.982 CI=[0.978, 0.987]  draw=0.04  kills=1.95 vs 0.97  Δ=-0.001  (221.7s)
+
+[13/14] map_size=10000
+  WR=0.990 CI=[0.986, 0.993]  draw=0.02  kills=1.97 vs 0.97  Δ=+0.007  (222.6s)
+
+[14/14] geometry=RANDOM
+  WR=0.978 CI=[0.973, 0.983]  draw=0.04  kills=1.95 vs 0.96  Δ=-0.004  (222.7s)
+
+Total sweep time: 3099.1s (51.7 min)
+
+Report written: experiments/twoteam/rule_sensitivity_sweep.md
+
+======================================================================
+SUMMARY
+======================================================================
+  Nominal WR (rule vs pure_track): 0.983
+  Cliff count: 0 / 13 (threshold 0.15)
+  Rule loses to pure_track: 0 / 13
+
+  ❌ Verdict: rule robust → Bet B premise dead → pivot to IET
