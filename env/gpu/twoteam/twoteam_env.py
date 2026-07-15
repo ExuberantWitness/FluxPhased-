@@ -88,7 +88,10 @@ class TwoTeamVecEnv:
         e_kill: float = 2.0,
         dwell_rate: float = 1.0,
         decay_factor: float = 0.95,
-        tau_track: float = 0.04,
+        # WP-C R4: tau_track relaxed 0.04 → 4.0 (σ_pos = 2m, UAV-class medium track).
+        # At 0.04 (σ=0.2m), any f_emit>0 made kills=0, hiding RL kill advantage.
+        # trace_P remains the continuous primary metric; kills now a usable auxiliary.
+        tau_track: float = 4.0,
         # Exposure / home-on-jam
         exposure_gain: float = 200.0,   # FIX 2: was 50 → 200 (4× more sensitive, breaks duck lock)
         emit_power_per_subarray: float = 0.005,
@@ -353,6 +356,15 @@ class TwoTeamVecEnv:
         freq_hop_rate = action.get("freq_hop_rate",
                                     torch.ones(E, T, R, device=dev)).float().clamp(1.0, self.freq_hop_max)
         self._last_freq_hop = freq_hop_rate
+
+        # WP-C R3: per-radar channel selection (dynamic coordination action).
+        # Optional — if absent, env keeps the frequencies set at reset (or by
+        # an external wrapper via set_radar_freqs). When present, env updates
+        # radar_freq_hz = fc + channel_select * channel_spacing before IQ physics.
+        channel_select = action.get("channel_select", None)
+        if channel_select is not None:
+            cs = channel_select.long().clamp(0, max(self.n_channels - 1, 0))
+            self.radar_freq_hz = self.fc_hz + cs.float() * self.channel_spacing_hz
 
         # Normalize task_alloc
         task_alloc = task_alloc / (task_alloc.sum(dim=-1, keepdim=True) + 1e-8)

@@ -47,6 +47,7 @@ class TwoTeamCommanderActorCritic(nn.Module):
         dirichlet_min_concentration: float = 0.5,
         freq_hop_max: float = 8.0,   # FIX 1: matches env.freq_hop_max
         beta_min_concentration: float = 0.5,   # FIX 1: avoid degenerate Beta
+        n_channels: int = 8,   # WP-C R3: per-aperture channel select (coordination lever)
     ):
         super().__init__()
         self.obs_dim = int(obs_dim)
@@ -58,6 +59,7 @@ class TwoTeamCommanderActorCritic(nn.Module):
         self.dirichlet_min_concentration = float(dirichlet_min_concentration)
         self.freq_hop_max = float(freq_hop_max)
         self.beta_min_concentration = float(beta_min_concentration)
+        self.n_channels = int(n_channels)
 
         # --- Shared actor trunk ---
         self.actor_trunk = nn.Sequential(
@@ -74,6 +76,8 @@ class TwoTeamCommanderActorCritic(nn.Module):
         self.emission_on_head = nn.Linear(hidden, n_aperture)
         # FIX 1: freq_hop Beta per aperture: [hidden → n_aperture * 2] (α,β per aperture)
         self.freq_hop_head = nn.Linear(hidden, n_aperture * 2)
+        # WP-C R3: channel select per aperture: [hidden → n_aperture * n_channels]
+        self.channel_select_head = nn.Linear(hidden, n_aperture * n_channels)
 
         # --- Critics (CTDE central + IPPO local) ---
         self.central_trunk = nn.Sequential(
@@ -134,10 +138,17 @@ class TwoTeamCommanderActorCritic(nn.Module):
         # Rescale to [1, freq_hop_max]
         freq_hop_sample = fh_uniform * (self.freq_hop_max - 1.0) + 1.0   # [B, n_aperture]
 
+        # --- WP-C R3: channel_select Categorical per aperture ---
+        chan_logits = self.channel_select_head(h).reshape(B, self.n_aperture, self.n_channels)
+        chan_dist = torch.distributions.Categorical(logits=chan_logits)
+        chan_sample = chan_dist.sample()   # [B, n_aperture]
+        chan_logp = chan_dist.log_prob(chan_sample)   # [B, n_aperture]
+
         # --- Joint log_prob ---
         log_prob = (task_logp.sum(dim=-1) + beam_logp.sum(dim=-1)
                     + laser_logp + emit_logp.sum(dim=-1)
-                    + fh_logp.sum(dim=-1))
+                    + fh_logp.sum(dim=-1)
+                    + chan_logp.sum(dim=-1))
 
         # --- Critics ---
         value = self.central_trunk(
@@ -150,6 +161,7 @@ class TwoTeamCommanderActorCritic(nn.Module):
             "laser_target": laser_sample.long(),
             "emission_on": emit_sample,
             "freq_hop_rate": freq_hop_sample,   # FIX 1
+            "channel_select": chan_sample.long(),   # WP-C R3
         }
         return action, log_prob, value, value_local
 
@@ -202,13 +214,21 @@ class TwoTeamCommanderActorCritic(nn.Module):
         fh_logp = fh_dist.log_prob(fh_uniform)
         fh_entropy = fh_dist.entropy()
 
+        # WP-C R3: channel_select Categorical
+        chan_logits = self.channel_select_head(h).reshape(B, self.n_aperture, self.n_channels)
+        chan_dist = torch.distributions.Categorical(logits=chan_logits)
+        chan_logp = chan_dist.log_prob(action["channel_select"])
+        chan_entropy = chan_dist.entropy()
+
         log_prob = (task_logp.sum(dim=-1) + beam_logp.sum(dim=-1)
                     + laser_logp + emit_logp.sum(dim=-1)
-                    + fh_logp.sum(dim=-1))
+                    + fh_logp.sum(dim=-1)
+                    + chan_logp.sum(dim=-1))
         entropy = (task_entropy.sum(dim=-1) + beam_entropy.sum(dim=-1)
                    + laser_entropy + emit_entropy.sum(dim=-1)
-                   + fh_entropy.sum(dim=-1)) / (
-                   self.n_aperture * 4 + 1)   # 4 heads per aperture + 1 laser
+                   + fh_entropy.sum(dim=-1)
+                   + chan_entropy.sum(dim=-1)) / (
+                   self.n_aperture * 4 + 1 + self.n_aperture)   # +n_aperture channel heads
 
         value = self.central_trunk(
             torch.cat([obs, privileged], dim=-1)).squeeze(-1)
@@ -246,11 +266,15 @@ class TwoTeamCommanderActorCritic(nn.Module):
             fh_beta = F.softplus(raw_fh[..., 1]) + self.beta_min_concentration
             fh_mean_uniform = fh_alpha / (fh_alpha + fh_beta)
             fh_mean = fh_mean_uniform * (self.freq_hop_max - 1.0) + 1.0
+            # WP-C R3: channel select argmax
+            chan_logits = self.channel_select_head(h).reshape(B, self.n_aperture, self.n_channels)
+            chan_argmax = chan_logits.argmax(dim=-1)
             action = {
                 "task_alloc": task_mean,
                 "beam_target": beam_argmax.long(),
                 "laser_target": laser_argmax.long(),
                 "emission_on": emit_round,
                 "freq_hop_rate": fh_mean,
+                "channel_select": chan_argmax.long(),
             }
         return action, log_prob

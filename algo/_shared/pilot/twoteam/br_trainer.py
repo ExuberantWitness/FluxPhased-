@@ -47,6 +47,7 @@ class _RolloutBuffer:
         self.laser_target = torch.zeros(horizon, n_envs, dtype=torch.long, device=device)
         self.emission_on = torch.zeros(horizon, n_envs, n_aperture, device=device)
         self.freq_hop_rate = torch.zeros(horizon, n_envs, n_aperture, device=device)   # FIX 1
+        self.channel_select = torch.zeros(horizon, n_envs, n_aperture, dtype=torch.long, device=device)   # WP-C R3
         # PPO bookkeeping
         self.log_prob = torch.zeros(horizon, n_envs, device=device)
         self.value = torch.zeros(horizon, n_envs, device=device)
@@ -111,7 +112,8 @@ class TwoTeamBRTrainer:
                        list(br_ac.beam_target_head.parameters()) + \
                        list(br_ac.laser_target_head.parameters()) + \
                        list(br_ac.emission_on_head.parameters()) + \
-                       list(br_ac.freq_hop_head.parameters())
+                       list(br_ac.freq_hop_head.parameters()) + \
+                       list(br_ac.channel_select_head.parameters())
         critic_params = list(br_ac.central_trunk.parameters()) + \
                         list(br_ac.local_trunk.parameters())
         self.opt = torch.optim.Adam([
@@ -158,6 +160,7 @@ class TwoTeamBRTrainer:
             buf.laser_target[t] = br_action["laser_target"]
             buf.emission_on[t] = br_action["emission_on"]
             buf.freq_hop_rate[t] = br_action["freq_hop_rate"]   # FIX 1
+            buf.channel_select[t] = br_action["channel_select"]   # WP-C R3
             buf.log_prob[t] = br_logp
             buf.value[t] = br_value
             buf.value_local[t] = br_value_local
@@ -228,12 +231,14 @@ class TwoTeamBRTrainer:
         laser_flat = buf.laser_target.reshape(N,)
         emit_flat = buf.emission_on.reshape(N, self.br_ac.n_aperture)
         fh_flat = buf.freq_hop_rate.reshape(N, self.br_ac.n_aperture)   # FIX 1
+        chan_flat = buf.channel_select.reshape(N, self.br_ac.n_aperture)   # WP-C R3
         action_flat = {
             "task_alloc": task_flat,
             "beam_target": beam_flat,
             "laser_target": laser_flat,
             "emission_on": emit_flat,
             "freq_hop_rate": fh_flat,
+            "channel_select": chan_flat,
         }
         lp_old = buf.log_prob.reshape(N)
         v_old = buf.value.reshape(N)

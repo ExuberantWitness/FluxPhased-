@@ -107,6 +107,7 @@ def combine_team_actions(env, action_t0: Dict, action_t1: Dict) -> Dict:
 
     Stacks along team axis (dim=1): [E, 2_teams, ...].
     Backward compat: if freq_hop_rate absent, env defaults to 1.0.
+    WP-C R3: channel_select stacked when present in both teams.
     """
     out = {
         "task_alloc": torch.stack([action_t0["task_alloc"], action_t1["task_alloc"]], dim=1),
@@ -117,6 +118,9 @@ def combine_team_actions(env, action_t0: Dict, action_t1: Dict) -> Dict:
     if "freq_hop_rate" in action_t0 and "freq_hop_rate" in action_t1:
         out["freq_hop_rate"] = torch.stack(
             [action_t0["freq_hop_rate"], action_t1["freq_hop_rate"]], dim=1)
+    if "channel_select" in action_t0 and "channel_select" in action_t1:
+        out["channel_select"] = torch.stack(
+            [action_t0["channel_select"], action_t1["channel_select"]], dim=1)
     return out
 
 

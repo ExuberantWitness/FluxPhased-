@@ -60,6 +60,7 @@ class TwoTeamBCPretrainer:
             + list(self.ac.laser_target_head.parameters())
             + list(self.ac.emission_on_head.parameters())
             + list(self.ac.freq_hop_head.parameters())
+            + list(self.ac.channel_select_head.parameters())
         )
         self.opt = torch.optim.Adam(actor_params, lr=self.lr)
 
@@ -104,6 +105,7 @@ class TwoTeamBCPretrainer:
         laser_target_buf = []
         emission_on_buf = []
         freq_hop_rate_buf = []
+        channel_select_buf = []   # WP-C R3: from env state (rule doesn't output)
 
         total = 0
         ep = 0
@@ -128,6 +130,12 @@ class TwoTeamBCPretrainer:
                 laser_target_buf.append(a_rule["laser_target"].clone())
                 emission_on_buf.append(a_rule["emission_on"].clone())
                 freq_hop_rate_buf.append(a_rule["freq_hop_rate"].clone())
+                # WP-C R3: rule doesn't output channel_select — derive from env state
+                # (wrapper-set orthogonal config => BC learns "fixed orth" as the
+                # pre-PPO starting point; PPO fine-tune learns dynamic on top).
+                ch_idx_t0 = ((env.radar_freq_hz[:, 0, :] - env.fc_hz)
+                             / env.channel_spacing_hz).round().long().clamp(0, env.n_channels - 1)
+                channel_select_buf.append(ch_idx_t0.clone())
                 total += E
                 if total >= n_samples:
                     break
@@ -150,6 +158,10 @@ class TwoTeamBCPretrainer:
                     laser_target_buf.append(a_rule["laser_target"].clone())
                     emission_on_buf.append(a_rule["emission_on"].clone())
                     freq_hop_rate_buf.append(a_rule["freq_hop_rate"].clone())
+                    # WP-C R3: channel_select from env state (team 1 row)
+                    ch_idx_t1 = ((env.radar_freq_hz[:, 1, :] - env.fc_hz)
+                                 / env.channel_spacing_hz).round().long().clamp(0, env.n_channels - 1)
+                    channel_select_buf.append(ch_idx_t1.clone())
                     total += E
                     if total >= n_samples:
                         break
@@ -176,6 +188,7 @@ class TwoTeamBCPretrainer:
             "laser_target": torch.cat([b for b in laser_target_buf], dim=0)[:n_samples].to(torch.long),
             "emission_on": torch.cat([b for b in emission_on_buf], dim=0)[:n_samples].to(torch.float32),
             "freq_hop_rate": torch.cat([b for b in freq_hop_rate_buf], dim=0)[:n_samples].to(torch.float32),
+            "channel_select": torch.cat([b for b in channel_select_buf], dim=0)[:n_samples].to(torch.long),
         }
         if verbose:
             print(f"  [BC collect] DONE: {samples['obs'].shape[0]} samples in "
@@ -216,6 +229,7 @@ class TwoTeamBCPretrainer:
             "laser_target": samples["laser_target"].to(dev),
             "emission_on": samples["emission_on"].to(dev),
             "freq_hop_rate": samples["freq_hop_rate"].to(dev),
+            "channel_select": samples["channel_select"].to(dev),
         }
 
         # Train/val split

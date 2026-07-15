@@ -142,10 +142,18 @@ class TwoTeamStrongRuleCommander:
         )   # [E]
         freq_hop_rate = hop_val.unsqueeze(-1).expand(E, R).clone()
 
+        # --- 7. WP-C R3: channel_select (hold current env freq — StrongRule
+        # doesn't dynamically re-allocate channels; it's the FIXED-allocation
+        # baseline. Channel index derived from env.radar_freq_hz so wrapper-set
+        # orthogonal config (ch0/ch1) is preserved across steps.)
+        ch_idx = ((env.radar_freq_hz[:, team, :] - env.fc_hz)
+                  / env.channel_spacing_hz).round().long().clamp(0, env.n_channels - 1)
+
         return {
             "task_alloc": task_alloc,
             "beam_target": beam_target,
             "laser_target": lt_idx,
             "emission_on": emission_on,
             "freq_hop_rate": freq_hop_rate,
+            "channel_select": ch_idx,
         }
