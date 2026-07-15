@@ -75,8 +75,15 @@ class TwoTeamVecEnv:
         # Function allocation
         n_subarrays: int = 25,
         comm_threshold: float = 0.10,
-        # Jam coupling
-        jam_gain: float = 6.0,   # FIX 1: was 8 → 6 (let anti-jam actually win at hop=8)
+        # IQ-native physics constants (X-band nominal, WP-B will recalibrate)
+        fc_hz: float = 10e9,
+        channel_bw_hz: float = 10e6,
+        noise_figure_db: float = 5.0,
+        P_per_subarray_W: float = 5.0,
+        aperture_D_m: float = 0.4,
+        aperture_eta: float = 0.6,
+        n_channels: int = 8,
+        channel_spacing_hz: float = 50e6,
         # Kill chain
         e_kill: float = 2.0,
         dwell_rate: float = 1.0,
@@ -114,7 +121,14 @@ class TwoTeamVecEnv:
         self.n_subarrays = int(n_subarrays)
         self.comm_threshold = float(comm_threshold)
 
-        self.jam_gain = float(jam_gain)
+        self.fc_hz = float(fc_hz)
+        self.channel_bw_hz = float(channel_bw_hz)
+        self.noise_figure_db = float(noise_figure_db)
+        self.P_per_subarray_W = float(P_per_subarray_W)
+        self.aperture_D_m = float(aperture_D_m)
+        self.aperture_eta = float(aperture_eta)
+        self.n_channels = int(n_channels)
+        self.channel_spacing_hz = float(channel_spacing_hz)
         self.e_kill = float(e_kill)
         self.dwell_rate = float(dwell_rate)
         self.decay_factor = float(decay_factor)
@@ -134,11 +148,24 @@ class TwoTeamVecEnv:
         self.n_teams = 2
         self.n_radars_per_team = 2
         self.n_fn = 4
-        self.obs_dim = 36
+        # WP-A: obs_dim 36 → 40 (added 4 freq-channel slots: own ch0/ch1, enemy ch0/ch1)
+        self.obs_dim = 40
         self.privileged_dim = 8
         self._reset_count = 0
 
         self._init_tensors()
+
+        # WP-A: instantiate IQ-native interference physics (stateless, ctor-once)
+        from .iq_interference import IqInterference
+        self.iq = IqInterference(
+            fc_hz=self.fc_hz,
+            channel_bw_hz=self.channel_bw_hz,
+            noise_figure_db=self.noise_figure_db,
+            P_per_subarray_W=self.P_per_subarray_W,
+            aperture_D_m=self.aperture_D_m,
+            aperture_eta=self.aperture_eta,
+            n_subarrays=self.n_subarrays,
+        )
 
     def _init_tensors(self):
         dev = self.device
@@ -158,11 +185,24 @@ class TwoTeamVecEnv:
         self._last_jam_matrix = torch.zeros(E, T, R, device=dev)
         self._last_task_alloc = torch.full((E, T, R, 4), 0.25, device=dev)
         self._last_freq_hop = torch.ones(E, T, R, device=dev)   # FIX 1: default 1.0 = no hopping
+        # WP-A: per-radar absolute frequency + continuous beam azimuth (for IQ-native physics).
+        # Filled by reset() with mirror-symmetric defaults.
+        self.radar_freq_hz = torch.full((E, T, R), float(self.fc_hz), device=dev)
+        self.radar_beam_az = torch.zeros(E, T, R, device=dev)
+        # WP-A: per-episode pairwise geometry cache (filled by reset(), geometry is fixed per episode)
+        self._pairwise_distance = torch.zeros(E, T * R, T * R, device=dev)
 
     def reset(self) -> Dict[str, torch.Tensor]:
         dev = self.device
         E = self.E
         self._reset_count += 1
+
+        # WP-A: reset episode state FIRST, then set geometry on top.
+        # (Previously _init_tensors was called AFTER setting radar_pos, which
+        # zeroed radar_pos — silently degrading all distance-dependent physics
+        # to the origin. Existing G0 PASS was only saved by mirror symmetry
+        # holding even at pos=0. Fixed as part of WP-A real-geometry rollout.)
+        self._init_tensors()
 
         if self.geometry == MIRROR_GEOMETRY:
             team_A_center = torch.tensor([-self.team_offset_m, 0.0], device=dev)
@@ -193,8 +233,30 @@ class TwoTeamVecEnv:
                 self.radar_pos[e, 1, 0] = team_B - offset_a
                 self.radar_pos[e, 1, 1] = team_B + offset_a
 
-        self._init_tensors()
+        # WP-A: assign per-radar frequency channels, mirror-symmetric by default.
+        # Team B's channel[r] = Team A's channel[r] (mirrored geometry already
+        # negates positions; matching freq ensures cross-team JNR is symmetric).
+        # Default: both radars within a team share channel 0 (worst-case intra-team
+        # mutual interference). Tests / WP-D fixtures can override via env setter.
+        ch0 = float(self.fc_hz)
+        for e in range(E):
+            for r in range(self.n_radars_per_team):
+                self.radar_freq_hz[e, 0, r] = ch0
+                self.radar_freq_hz[e, 1, r] = ch0   # mirror-symmetric
+
         return self.get_obs()
+
+    def set_radar_freqs(self, freqs_hz: torch.Tensor):
+        """Override per-radar frequencies (used by WP-A validation fixtures).
+
+        Args:
+            freqs_hz: [E, T, R] or [T, R] tensor of absolute frequencies.
+        """
+        if freqs_hz.dim() == 2:
+            freqs_hz = freqs_hz.unsqueeze(0).expand(self.E, -1, -1)
+        assert freqs_hz.shape == self.radar_freq_hz.shape, \
+            f"shape mismatch: {freqs_hz.shape} vs {self.radar_freq_hz.shape}"
+        self.radar_freq_hz = freqs_hz.to(self.device).float()
 
     def get_obs(self) -> Dict[str, torch.Tensor]:
         """Per-team obs: {"obs": [E, 2, obs_dim], "privileged": [E, 2, priv_dim]}."""
@@ -234,6 +296,16 @@ class TwoTeamVecEnv:
             et = 1 - t
             obs[:, t, own_base + 15] = (self._last_freq_hop[:, et, 0] / self.freq_hop_max).clamp(0.0, 1.0)
             obs[:, t, own_base + 16] = (self._last_freq_hop[:, et, 1] / self.freq_hop_max).clamp(0.0, 1.0)
+            # WP-A: frequency channel index per radar (own + enemy), normalized to [0,1].
+            # Channel = round((freq - fc) / channel_spacing); clamp to n_channels for safety.
+            def _ch_idx_norm(freq_hz_scalar_tensor):
+                ch = ((freq_hz_scalar_tensor - self.fc_hz) / self.channel_spacing_hz).round()
+                return (ch / max(self.n_channels, 1)).clamp(0.0, 1.0)
+            # WP-A freq slots live at indices 36..39 (obs_dim 36 → 40).
+            obs[:, t, 36] = _ch_idx_norm(self.radar_freq_hz[:, t, 0])
+            obs[:, t, 37] = _ch_idx_norm(self.radar_freq_hz[:, t, 1])
+            obs[:, t, 38] = _ch_idx_norm(self.radar_freq_hz[:, et, 0])
+            obs[:, t, 39] = _ch_idx_norm(self.radar_freq_hz[:, et, 1])
 
         priv = torch.zeros(E, T, self.privileged_dim, device=dev)
         for t in range(T):
@@ -286,19 +358,8 @@ class TwoTeamVecEnv:
         task_alloc = task_alloc / (task_alloc.sum(dim=-1, keepdim=True) + 1e-8)
         self._last_task_alloc = task_alloc
 
-        # 1. Jam matrix (with emission gate) — unchanged base computation
-        jam_level = torch.zeros(E, T, R, device=dev)
-        for t in range(T):
-            et = 1 - t
-            for k in range(R):
-                tgt = beam_target[:, et, k]
-                f_jam_k = task_alloc[:, et, k, 2] * emission_on[:, et, k]
-                for r in range(R):
-                    jam_level[:, t, r] += (tgt == r).float() * f_jam_k
-        self._last_jam_matrix = jam_level
-
-        # FIX 1: aggregate freq_hop per (team, enemy_tracker) — max hop rate among
-        # apertures beaming at that enemy (most agile signal wins).
+        # 1. Compute freq_hop_per_tracker (used in both modes for victim-side
+        # coherent-integration overhead).
         freq_hop_per_tracker = torch.ones(E, T, R, device=dev)
         for t in range(T):
             for r in range(R):
@@ -307,48 +368,80 @@ class TwoTeamVecEnv:
                     beam_at = beam_target[:, t, k]
                     contrib = freq_hop_rate[:, t, k] * (beam_at == r).float() * emission_on[:, t, k]
                     hop_contribs.append(contrib)
-                # Max across contributing apertures (1.0 if none contribute — no agility)
-                stacked = torch.stack(hop_contribs, dim=-1)   # [E, R]
+                stacked = torch.stack(hop_contribs, dim=-1)
                 freq_hop_per_tracker[:, t, r] = stacked.max(dim=-1).values.clamp(min=1.0)
-
-        # FIX 1: effective_jam = jam_level / freq_hop (jammer spreads power across hops)
-        # Physical basis: frequency agility forces jammer to spread power over hop_rate
-        # frequencies → per-frequency JNR drops linearly with hop_rate.
-        effective_jam = jam_level / freq_hop_per_tracker
-        jam_mul = 1.0 + self.jam_gain * effective_jam
 
         # 2. Comm link
         for t in range(T):
             f_comm_both = task_alloc[:, t, :, 3]
             self.comm_link_ok[:, t] = (f_comm_both >= self.comm_threshold).all(dim=-1)
 
-        # 3. Tracker update — FIX 1: add processing_overhead = 1/sqrt(freq_hop)
-        # (high hop rate dilutes per-frequency coherent integration → fewer effective
-        # pulses per frequency → SNR penalty when not jammed). This creates the
-        # non-monotonic skill trade: hop only when jam is high enough to justify overhead.
+        # 3a. Compute continuous beam_az per radar from beam_target (enemy_r index).
+        # This is the azimuth of the enemy each aperture is currently pointed at;
+        # required by IQ-native beam pattern. Vectorized gather over enemy positions.
+        beam_az = torch.zeros(E, T, R, device=dev)
+        for t in range(T):
+            et = 1 - t
+            for k in range(R):
+                own_pos = self.radar_pos[:, t, k]                          # [E,2]
+                tgt_r = beam_target[:, t, k]                                # [E]
+                enemy_pos_all = self.radar_pos[:, et]                       # [E,R,2]
+                enemy_pos = torch.gather(
+                    enemy_pos_all, 1, tgt_r.view(-1, 1, 1).expand(-1, 1, 2)
+                ).squeeze(1)                                                # [E,2]
+                delta = enemy_pos - own_pos
+                beam_az[:, t, k] = torch.atan2(delta[:, 1], delta[:, 0])
+        self.radar_beam_az = beam_az
+
+        # 3b. Per-victim σ computation — IQ-native physics.
+        # Compute IQ-native JNR matrix [E, N=4, N=4]
+        jnr_mat = self.iq.compute_jnr_matrix(
+            pos=self.radar_pos,
+            beam_az=beam_az,
+            alloc=task_alloc,
+            freq_hz=self.radar_freq_hz,
+            emission_on=emission_on.bool(),
+            hop_rate=freq_hop_rate,
+            radar_alive=self.radar_alive,
+        )
+        # Build f_track_eff_TR and fusion_factor_TR [E,T,R] (loops unavoidable
+        # due to f_track's beam_target indexing).
+        f_track_eff_TR = torch.zeros(E, T, R, device=dev)
+        for t in range(T):
+            for r in range(R):
+                f_track = torch.zeros(E, device=dev)
+                for k in range(R):
+                    beam_at = beam_target[:, t, k]
+                    f_track += task_alloc[:, t, k, 1] * (beam_at == r).float() * emission_on[:, t, k]
+                processing_overhead = 1.0 / freq_hop_per_tracker[:, t, r].pow(0.25).clamp(min=1.0)
+                f_track_eff_TR[:, t, r] = f_track * processing_overhead
+        fusion_factor_TR = torch.zeros(E, T, R, device=dev)
+        for t in range(T):
+            fusion_factor_TR[:, t] = torch.where(
+                self.comm_link_ok[:, t].unsqueeze(-1),
+                torch.ones(E, R, device=dev),
+                torch.full((E, R), 1.5, device=dev),
+            )
+        # σ_meas from IQ physics
+        sigma_meas = self.iq.compute_meas_sigma(
+            jnr_matrix=jnr_mat,
+            f_track_eff=f_track_eff_TR,
+            range_sigma=self.range_sigma_m,
+            fusion_factor=fusion_factor_TR,
+        )
+        # Feed Kalman per (t, r)
         for t in range(T):
             et = 1 - t
             for r in range(R):
                 true_pos = self.radar_pos[:, et, r]
                 enemy_alive = self.radar_alive[:, et, r]
-                f_track = torch.zeros(E, device=dev)
-                for k in range(R):
-                    beam_at = beam_target[:, t, k]
-                    f_track += task_alloc[:, t, k, 1] * (beam_at == r).float() * emission_on[:, t, k]
-                base_sigma = self.range_sigma_m
-                # Processing overhead: high hop rate dilutes per-frequency coherent
-                # integration. Penalty is sub-linear (1/hop^0.25) — modern radar
-                # matched-filter bank recovers most SNR at small hop counts (≤16).
-                # This makes anti-jam a viable skill: hop=8 → 0.13s overhead but 8×
-                # jam reduction → net positive when jam is high.
-                processing_overhead = 1.0 / freq_hop_per_tracker[:, t, r].pow(0.25).clamp(min=1.0)
-                f_track_eff = f_track * processing_overhead
-                track_sigma = base_sigma / (f_track_eff + 1e-3).sqrt() * jam_mul[:, t, r]
-                fusion_factor = torch.where(self.comm_link_ok[:, t], 1.0, 1.5)
-                track_sigma = track_sigma * fusion_factor
+                track_sigma = sigma_meas[:, t, r]
                 track_sigma = torch.where(enemy_alive, track_sigma, torch.full_like(track_sigma, 1e6))
                 emitting = emission_on[:, t, :].sum(dim=-1) > 0.5
                 self._kalman_update_step(t, r, true_pos, track_sigma, emitting)
+        # Preserve priv-obs contract: _last_jam_matrix = total JNR per victim (clamped to [0,1])
+        self._last_jam_matrix = jnr_mat.sum(dim=1).view(E, T, R).clamp(0.0, 1.0)
+
 
         # 4. Laser dwell-kill chain
         for t in range(T):

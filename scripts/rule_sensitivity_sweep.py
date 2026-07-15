@@ -40,7 +40,6 @@ from algo._shared.pilot.twoteam.run_g0_gate import (
 
 # --- Nominal env config (matches TwoTeamVecEnv defaults) ---
 NOMINAL = dict(
-    jam_gain=6.0,
     range_sigma_m=0.05,
     sigma_q=2.0,
     exposure_gain=200.0,
@@ -49,12 +48,11 @@ NOMINAL = dict(
     geometry=MIRROR_GEOMETRY,
 )
 
-# --- Sweep grid: 1 nominal + 13 variants (6 axes x 2 levels + geometry) = 14 ---
+# --- Sweep grid: 1 nominal + 11 variants (5 axes x 2 levels + geometry) = 12 ---
+# NOTE: jam_gain axis removed at WP-A end (scalar_jam_mul mode deleted; IQ-native
+# physics now drives interference, with P_tx / G_max / aperture_D as the new knobs).
 GRID = [
     ("nominal",            {}),
-    # jam_gain (EW strength)
-    ("jam_gain=3.0",       {"jam_gain": 3.0}),
-    ("jam_gain=9.0",       {"jam_gain": 9.0}),
     # range_sigma_m (sensor precision)
     ("range_sigma=0.02",   {"range_sigma_m": 0.02}),
     ("range_sigma=0.10",   {"range_sigma_m": 0.10}),
