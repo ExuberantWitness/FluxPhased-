@@ -88,6 +88,11 @@ class TwoTeamVecEnv:
         e_kill: float = 2.0,
         dwell_rate: float = 1.0,
         decay_factor: float = 0.95,
+        # WP-2 M0: laser slot-id semantics — energy accumulates on the enemy the
+        # slot is *actually* tracking (by belief position), not on the slot index.
+        # If slot r's belief is farther than `laser_hit_radius_m` from any alive
+        # enemy, the laser misses (blind-fire correct behavior).
+        laser_hit_radius_m: float = 50.0,
         # WP-C R4: tau_track relaxed 0.04 → 4.0 (σ_pos = 2m, UAV-class medium track).
         # At 0.04 (σ=0.2m), any f_emit>0 made kills=0, hiding RL kill advantage.
         # trace_P remains the continuous primary metric; kills now a usable auxiliary.
@@ -155,6 +160,7 @@ class TwoTeamVecEnv:
         self.e_kill = float(e_kill)
         self.dwell_rate = float(dwell_rate)
         self.decay_factor = float(decay_factor)
+        self.laser_hit_radius_m = float(laser_hit_radius_m)
         self.tau_track = float(tau_track)
 
         self.exposure_gain = float(exposure_gain)
@@ -681,21 +687,39 @@ class TwoTeamVecEnv:
         self._last_jam_matrix = jnr_mat.sum(dim=1).view(E, T, R).clamp(0.0, 1.0)
 
 
-        # 4. Laser dwell-kill chain
+        # 4. Laser dwell-kill chain (WP-2 M0: slot-id semantics + belief check)
+        # lsr_slot indexes TRACKER SLOT (not enemy). Energy accumulates on the
+        # enemy the slot is actually tracking (by belief position). If slot's
+        # belief is farther than laser_hit_radius_m from any alive enemy, laser
+        # misses. Blind-fire correct: slot mis-tracked → laser misses.
         for t in range(T):
             et = 1 - t
-            lsr_r = laser_target[:, t]
+            lsr_slot = laser_target[:, t]                              # [E] slot id
             trace_P_t = self.tracker_P[:, t, :, 0, 0] + self.tracker_P[:, t, :, 2, 2]
-            lsr_trace_P = torch.gather(trace_P_t, 1, lsr_r.unsqueeze(1)).squeeze(1)
-            lsr_init = self.tracker_initialized[:, t].gather(1, lsr_r.unsqueeze(1)).squeeze(1)
+            lsr_trace_P = torch.gather(trace_P_t, 1, lsr_slot.unsqueeze(1)).squeeze(1)
+            lsr_init = self.tracker_initialized[:, t].gather(1, lsr_slot.unsqueeze(1)).squeeze(1)
             lsr_track_ok = (lsr_trace_P < self.tau_track) & lsr_init
-            lsr_alive_enemy = self.radar_alive[:, et].gather(1, lsr_r.unsqueeze(1)).squeeze(1)
+            # Belief position for the fired slot [E, 2] (tracker_x is [x, vx, y, vy])
+            lsr_belief_state = torch.gather(
+                self.tracker_x[:, t], 1,
+                lsr_slot.view(-1, 1, 1).expand(-1, 1, 4),
+            ).squeeze(1)                                               # [E, 4]
+            lsr_belief_pos = lsr_belief_state[:, [0, 2]]               # [E, 2]
+            # Distance from belief to each alive enemy [E, R]
+            enemy_pos_all = self.radar_pos[:, et]                      # [E, R, 2]
+            d_to_enemies = (enemy_pos_all - lsr_belief_pos.unsqueeze(1)).norm(dim=-1)
+            enemy_alive_mask = self.radar_alive[:, et]                 # [E, R]
+            d_masked = torch.where(
+                enemy_alive_mask, d_to_enemies,
+                torch.full_like(d_to_enemies, 1e9),
+            )
+            nearest_d, nearest_enemy = d_masked.min(dim=-1)            # [E], [E]
+            hit_mask = nearest_d < self.laser_hit_radius_m             # [E]
             emitting_t = emission_on[:, t].sum(dim=-1) > 0.5
-            accum_mask = lsr_track_ok & lsr_alive_enemy & emitting_t
+            accum_mask = lsr_track_ok & hit_mask & emitting_t
             accum_dt = self.dwell_rate * dt * accum_mask.float()
-            lsr_onehot = torch.zeros(E, R, device=dev)
-            lsr_onehot.scatter_(1, lsr_r.unsqueeze(1), 1.0)
-            accum_per_radar = lsr_onehot * accum_dt.unsqueeze(1)
+            accum_per_radar = torch.zeros(E, R, device=dev)
+            accum_per_radar.scatter_(1, nearest_enemy.unsqueeze(1), accum_dt.unsqueeze(1))
             new_E = self.radar_E[:, et] + accum_per_radar
             track_all = (trace_P_t < self.tau_track) & self.tracker_initialized[:, t]
             decay_mask = (~track_all) & self.radar_alive[:, et]
