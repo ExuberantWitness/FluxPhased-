@@ -110,13 +110,18 @@ def combine_team_actions(env, action_t0: Dict, action_t1: Dict) -> Dict:
     WP-C R3: channel_select stacked when present in both teams.
     WP-1 M3: beam_direction stacked when present in both teams (new continuous
     azimuth API, alternative to legacy beam_target).
+    WP-2 M2: beam_target optional — BlindClassical commander emits beam_direction
+    only (no legacy beam_target). Skip stacking when absent.
     """
     out = {
         "task_alloc": torch.stack([action_t0["task_alloc"], action_t1["task_alloc"]], dim=1),
-        "beam_target": torch.stack([action_t0["beam_target"], action_t1["beam_target"]], dim=1),
         "laser_target": torch.stack([action_t0["laser_target"], action_t1["laser_target"]], dim=1),
         "emission_on": torch.stack([action_t0["emission_on"], action_t1["emission_on"]], dim=1),
     }
+    # beam_target optional (BlindClassical doesn't emit it; env handles beam_direction)
+    if "beam_target" in action_t0 and "beam_target" in action_t1:
+        out["beam_target"] = torch.stack(
+            [action_t0["beam_target"], action_t1["beam_target"]], dim=1)
     if "freq_hop_rate" in action_t0 and "freq_hop_rate" in action_t1:
         out["freq_hop_rate"] = torch.stack(
             [action_t0["freq_hop_rate"], action_t1["freq_hop_rate"]], dim=1)

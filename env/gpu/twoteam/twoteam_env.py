@@ -479,7 +479,9 @@ class TwoTeamVecEnv:
         dt = self.dt
 
         task_alloc = action["task_alloc"]
-        beam_target = action["beam_target"]
+        # WP-2 M2: beam_target optional — BlindClassical emits beam_direction only.
+        # When absent, zeros (env still uses beam_direction below; legacy path skipped).
+        beam_target = action.get("beam_target", torch.zeros(E, T, R, dtype=torch.long, device=dev))
         laser_target = action["laser_target"]
         emission_on = action["emission_on"].float()
         # FIX 1: freq_hop_rate per aperture; default to 1.0 (no hopping) for backward compat
