@@ -100,6 +100,20 @@ class TwoTeamVecEnv:
         exposure_decay_rate: float = 0.5,
         # FIX 1: frequency agility (anti-jam skill dimension)
         freq_hop_max: float = 8.0,   # max frequency-hop rate (N_FREQ_MAX in spec)
+        # WP-1 M1: detection chain (replace god-view z=true_pos+noise).
+        # See env/gpu/twoteam/detection.py + spec §9 TBD decisions.
+        detect_threshold_db: float = 15.0,   # Swerling-0 13.2 / Swerling-I ~18 dB midpoint
+        detect_width_db: float = 3.0,        # sigmoid transition width
+        p_fa: float = 1e-6,                  # false alarm prob per cell (1e-3 stress)
+        k_max: int = 8,                      # detection list cap (16 stress)
+        n_search_cells: int = 84,            # azimuth search cells (360° / 4.3°)
+        beam_width_rad: float = 0.075,       # 4.3° (0.886·λ/D, λ=0.03, D=0.4)
+        sigma_rcs_m2: float = 1.0,           # target RCS (UAV-class Swerling-I median)
+        range_max_m: float = 8000.0,         # max detection range (match map size)
+        # WP-1 M1: pulse compression + coherent integration gain (dB).
+        # 20 dB default = LFM/Barker (13 dB) + multi-pulse CPI (~7 dB) → nominal
+        # SNR ~20 dB at 5 km (P_detect ~0.84 at threshold 15 dB).
+        coherent_processing_gain_db: float = 20.0,
         # Rewards
         w_kill: float = 10.0,
         w_survive: float = 1.0,
@@ -143,6 +157,17 @@ class TwoTeamVecEnv:
         self.exposure_decay_rate = float(exposure_decay_rate)
         self.freq_hop_max = float(freq_hop_max)
 
+        # WP-1 M1: detection chain parameters.
+        self.detect_threshold_db = float(detect_threshold_db)
+        self.detect_width_db = float(detect_width_db)
+        self.p_fa = float(p_fa)
+        self.k_max = int(k_max)
+        self.n_search_cells = int(n_search_cells)
+        self.beam_width_rad = float(beam_width_rad)
+        self.sigma_rcs_m2 = float(sigma_rcs_m2)
+        self.range_max_m = float(range_max_m)
+        self.coherent_processing_gain_db = float(coherent_processing_gain_db)
+
         self.w_kill = float(w_kill)
         self.w_survive = float(w_survive)
         self.w_exposure = float(w_exposure)
@@ -169,6 +194,9 @@ class TwoTeamVecEnv:
             aperture_eta=self.aperture_eta,
             n_subarrays=self.n_subarrays,
         )
+        # WP-1 M1: import detection chain (stateless functions; mirror-symmetric RNG inside).
+        from .detection import detect as _detect_fn   # noqa: F401  (used in step)
+        self._detect_fn = _detect_fn
 
     def _init_tensors(self):
         dev = self.device
@@ -188,6 +216,15 @@ class TwoTeamVecEnv:
         self._last_jam_matrix = torch.zeros(E, T, R, device=dev)
         self._last_task_alloc = torch.full((E, T, R, 4), 0.25, device=dev)
         self._last_freq_hop = torch.ones(E, T, R, device=dev)   # FIX 1: default 1.0 = no hopping
+        # WP-1 M1: enemy emit state (True = enemy radiates → passive/active detect possible;
+        # False = enemy shuts down → only proactive detect can find it).
+        # Default True — commanders can mutate to model LPI duty cycle / shutdown-when-tracked.
+        self.enemy_emitting = torch.ones(E, T, R, dtype=torch.bool, device=dev)
+        # WP-1 M2 hooks (filled in M2): search coverage + frames since last detection.
+        self.search_coverage = torch.zeros(E, T, device=dev)
+        self.frames_since_last_detection = torch.zeros(E, T, R, dtype=torch.long, device=dev)
+        # WP-1 M1: last-step detections (for downstream consumers / obs in M2).
+        self._last_detections = None   # type: ignore[assignment]
         # WP-A: per-radar absolute frequency + continuous beam azimuth (for IQ-native physics).
         # Filled by reset() with mirror-symmetric defaults.
         self.radar_freq_hz = torch.full((E, T, R), float(self.fc_hz), device=dev)
@@ -434,23 +471,75 @@ class TwoTeamVecEnv:
                 torch.ones(E, R, device=dev),
                 torch.full((E, R), 1.5, device=dev),
             )
-        # σ_meas from IQ physics
+        # σ_meas from IQ physics (kept for σ_range floor + downstream metrics; Kalman
+        # now consumes detection-chain σ via _kalman_update_step_external).
         sigma_meas = self.iq.compute_meas_sigma(
             jnr_matrix=jnr_mat,
             f_track_eff=f_track_eff_TR,
             range_sigma=self.range_sigma_m,
             fusion_factor=fusion_factor_TR,
         )
-        # Feed Kalman per (t, r)
+        # WP-1 M1: detection chain — replaces god-view `z = true_pos + noise`.
+        # detections.z: [E, T, K_max, 2] cartesian; mask: real-detection slots.
+        detections = self._detect_fn(
+            radar_pos=self.radar_pos,
+            beam_az=beam_az,
+            alloc=task_alloc,
+            emission_on=emission_on.bool(),
+            enemy_emitting=self.enemy_emitting,
+            radar_alive=self.radar_alive,
+            jnr_matrix=jnr_mat,
+            range_max_m=self.range_max_m,
+            fc_hz=self.fc_hz,
+            channel_bw_hz=self.channel_bw_hz,
+            noise_figure_db=self.noise_figure_db,
+            P_per_subarray_W=self.P_per_subarray_W,
+            n_subarrays=self.n_subarrays,
+            aperture_D_m=self.aperture_D_m,
+            aperture_eta=self.aperture_eta,
+            sigma_rcs_m2=self.sigma_rcs_m2,
+            detect_threshold_db=self.detect_threshold_db,
+            detect_width_db=self.detect_width_db,
+            p_fa=self.p_fa,
+            k_max=self.k_max,
+            n_search_cells=self.n_search_cells,
+            beam_width_rad=self.beam_width_rad,
+            coherent_processing_gain_db=self.coherent_processing_gain_db,
+            device=dev,
+        )
+        self._last_detections = detections
+
+        # ---- Kalman predict (one step ahead) for association gating ----
+        # We need x_pred[E,T,R,4] to find nearest detection. Replicate the
+        # predict step from _kalman_update_step but without the update.
+        F_pred = torch.eye(4, device=dev)
+        F_pred[0, 1] = self.dt
+        F_pred[2, 3] = self.dt
+        x_pred_all = self.tracker_x @ F_pred.T   # [E, T, R, 4]
+
+        # ---- Nearest-neighbor association (M1; M4 replaces with PDAF) ----
+        z_assoc, mask_assoc, picked_fa = detections.find_assoc(x_pred_all)   # [E,T,R,2], [E,T,R], [E,T,R]
+
+        # ---- Feed Kalman per (t, r) with externally-provided measurement ----
         for t in range(T):
-            et = 1 - t
             for r in range(R):
-                true_pos = self.radar_pos[:, et, r]
-                enemy_alive = self.radar_alive[:, et, r]
-                track_sigma = sigma_meas[:, t, r]
-                track_sigma = torch.where(enemy_alive, track_sigma, torch.full_like(track_sigma, 1e6))
-                emitting = emission_on[:, t, :].sum(dim=-1) > 0.5
-                self._kalman_update_step(t, r, true_pos, track_sigma, emitting)
+                z_r = z_assoc[:, t, r]                          # [E, 2]
+                m_r = mask_assoc[:, t, r]                       # [E]
+                sigma_r = sigma_meas[:, t, r]                  # σ floor (IQ physics)
+                # Use a tighter σ when the detection has its own SNR-derived σ.
+                # (M1: use sigma_meas; M4 will pass per-detection σ from detection.snr_db.)
+                self._kalman_update_step_external(t, r, z_r, m_r, sigma_r)
+
+        # Update frames_since_last_detection for M2 obs.
+        any_real_per_radar = (mask_assoc & ~picked_fa).any(dim=-1)   # not quite — per-track shape
+        # mask_assoc is [E, T, R] per own-radar; picked_fa too. "real" = mask & ~picked_fa.
+        real_assoc = mask_assoc & ~picked_fa                        # [E, T, R]
+        self.frames_since_last_detection = torch.where(
+            real_assoc,
+            torch.zeros_like(self.frames_since_last_detection),
+            self.frames_since_last_detection + 1,
+        )
+
         # Preserve priv-obs contract: _last_jam_matrix = total JNR per victim (clamped to [0,1])
         self._last_jam_matrix = jnr_mat.sum(dim=1).view(E, T, R).clamp(0.0, 1.0)
 
@@ -550,9 +639,21 @@ class TwoTeamVecEnv:
 
         return self.get_obs(), zero_sum_reward, done, info
 
-    def _kalman_update_step(self, team: int, enemy_r: int, true_pos: torch.Tensor,
-                             meas_sigma: torch.Tensor, emitting: torch.Tensor):
-        """EKF position-only update for team's tracker on enemy radar."""
+    def _kalman_update_step_external(
+        self,
+        team: int,
+        enemy_r: int,
+        z_external: torch.Tensor,    # [E, 2] externally-provided cartesian measurement
+        mask_external: torch.Tensor, # [E] bool — True if a real measurement is associated
+        meas_sigma: torch.Tensor,    # [E] measurement σ (from IQ physics / detection SNR)
+    ):
+        """EKF position-only update consuming an external measurement (WP-1 M1).
+
+        Replaces the legacy god-view `_kalman_update_step` that synthesized
+        `z = true_pos + noise` internally. When mask_external=False, the filter
+        performs a pure predict (K→0 via R_meas = 1e10·I), so trace_P grows
+        via process noise Q — modelling belief aging when target is hidden.
+        """
         dev = self.device
         dt = self.dt
         E = self.E
@@ -578,28 +679,29 @@ class TwoTeamVecEnv:
         R_meas[:, 0, 0] = meas_sigma ** 2
         R_meas[:, 1, 1] = meas_sigma ** 2
 
-        noise = torch.randn(E, 2, device=dev) * meas_sigma.unsqueeze(-1)
-        z = true_pos + noise
-        z = torch.where(emitting.unsqueeze(-1), z, torch.full_like(z, float('nan')))
-
-        y_innov = z - x_pred[:, [0, 2]]
-        y_innov = torch.where(torch.isnan(y_innov), torch.zeros_like(y_innov), y_innov)
-
+        # Where mask_external=False, inflate R_meas → reject measurement (pure predict).
+        big_R = torch.eye(2, device=dev).expand(E, 2, 2) * 1e10
+        m2 = mask_external.unsqueeze(-1).unsqueeze(-1)
         S = H @ P_pred @ H.T + R_meas
-        S = torch.where(emitting.unsqueeze(-1).unsqueeze(-1), S,
-                        torch.eye(2, device=dev).expand(E, 2, 2) * 1e10)
+        S = torch.where(m2, S, big_R)
 
-        K = P_pred @ H.T @ torch.linalg.inv(S)
+        # Zero innovation where no measurement (K→0 anyway via S big).
+        y_innov = z_external - x_pred[:, [0, 2]]
+        y_innov = torch.where(m2.squeeze(-1), y_innov, torch.zeros_like(y_innov))
+
+        # jitter for numerical stability when S is near-singular (high JNR clamp).
+        S_jit = S + torch.eye(2, device=dev).expand(E, 2, 2) * 1e-6
+        K = P_pred @ H.T @ torch.linalg.inv(S_jit)
         x_new = x_pred + (y_innov.unsqueeze(-2) @ K.transpose(-1, -2)).squeeze(-2)
         P_new = (torch.eye(4, device=dev) - K @ H) @ P_pred
         P_new = 0.5 * (P_new + P_new.transpose(-1, -2))
 
         first_time = ~self.tracker_initialized[:, team, enemy_r]
-        init_mask = first_time & emitting
+        init_mask = first_time & mask_external
         if init_mask.any():
             x_init = torch.zeros(E, 4, device=dev)
-            x_init[:, 0] = torch.where(torch.isnan(z[:, 0]), torch.zeros(E, device=dev), z[:, 0])
-            x_init[:, 2] = torch.where(torch.isnan(z[:, 1]), torch.zeros(E, device=dev), z[:, 1])
+            x_init[:, 0] = z_external[:, 0]
+            x_init[:, 2] = z_external[:, 1]
             self.tracker_x[:, team, enemy_r] = torch.where(init_mask.unsqueeze(-1), x_init, x_new)
             P_init = torch.eye(4, device=dev).expand(E, 4, 4).clone() * 1.0
             self.tracker_P[:, team, enemy_r] = torch.where(init_mask.unsqueeze(-1).unsqueeze(-2), P_init, P_new)
