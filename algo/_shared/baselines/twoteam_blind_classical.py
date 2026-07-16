@@ -126,20 +126,21 @@ class BlindClassicalCommander:
 
         # Search azimuth: pick lowest-coverage cell per slot. argsort gives
         # ascending order; aperture k gets the k-th least-covered cell.
-        # _searched_cells: [E, T, n_search_cells] bool bitmap
-        searched = env._searched_cells[:, team].float()                   # [E, n_cells]
-        # argsort ascending → low counts first. Each aperture scans a different cell.
-        # argsort(dim=-1) returns indices that would sort; [E, n_cells]
-        # Take [:, :R] to get the R least-searched cells (one per aperture).
-        cell_width = 2.0 * math.pi / env.n_search_cells
-        cell_centers = (
-            torch.arange(env.n_search_cells, device=dev, dtype=searched.dtype) * cell_width - math.pi
-        )                                                                  # [n_cells]
-        # Ascending sort: least-searched first. Tie-broken by index (deterministic).
-        order = torch.argsort(searched, dim=-1, stable=True)              # [E, n_cells]
-        # Pick first R cells (one per aperture). cell index → azimuth via cell_centers
-        cell_idx_per_aperture = order[:, :R]                              # [E, R]
-        search_az = cell_centers[cell_idx_per_aperture]                   # [E, R]
+        # Search: sweep beam_az continuously at half-beam-width steps.
+        # cell_width = beam_width = 0.075 rad means cell-center beam only
+        # reliably detects enemies at cell center (sinc² drops 11 dB at cell
+        # edge → below threshold). Sweeping at beam_width/2 = 0.0375 rad gives
+        # 2x oversample: every enemy azimuth is within ±beam_width/4 of some
+        # sweep position, keeping SNR near boresight.
+        # Aperture k offset by k·sweep_step so 2 apertures cover 2x ground.
+        sweep_step = env.beam_width_rad * 0.5                             # 0.0375 rad
+        step_idx = env.step_idx.long()                                    # [E]
+        arange_R = torch.arange(R, device=dev, dtype=torch.float32)       # [R]
+        raw_az = -math.pi + (
+            step_idx.unsqueeze(-1).float() * float(R) + arange_R.unsqueeze(0)
+        ) * sweep_step                                                     # [E, R]
+        # Wrap to [-π, π]
+        search_az = torch.atan2(torch.sin(raw_az), torch.cos(raw_az))     # [E, R]
 
         # Pick track_az where init, search_az elsewhere
         beam_az = torch.where(my_init, track_az, search_az)               # [E, R]

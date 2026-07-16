@@ -58,34 +58,37 @@ def test_blind_commander_outputs_beam_direction():
 
 
 def test_blind_commander_search_when_uninit():
-    """All slots uninit → beam_direction points at a search cell, not origin.
+    """All slots uninit → beam_direction sweeps search space (not origin-stuck).
 
-    Fresh env: tracker_initialized all False. Commander should pick low-coverage
-    cells. Search cells span [-π, π] so beam_direction should NOT be uniformly 0
-    (origin) — different apertures should aim at different cells.
+    Fresh env: tracker_initialized all False. Commander should sweep beam_az
+    across [-π, π] at half-beam-width steps. Apertures 0 and 1 are offset by
+    sweep_step so they cover different positions.
     """
     env = make_env()
     cmd = BlindClassicalCommander()
     a0 = cmd.get_action(env, team=0)
     bd = a0["beam_direction"]                                              # [E, R]
-    # Two apertures should aim at different cells (round-robin through order)
+    # Two apertures should aim at different positions (offset by sweep_step)
     diff = (bd[:, 0] - bd[:, 1]).abs()
-    assert diff.mean() > 1e-3, (
-        f"aperture 0 and 1 picked same search cell: |diff| mean={diff.mean():.4f}"
+    expected_offset = env.beam_width_rad * 0.5   # sweep_step
+    # Allow wraparound (atan2 output): |diff| should be ≈ sweep_step or 2π-sweep_step
+    diff_wrapped = torch.minimum(diff, 2 * math.pi - diff)
+    err = (diff_wrapped - expected_offset).abs().max().item()
+    assert err < 1e-4, (
+        f"aperture 0/1 offset wrong: got {diff_wrapped.mean():.4f}, "
+        f"expected ≈ {expected_offset:.4f} (sweep_step)"
     )
-    # And both should be valid cell centers
-    cell_width = 2.0 * math.pi / env.n_search_cells
-    cell_centers = torch.arange(env.n_search_cells, device=env.device).float() * cell_width - math.pi
-    # Distance from each beam_az to nearest cell center should be 0 (it's a cell center)
-    for k in range(env.n_radars_per_team):
-        bd_k = bd[:, k]
-        dists = (bd_k.unsqueeze(-1) - cell_centers.unsqueeze(0)).abs()    # [E, n_cells]
-        nearest = dists.min(dim=-1).values                                # [E]
-        assert nearest.max() < 1e-4, (
-            f"aperture {k} beam_az not at search cell center: max dist={nearest.max():.4f}"
-        )
-    print(f"✅ search mode: aperture 0/1 pick distinct cells, "
-          f"mean |diff|={diff.mean():.3f} rad")
+    # Beam_az should be a multiple of sweep_step offset from -π (or +π after wrap)
+    sweep_step = env.beam_width_rad * 0.5
+    # atan2 wraps -π → +π; handle both representations
+    bd_normalized = torch.where(bd > math.pi / 2, bd - 2 * math.pi, bd)   # +π → -π
+    n_pos = (bd_normalized[:, 0] + math.pi) / sweep_step
+    n_pos_round_err = (n_pos - n_pos.round()).abs().max().item()
+    assert n_pos_round_err < 1e-4, (
+        f"beam_az not at sweep grid: round err={n_pos_round_err:.4f}"
+    )
+    print(f"✅ search mode: aperture 0/1 sweep with offset {expected_offset:.4f} rad, "
+          f"beam_az[0]={bd[0, 0].item():.4f}, beam_az[1]={bd[0, 1].item():.4f}")
 
 
 def test_blind_commander_tracks_when_init():
