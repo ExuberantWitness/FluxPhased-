@@ -174,8 +174,12 @@ def detect(
     roll_real = torch.rand(E, 1, R, R, device=dev).expand(E, T, R, R)
     # Per (env, azimuth cell): false alarm roll.
     roll_fa = torch.rand(E, 1, n_search_cells, device=dev).expand(E, T, n_search_cells)
-    # Per (env, detection slot): measurement noise.
-    # We'll draw noise lazily per slot (avoids over-allocation when many slots unused).
+    # Per (env, own_aperture, enemy_radar): measurement noise — team-shared so
+    # tracker_x stays mirror-symmetric (without this, IMM-PDAF's weighted update
+    # amplifies per-team noise into reward asymmetry that flunks §2.6⑥).
+    meas_noise_shared = torch.randn(E, 1, R, R, 2, device=dev, dtype=radar_pos.dtype).expand(
+        E, T, R, R, 2
+    )
 
     for t in range(T):
         et = 1 - t
@@ -254,8 +258,8 @@ def detect(
             SPEED_OF_LIGHT / (2.0 * channel_bw_hz * snr_eff.clamp(min=1e-3).sqrt())
         ).clamp(0.5, 500.0)   # [E, R, R]
 
-        # Measurement z = enemy_pos + N(0, σ_range)
-        noise = torch.randn(E, R, R, 2, device=dev, dtype=radar_pos.dtype) * sigma_range.unsqueeze(-1)
+        # Measurement z = enemy_pos + N(0, σ_range) — noise team-shared (meas_noise_shared)
+        noise = meas_noise_shared[:, t] * sigma_range.unsqueeze(-1)
         enemy_pos_er = enemy_pos.unsqueeze(1).expand(E, R, R, 2)
         z_meas = enemy_pos_er + noise                            # [E, R_own, R_enemy, 2]
 

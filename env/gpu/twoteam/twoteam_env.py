@@ -211,6 +211,9 @@ class TwoTeamVecEnv:
         # WP-1 M1: import detection chain (stateless functions; mirror-symmetric RNG inside).
         from .detection import detect as _detect_fn   # noqa: F401  (used in step)
         self._detect_fn = _detect_fn
+        # WP-2 M1: batched IMM (CV+CT) + PDAF tracker (replaces σ-gate NN + EKF).
+        from .tracker import BatchedIMMPDAF
+        self.tracker = BatchedIMMPDAF(self)
 
     def _init_tensors(self):
         dev = self.device
@@ -608,43 +611,13 @@ class TwoTeamVecEnv:
         )
         self._last_detections = detections
 
-        # ---- Kalman predict (one step ahead) for association gating ----
-        # We need x_pred[E,T,R,4] to find nearest detection. Replicate the
-        # predict step from _kalman_update_step but without the update.
-        F_pred = torch.eye(4, device=dev)
-        F_pred[0, 1] = self.dt
-        F_pred[2, 3] = self.dt
-        x_pred_all = self.tracker_x @ F_pred.T   # [E, T, R, 4]
-
-        # ---- Nearest-neighbor association with simple σ_meas gate (M4 §2.6④) ----
-        # Gate uses measurement-noise scale only (avoids tracker_P-driven mirror
-        # asymmetry that a full Mahalanobis gate would introduce). Initialized
-        # slots reject innovations > 5σ_meas; uninitialized slots accept any NN
-        # (first-acquisition). Full PDAF remains future work.
-        z_assoc, mask_assoc, picked_fa = detections.find_assoc(x_pred_all)   # [E,T,R,2], [E,T,R], [E,T,R]
-        innov = (z_assoc - x_pred_all[..., [0, 2]]).norm(dim=-1)             # [E, T, R]
-        # σ_meas floor (IQ physics, mirror-symmetric). Inflate by ×5 for the gate.
-        # Also add a generous position floor (500 m) so initialized tracks don't
-        # get prematurely starved when target maneuvers between detections.
-        sigma_gate = 5.0 * sigma_meas + 500.0                                 # [E, T, R]
-        gate_pass = (innov <= sigma_gate) | (~self.tracker_initialized)
-        mask_assoc = mask_assoc & gate_pass
-        picked_fa = picked_fa & gate_pass
-
-        # ---- Feed Kalman per (t, r) with externally-provided measurement ----
-        for t in range(T):
-            for r in range(R):
-                z_r = z_assoc[:, t, r]                          # [E, 2]
-                m_r = mask_assoc[:, t, r]                       # [E]
-                sigma_r = sigma_meas[:, t, r]                  # σ floor (IQ physics)
-                # Use a tighter σ when the detection has its own SNR-derived σ.
-                # (M1: use sigma_meas; M4 will pass per-detection σ from detection.snr_db.)
-                self._kalman_update_step_external(t, r, z_r, m_r, sigma_r)
-
-        # Update frames_since_last_detection for M2 obs.
-        # any_real_per_radar = (mask_assoc & ~picked_fa).any(dim=-1)   # not quite — per-track shape
-        # mask_assoc is [E, T, R] per own-radar; picked_fa too. "real" = mask & ~picked_fa.
-        real_assoc = mask_assoc & ~picked_fa                        # [E, T, R]
+        # ---- IMM-PDAF tracker update (WP-2 M1: replaces σ-gate NN + EKF) ----
+        # Per spec §3 ③: batched IMM (CV+CT 2-model) + PDAF data association
+        # (5σ Mahalanobis gate, probabilistic β_i weights). Tracker reads env
+        # state, performs mixing + per-model predict + PDAF update + fusion,
+        # writes back tracker_x/P/initialized + last_real_assoc for fsld update.
+        self.tracker.update(detections, sigma_meas)
+        real_assoc = self.tracker.last_real_assoc                              # [E, T, R]
         # WP-1 M2: save pre-update fsld for proactive-detect bonus computation.
         fsld_pre_update = self.frames_since_last_detection.clone()
         self.frames_since_last_detection = torch.where(
@@ -801,79 +774,6 @@ class TwoTeamVecEnv:
         }
 
         return self.get_obs(), zero_sum_reward, done, info
-
-    def _kalman_update_step_external(
-        self,
-        team: int,
-        enemy_r: int,
-        z_external: torch.Tensor,    # [E, 2] externally-provided cartesian measurement
-        mask_external: torch.Tensor, # [E] bool — True if a real measurement is associated
-        meas_sigma: torch.Tensor,    # [E] measurement σ (from IQ physics / detection SNR)
-    ):
-        """EKF position-only update consuming an external measurement (WP-1 M1).
-
-        Replaces the legacy god-view `_kalman_update_step` that synthesized
-        `z = true_pos + noise` internally. When mask_external=False, the filter
-        performs a pure predict (K→0 via R_meas = 1e10·I), so trace_P grows
-        via process noise Q — modelling belief aging when target is hidden.
-        """
-        dev = self.device
-        dt = self.dt
-        E = self.E
-
-        F = torch.eye(4, device=dev)
-        F[0, 1] = dt
-        F[2, 3] = dt
-        q = self.sigma_q ** 2
-        Q = torch.eye(4, device=dev) * q
-        Q[0, 0] = q * dt ** 2 / 4
-        Q[1, 1] = q * dt ** 2
-        Q[2, 2] = q * dt ** 2 / 4
-        Q[3, 3] = q * dt ** 2
-
-        x_pred = self.tracker_x[:, team, enemy_r] @ F.T
-        P_pred = F @ self.tracker_P[:, team, enemy_r] @ F.T + Q
-
-        H = torch.zeros(2, 4, device=dev)
-        H[0, 0] = 1.0
-        H[1, 2] = 1.0
-
-        R_meas = torch.zeros(E, 2, 2, device=dev)
-        R_meas[:, 0, 0] = meas_sigma ** 2
-        R_meas[:, 1, 1] = meas_sigma ** 2
-
-        # Where mask_external=False, inflate R_meas → reject measurement (pure predict).
-        big_R = torch.eye(2, device=dev).expand(E, 2, 2) * 1e10
-        m2 = mask_external.unsqueeze(-1).unsqueeze(-1)
-        S = H @ P_pred @ H.T + R_meas
-        S = torch.where(m2, S, big_R)
-
-        # Zero innovation where no measurement (K→0 anyway via S big).
-        y_innov = z_external - x_pred[:, [0, 2]]
-        y_innov = torch.where(m2.squeeze(-1), y_innov, torch.zeros_like(y_innov))
-
-        # jitter for numerical stability when S is near-singular (high JNR clamp).
-        S_jit = S + torch.eye(2, device=dev).expand(E, 2, 2) * 1e-6
-        K = P_pred @ H.T @ torch.linalg.inv(S_jit)
-        x_new = x_pred + (y_innov.unsqueeze(-2) @ K.transpose(-1, -2)).squeeze(-2)
-        P_new = (torch.eye(4, device=dev) - K @ H) @ P_pred
-        P_new = 0.5 * (P_new + P_new.transpose(-1, -2))
-
-        first_time = ~self.tracker_initialized[:, team, enemy_r]
-        init_mask = first_time & mask_external
-        if init_mask.any():
-            x_init = torch.zeros(E, 4, device=dev)
-            x_init[:, 0] = z_external[:, 0]
-            x_init[:, 2] = z_external[:, 1]
-            self.tracker_x[:, team, enemy_r] = torch.where(init_mask.unsqueeze(-1), x_init, x_new)
-            P_init = torch.eye(4, device=dev).expand(E, 4, 4).clone() * 1.0
-            self.tracker_P[:, team, enemy_r] = torch.where(init_mask.unsqueeze(-1).unsqueeze(-2), P_init, P_new)
-            self.tracker_initialized[:, team, enemy_r] = self.tracker_initialized[:, team, enemy_r] | init_mask
-        else:
-            self.tracker_x[:, team, enemy_r] = x_new
-            self.tracker_P[:, team, enemy_r] = P_new
-
-        self.tracker_P[:, team, enemy_r] = self.tracker_P[:, team, enemy_r].clamp(-1e3, 1e3)
 
     def _alive_mean_trace_P(self) -> torch.Tensor:
         """Per-team mean trace_P, only over ALIVE enemy radars.

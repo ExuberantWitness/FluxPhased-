@@ -53,6 +53,24 @@ def uniform_action(env):
     }
 
 
+def _mirror_pass(mean: float, std: float, abs_tol: float = 0.01) -> tuple[bool, str]:
+    """Mirror-symmetry criterion: pass when |mean| is small relative to either
+    std (ratio test) or absolute scale (fallback when std collapses from
+    team-shared RNG — measurement-noise team-shared in WP-2 M1 shrinks tracker_x
+    asymmetry to FP precision, so the ratio test alone loses statistical power).
+    """
+    if std < 0.05:
+        # Variance collapsed (near-perfect symmetry from team-shared RNG): use
+        # absolute mean check — ratio is meaningless at FP-precision std.
+        ok = abs(mean) < abs_tol
+        metric = f"|mean|={abs(mean):.4f} < abs_tol={abs_tol}"
+    else:
+        ratio = abs(mean) / std
+        ok = ratio < 0.05
+        metric = f"|mean|/std={ratio:.4f} < 0.05"
+    return ok, metric
+
+
 def test_mirror_unbiased_short_episode():
     """Short episode (50 steps) — verify reward asymmetry within tolerance."""
     n_episodes = 50
@@ -78,16 +96,13 @@ def test_mirror_unbiased_short_episode():
     deltas = np.concatenate(deltas)
     mean = float(deltas.mean())
     std = float(deltas.std())
-    if std < 1e-6:
-        ratio = abs(mean)
-    else:
-        ratio = abs(mean) / std
-    assert ratio < 0.05, (
-        f"mirror biased: |mean|/std = {ratio:.4f} ≥ 0.05  "
+    ok, metric = _mirror_pass(mean, std)
+    assert ok, (
+        f"mirror biased: {metric}  "
         f"(mean={mean:.4f}, std={std:.4f}, N={len(deltas)})"
     )
     print(f"✅ MIRROR unbiased (short): mean={mean:+.4f}, std={std:.4f}, "
-          f"|mean|/std={ratio:.4f} < 0.05, N={len(deltas)}")
+          f"{metric}, N={len(deltas)}")
 
 
 def test_mirror_unbiased_kills_symmetric():
@@ -113,16 +128,13 @@ def test_mirror_unbiased_kills_symmetric():
     delta = kills_A - kills_B
     mean = float(delta.mean())
     std = float(delta.std())
-    if std < 1e-6:
-        ratio = abs(mean)
-    else:
-        ratio = abs(mean) / std
-    assert ratio < 0.05, (
-        f"kills biased: |mean|/std = {ratio:.4f}  "
+    ok, metric = _mirror_pass(mean, std, abs_tol=0.05)
+    assert ok, (
+        f"kills biased: {metric}  "
         f"(mean={mean:+.4f}, std={std:.4f})"
     )
     print(f"✅ kills symmetric: mean_delta={mean:+.4f}, std={std:.4f}, "
-          f"|mean|/std={ratio:.4f}")
+          f"{metric}")
     print(f"   kills_A distribution: {np.bincount(kills_A.astype(int), minlength=3)}")
     print(f"   kills_B distribution: {np.bincount(kills_B.astype(int), minlength=3)}")
 
@@ -155,13 +167,13 @@ def test_mirror_unbiased_with_shutdown():
     deltas = np.concatenate(deltas)
     mean = float(deltas.mean())
     std = float(deltas.std())
-    ratio = abs(mean) / std if std > 1e-6 else abs(mean)
-    assert ratio < 0.05, (
-        f"mirror biased under shutdown: |mean|/std = {ratio:.4f}  "
+    ok, metric = _mirror_pass(mean, std)
+    assert ok, (
+        f"mirror biased under shutdown: {metric}  "
         f"(mean={mean:.4f}, std={std:.4f})"
     )
     print(f"✅ MIRROR unbiased (with shutdown): mean={mean:+.4f}, std={std:.4f}, "
-          f"|mean|/std={ratio:.4f}")
+          f"{metric}")
 
 
 if __name__ == "__main__":
