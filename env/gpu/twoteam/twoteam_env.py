@@ -610,8 +610,20 @@ class TwoTeamVecEnv:
         F_pred[2, 3] = self.dt
         x_pred_all = self.tracker_x @ F_pred.T   # [E, T, R, 4]
 
-        # ---- Nearest-neighbor association (M1; M4 replaces with PDAF) ----
+        # ---- Nearest-neighbor association with simple σ_meas gate (M4 §2.6④) ----
+        # Gate uses measurement-noise scale only (avoids tracker_P-driven mirror
+        # asymmetry that a full Mahalanobis gate would introduce). Initialized
+        # slots reject innovations > 5σ_meas; uninitialized slots accept any NN
+        # (first-acquisition). Full PDAF remains future work.
         z_assoc, mask_assoc, picked_fa = detections.find_assoc(x_pred_all)   # [E,T,R,2], [E,T,R], [E,T,R]
+        innov = (z_assoc - x_pred_all[..., [0, 2]]).norm(dim=-1)             # [E, T, R]
+        # σ_meas floor (IQ physics, mirror-symmetric). Inflate by ×5 for the gate.
+        # Also add a generous position floor (500 m) so initialized tracks don't
+        # get prematurely starved when target maneuvers between detections.
+        sigma_gate = 5.0 * sigma_meas + 500.0                                 # [E, T, R]
+        gate_pass = (innov <= sigma_gate) | (~self.tracker_initialized)
+        mask_assoc = mask_assoc & gate_pass
+        picked_fa = picked_fa & gate_pass
 
         # ---- Feed Kalman per (t, r) with externally-provided measurement ----
         for t in range(T):
