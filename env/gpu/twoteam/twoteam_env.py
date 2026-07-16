@@ -114,6 +114,12 @@ class TwoTeamVecEnv:
         # 20 dB default = LFM/Barker (13 dB) + multi-pulse CPI (~7 dB) → nominal
         # SNR ~20 dB at 5 km (P_detect ~0.84 at threshold 15 dB).
         coherent_processing_gain_db: float = 20.0,
+        # WP-1 M2: proactive-detect exposure bonus. When own aperture actively detects
+        # a hidden enemy (frames_since_last_detection > 5), bump team exposure by this amount.
+        # Represents the "active reveal" moment — enemy now cues your position too.
+        # Small (~1 step of regular emit_increment = 0.005·25·0.1·0.75 ≈ 0.009) to not
+        # destabilize home-on-jam dynamics.
+        proactive_detect_exposure_bonus: float = 0.05,
         # Rewards
         w_kill: float = 10.0,
         w_survive: float = 1.0,
@@ -167,6 +173,7 @@ class TwoTeamVecEnv:
         self.sigma_rcs_m2 = float(sigma_rcs_m2)
         self.range_max_m = float(range_max_m)
         self.coherent_processing_gain_db = float(coherent_processing_gain_db)
+        self.proactive_detect_exposure_bonus = float(proactive_detect_exposure_bonus)
 
         self.w_kill = float(w_kill)
         self.w_survive = float(w_survive)
@@ -176,8 +183,9 @@ class TwoTeamVecEnv:
         self.n_teams = 2
         self.n_radars_per_team = 2
         self.n_fn = 4
-        # WP-A: obs_dim 36 → 40 (added 4 freq-channel slots: own ch0/ch1, enemy ch0/ch1)
-        self.obs_dim = 40
+        # WP-A: obs_dim 36 → 40 (4 freq-channel slots)
+        # WP-1 M2: obs_dim 40 → 44 (4 partial-obs fields: fsld[r]×2, search_cov, n_det)
+        self.obs_dim = 44
         self.privileged_dim = 8
         self._reset_count = 0
 
@@ -223,6 +231,12 @@ class TwoTeamVecEnv:
         # WP-1 M2 hooks (filled in M2): search coverage + frames since last detection.
         self.search_coverage = torch.zeros(E, T, device=dev)
         self.frames_since_last_detection = torch.zeros(E, T, R, dtype=torch.long, device=dev)
+        # WP-1 M2: per-team bitmap of searched azimuth cells. Each step, mark the cell
+        # each own aperture's beam_az falls in (when aperture is in detect/track mode).
+        # search_coverage = bitmap.mean(dim=-1). Reset to zeros each episode.
+        self._searched_cells = torch.zeros(E, T, self.n_search_cells, dtype=torch.bool, device=dev)
+        # WP-1 M2: per-team count of real (non-FA) detections this step. Updated by step().
+        self.n_detections = torch.zeros(E, T, dtype=torch.long, device=dev)
         # WP-1 M1: last-step detections (for downstream consumers / obs in M2).
         self._last_detections = None   # type: ignore[assignment]
         # WP-A: per-radar absolute frequency + continuous beam azimuth (for IQ-native physics).
@@ -298,6 +312,64 @@ class TwoTeamVecEnv:
             f"shape mismatch: {freqs_hz.shape} vs {self.radar_freq_hz.shape}"
         self.radar_freq_hz = freqs_hz.to(self.device).float()
 
+    def assert_no_godview(self, tol: float = 1e-5) -> Dict[str, object]:
+        """Permutation test: obs must be invariant under enemy truth permutation (WP-1 §2.5).
+
+        Randomly permutes `radar_pos` (the underlying enemy truth) and checks that
+        `get_obs()` output is unchanged. Any obs dimension that changes is a god-view
+        leak — it depends on enemy truth directly rather than through own sensors.
+
+        Contract:
+          - Test runs AFTER step() so all sensor state (tracker_x, jam_matrix, etc.)
+            is already computed from past truth; permuting truth now shouldn't
+            propagate to obs unless obs reads truth directly.
+          - Restore state before returning (no side effects).
+
+        Returns:
+          {
+            "pass_dims": [int],        # obs dim indices invariant under permutation
+            "fail_dims": [int],        # obs dim indices that changed (god-view leaks)
+            "max_diff_per_dim": [float],
+            "tol": float,
+          }
+        """
+        E, T, R = self.E, self.n_teams, self.n_radars_per_team
+        dev = self.device
+
+        # Save state
+        pos_orig = self.radar_pos.clone()
+
+        # Baseline obs
+        obs_orig = self.get_obs()["obs"]   # [E, T, obs_dim]
+
+        # Random per-env permutation of all radar positions (within each env)
+        perm_idx = torch.argsort(torch.rand(E, T * R, device=dev), dim=-1)   # [E, T*R]
+        pos_flat = pos_orig.view(E, T * R, 2)
+        pos_perm_flat = torch.gather(pos_flat, 1, perm_idx.unsqueeze(-1).expand(-1, -1, 2))
+        self.radar_pos = pos_perm_flat.view(E, T, R, 2)
+
+        # Permuted obs
+        obs_perm = self.get_obs()["obs"]
+
+        # Restore state
+        self.radar_pos = pos_orig
+
+        # Per-dim max abs diff over (E, T)
+        diff = (obs_orig - obs_perm).abs()                       # [E, T, obs_dim]
+        max_diff_per_dim = diff.max(dim=0)[0].max(dim=0)[0]      # [obs_dim]
+
+        pass_dims = [i for i in range(self.obs_dim)
+                     if max_diff_per_dim[i].item() < tol]
+        fail_dims = [i for i in range(self.obs_dim)
+                     if max_diff_per_dim[i].item() >= tol]
+
+        return {
+            "pass_dims": pass_dims,
+            "fail_dims": fail_dims,
+            "max_diff_per_dim": max_diff_per_dim.tolist(),
+            "tol": tol,
+        }
+
     def get_obs(self) -> Dict[str, torch.Tensor]:
         """Per-team obs: {"obs": [E, 2, obs_dim], "privileged": [E, 2, priv_dim]}."""
         E, T, R = self.E, self.n_teams, self.n_radars_per_team
@@ -344,8 +416,20 @@ class TwoTeamVecEnv:
             # WP-A freq slots live at indices 36..39 (obs_dim 36 → 40).
             obs[:, t, 36] = _ch_idx_norm(self.radar_freq_hz[:, t, 0])
             obs[:, t, 37] = _ch_idx_norm(self.radar_freq_hz[:, t, 1])
-            obs[:, t, 38] = _ch_idx_norm(self.radar_freq_hz[:, et, 0])
-            obs[:, t, 39] = _ch_idx_norm(self.radar_freq_hz[:, et, 1])
+            # WP-1 M2 no-godview: enemy freq only when enemy is emitting (passive sensing).
+            # When enemy_emitting=False, obs reads 0 (can't measure enemy freq from silent target).
+            enemy_emit_r0 = self.enemy_emitting[:, et, 0].float()
+            enemy_emit_r1 = self.enemy_emitting[:, et, 1].float()
+            obs[:, t, 38] = _ch_idx_norm(self.radar_freq_hz[:, et, 0]) * enemy_emit_r0
+            obs[:, t, 39] = _ch_idx_norm(self.radar_freq_hz[:, et, 1]) * enemy_emit_r1
+            # WP-1 M2: partial-obs fields (obs_dim 40 → 44).
+            # frames_since_last_detection[r] / 100 (belief aging; ~episode_steps clamp at 1.0)
+            obs[:, t, 40] = (self.frames_since_last_detection[:, t, 0].float() / 100.0).clamp(0.0, 1.0)
+            obs[:, t, 41] = (self.frames_since_last_detection[:, t, 1].float() / 100.0).clamp(0.0, 1.0)
+            # search_coverage: fraction of azimuth cells scanned so far
+            obs[:, t, 42] = self.search_coverage[:, t].clamp(0.0, 1.0)
+            # n_detections this step / K_max (real + FA)
+            obs[:, t, 43] = (self.n_detections[:, t].float() / max(self.k_max, 1)).clamp(0.0, 1.0)
 
         priv = torch.zeros(E, T, self.privileged_dim, device=dev)
         for t in range(T):
@@ -531,14 +615,46 @@ class TwoTeamVecEnv:
                 self._kalman_update_step_external(t, r, z_r, m_r, sigma_r)
 
         # Update frames_since_last_detection for M2 obs.
-        any_real_per_radar = (mask_assoc & ~picked_fa).any(dim=-1)   # not quite — per-track shape
+        # any_real_per_radar = (mask_assoc & ~picked_fa).any(dim=-1)   # not quite — per-track shape
         # mask_assoc is [E, T, R] per own-radar; picked_fa too. "real" = mask & ~picked_fa.
         real_assoc = mask_assoc & ~picked_fa                        # [E, T, R]
+        # WP-1 M2: save pre-update fsld for proactive-detect bonus computation.
+        fsld_pre_update = self.frames_since_last_detection.clone()
         self.frames_since_last_detection = torch.where(
             real_assoc,
             torch.zeros_like(self.frames_since_last_detection),
             self.frames_since_last_detection + 1,
         )
+
+        # WP-1 M2: track search_coverage bitmap (azimuth cells scanned by own beams).
+        # Mark cell each own aperture's beam_az falls in when active (detect/track alloc + emitting).
+        cell_width = 2.0 * math.pi / self.n_search_cells
+        cell_idx_all = ((beam_az + math.pi) / cell_width).long() % self.n_search_cells   # [E, T, R]
+        f_dt_all = task_alloc[..., 0] + task_alloc[..., 1]                              # [E, T, R]
+        active_search = (f_dt_all > 0.01) & emission_on.bool()                          # [E, T, R]
+        for t in range(T):
+            for r in range(R):
+                cells_to_mark = cell_idx_all[:, t, r]                                   # [E]
+                onehot = torch.zeros(E, self.n_search_cells, device=dev, dtype=torch.bool)
+                onehot.scatter_(1, cells_to_mark.unsqueeze(1), True)
+                active_e = active_search[:, t, r].unsqueeze(-1)                         # [E, 1]
+                self._searched_cells[:, t] = self._searched_cells[:, t] | (onehot & active_e)
+        self.search_coverage = self._searched_cells.float().mean(dim=-1)                # [E, T]
+
+        # WP-1 M2: count real (non-FA) detections per team for obs.
+        # detection.mask is [E, T, K_max]; sum over K_max gives per-team count.
+        real_per_team = (detections.mask & ~detections.is_false_alarm).sum(dim=-1)      # [E, T]
+        self.n_detections = real_per_team.long()
+
+        # WP-1 M2: proactive detect → exposure bonus.
+        # Spec §2.3: when own aperture actively detects a HIDDEN enemy (fsld_pre > threshold),
+        # bump team exposure — represents the "active reveal" moment when enemy cues your position.
+        # Bonus is small (~1 step of emit_increment) to not destabilize home-on-jam dynamics.
+        hidden_threshold_steps = 5
+        was_hidden = fsld_pre_update > hidden_threshold_steps                           # [E, T, R]
+        proactive_events = (was_hidden & real_assoc).float().sum(dim=-1)                # [E, T]
+        proactive_bonus = proactive_events * self.proactive_detect_exposure_bonus       # [E, T]
+        # Apply after the regular exposure update below (deferred to section 5).
 
         # Preserve priv-obs contract: _last_jam_matrix = total JNR per victim (clamped to [0,1])
         self._last_jam_matrix = jnr_mat.sum(dim=1).view(E, T, R).clamp(0.0, 1.0)
@@ -582,6 +698,8 @@ class TwoTeamVecEnv:
         radiating_fraction = task_alloc[..., 0] + task_alloc[..., 1] + task_alloc[..., 2]
         emit_increment = emit_increment * radiating_fraction
         self.exposure = self.exposure + emit_increment.sum(dim=-1)
+        # WP-1 M2: proactive-detect bonus (computed above from fsld_pre_update & real_assoc).
+        self.exposure = self.exposure + proactive_bonus
 
         exposure_norm = self.exposure / 100.0
         p_homejam = 1.0 - torch.exp(-self.exposure_gain * exposure_norm * 0.001)

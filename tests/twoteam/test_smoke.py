@@ -11,7 +11,7 @@ def test_shapes_and_nan():
     """Env should run a full episode without NaN, with correct shapes."""
     env = TwoTeamVecEnv(n_envs=4, device="cuda", episode_steps=50, geometry=MIRROR_GEOMETRY)
     obs = env.reset()
-    assert obs["obs"].shape == (4, 2, 40), f"obs shape: {obs['obs'].shape} (WP-A: obs_dim 36→40)"
+    assert obs["obs"].shape == (4, 2, 44), f"obs shape: {obs['obs'].shape} (WP-1 M2: obs_dim 40→44)"
     assert obs["privileged"].shape == (4, 2, 8), f"priv shape: {obs['privileged'].shape}"
 
     for step in range(50):

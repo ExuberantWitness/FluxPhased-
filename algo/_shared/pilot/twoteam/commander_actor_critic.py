@@ -38,7 +38,7 @@ class TwoTeamCommanderActorCritic(nn.Module):
 
     def __init__(
         self,
-        obs_dim: int = 40,   # WP-A: env.obs_dim 36 → 40 (4 freq-channel slots added)
+        obs_dim: int = 44,   # WP-A: 36→40 (freq slots); WP-1 M2: 40→44 (fsld/search_cov/n_det)
         privileged_dim: int = 8,
         hidden: int = 256,
         n_fn: int = 4,
