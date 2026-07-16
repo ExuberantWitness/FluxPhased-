@@ -108,6 +108,8 @@ def combine_team_actions(env, action_t0: Dict, action_t1: Dict) -> Dict:
     Stacks along team axis (dim=1): [E, 2_teams, ...].
     Backward compat: if freq_hop_rate absent, env defaults to 1.0.
     WP-C R3: channel_select stacked when present in both teams.
+    WP-1 M3: beam_direction stacked when present in both teams (new continuous
+    azimuth API, alternative to legacy beam_target).
     """
     out = {
         "task_alloc": torch.stack([action_t0["task_alloc"], action_t1["task_alloc"]], dim=1),
@@ -121,6 +123,11 @@ def combine_team_actions(env, action_t0: Dict, action_t1: Dict) -> Dict:
     if "channel_select" in action_t0 and "channel_select" in action_t1:
         out["channel_select"] = torch.stack(
             [action_t0["channel_select"], action_t1["channel_select"]], dim=1)
+    # WP-1 M3: stack beam_direction only when BOTH teams provide it (mixed legacy/new
+    # is fine — env falls back to beam_target when beam_direction absent).
+    if "beam_direction" in action_t0 and "beam_direction" in action_t1:
+        out["beam_direction"] = torch.stack(
+            [action_t0["beam_direction"], action_t1["beam_direction"]], dim=1)
     return out
 
 

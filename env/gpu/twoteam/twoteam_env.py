@@ -509,21 +509,30 @@ class TwoTeamVecEnv:
             f_comm_both = task_alloc[:, t, :, 3]
             self.comm_link_ok[:, t] = (f_comm_both >= self.comm_threshold).all(dim=-1)
 
-        # 3a. Compute continuous beam_az per radar from beam_target (enemy_r index).
-        # This is the azimuth of the enemy each aperture is currently pointed at;
-        # required by IQ-native beam pattern. Vectorized gather over enemy positions.
+        # 3a. Compute continuous beam_az per radar.
+        # WP-1 M3: prefer `beam_direction` (continuous azimuth, no god-view) when present;
+        # fall back to legacy `beam_target` (enemy index → azimuth via true_pos) otherwise.
+        # M4 will hard-cut the legacy path. The legacy path is a known god-view leak
+        # (action presupposes labeled enemies) — caught by §2.5 contract review.
         beam_az = torch.zeros(E, T, R, device=dev)
-        for t in range(T):
-            et = 1 - t
-            for k in range(R):
-                own_pos = self.radar_pos[:, t, k]                          # [E,2]
-                tgt_r = beam_target[:, t, k]                                # [E]
-                enemy_pos_all = self.radar_pos[:, et]                       # [E,R,2]
-                enemy_pos = torch.gather(
-                    enemy_pos_all, 1, tgt_r.view(-1, 1, 1).expand(-1, 1, 2)
-                ).squeeze(1)                                                # [E,2]
-                delta = enemy_pos - own_pos
-                beam_az[:, t, k] = torch.atan2(delta[:, 1], delta[:, 0])
+        beam_direction = action.get("beam_direction", None)
+        if beam_direction is not None:
+            # New API: continuous azimuth [-π, π] provided directly by policy.
+            beam_az = beam_direction.float()
+        else:
+            # Legacy API: beam_target indexes enemy by 0/1 — convert via true_pos.
+            # ⚠️ god-view leak: presumes knowledge of which physical enemy is "r=0".
+            for t in range(T):
+                et = 1 - t
+                for k in range(R):
+                    own_pos = self.radar_pos[:, t, k]                          # [E,2]
+                    tgt_r = beam_target[:, t, k]                                # [E]
+                    enemy_pos_all = self.radar_pos[:, et]                       # [E,R,2]
+                    enemy_pos = torch.gather(
+                        enemy_pos_all, 1, tgt_r.view(-1, 1, 1).expand(-1, 1, 2)
+                    ).squeeze(1)                                                # [E,2]
+                    delta = enemy_pos - own_pos
+                    beam_az[:, t, k] = torch.atan2(delta[:, 1], delta[:, 0])
         self.radar_beam_az = beam_az
 
         # 3b. Per-victim σ computation — IQ-native physics.

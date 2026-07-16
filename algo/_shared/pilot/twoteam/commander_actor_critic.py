@@ -27,6 +27,7 @@ Action layout (per team, per env):
 """
 
 from __future__ import annotations
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -68,8 +69,13 @@ class TwoTeamCommanderActorCritic(nn.Module):
         )
         # Dirichlet concentration per aperture: [hidden → n_aperture * n_fn]
         self.task_alloc_head = nn.Linear(hidden, n_aperture * n_fn)
-        # Beam target per aperture: [hidden → n_aperture * n_enemy]
+        # Beam target per aperture (LEGACY): [hidden → n_aperture * n_enemy]
+        # WP-1 M3: kept for backward compat with old baselines; new policies use beam_direction.
+        # M4 will hard-cut this head + the legacy env alias.
         self.beam_target_head = nn.Linear(hidden, n_aperture * n_enemy)
+        # WP-1 M3: beam_direction per aperture (NEW, no god-view). Beta(α,β) → azimuth ∈ [-π, π].
+        # Output shape [B, n_aperture, 2] (α,β per aperture).
+        self.beam_direction_head = nn.Linear(hidden, n_aperture * 2)
         # Laser target: [hidden → n_enemy]
         self.laser_target_head = nn.Linear(hidden, n_enemy)
         # Emission on per aperture: [hidden → n_aperture]
@@ -110,11 +116,21 @@ class TwoTeamCommanderActorCritic(nn.Module):
         task_sample = task_dist.rsample()
         task_logp = task_dist.log_prob(task_sample)
 
-        # --- Beam target ---
+        # --- Beam target (LEGACY) ---
         beam_logits = self.beam_target_head(h).reshape(B, self.n_aperture, self.n_enemy)
         beam_dist = torch.distributions.Categorical(logits=beam_logits)
         beam_sample = beam_dist.sample()
         beam_logp = beam_dist.log_prob(beam_sample)
+
+        # --- WP-1 M3: beam_direction (NEW, Beta → azimuth ∈ [-π, π]) ---
+        raw_bd = self.beam_direction_head(h).reshape(B, self.n_aperture, 2)
+        bd_alpha = F.softplus(raw_bd[..., 0]) + self.beta_min_concentration
+        bd_beta = F.softplus(raw_bd[..., 1]) + self.beta_min_concentration
+        bd_dist = torch.distributions.Beta(bd_alpha, bd_beta)
+        bd_uniform = bd_dist.rsample()                            # [B, n_aperture] ∈ [0, 1]
+        bd_logp = bd_dist.log_prob(bd_uniform)                    # [B, n_aperture]
+        # Rescale [0, 1] → [-π, π]
+        beam_direction_sample = bd_uniform * 2.0 * math.pi - math.pi   # [B, n_aperture]
 
         # --- Laser target ---
         laser_logits = self.laser_target_head(h)
@@ -146,6 +162,7 @@ class TwoTeamCommanderActorCritic(nn.Module):
 
         # --- Joint log_prob ---
         log_prob = (task_logp.sum(dim=-1) + beam_logp.sum(dim=-1)
+                    + bd_logp.sum(dim=-1)   # WP-1 M3: beam_direction
                     + laser_logp + emit_logp.sum(dim=-1)
                     + fh_logp.sum(dim=-1)
                     + chan_logp.sum(dim=-1))
@@ -158,6 +175,7 @@ class TwoTeamCommanderActorCritic(nn.Module):
         action = {
             "task_alloc": task_sample,
             "beam_target": beam_sample.long(),
+            "beam_direction": beam_direction_sample,   # WP-1 M3: continuous azimuth [-π, π]
             "laser_target": laser_sample.long(),
             "emission_on": emit_sample,
             "freq_hop_rate": freq_hop_sample,   # FIX 1
@@ -185,11 +203,29 @@ class TwoTeamCommanderActorCritic(nn.Module):
         task_logp = task_dist.log_prob(action["task_alloc"])
         task_entropy = task_dist.entropy()
 
-        # Beam
+        # Beam (LEGACY)
         beam_logits = self.beam_target_head(h).reshape(B, self.n_aperture, self.n_enemy)
         beam_dist = torch.distributions.Categorical(logits=beam_logits)
         beam_logp = beam_dist.log_prob(action["beam_target"])
         beam_entropy = beam_dist.entropy()
+
+        # WP-1 M3: beam_direction Beta — inverse-rescale action from [-π,π] to [0,1]
+        # Backward compat: if action was buffered before M3 (no beam_direction key),
+        # skip this head's contribution (zero logp + entropy).
+        raw_bd = self.beam_direction_head(h).reshape(B, self.n_aperture, 2)
+        bd_alpha = F.softplus(raw_bd[..., 0]) + self.beta_min_concentration
+        bd_beta = F.softplus(raw_bd[..., 1]) + self.beta_min_concentration
+        bd_dist = torch.distributions.Beta(bd_alpha, bd_beta)
+        if "beam_direction" in action:
+            # Inverse: azimuth ∈ [-π, π] → uniform ∈ [0, 1]
+            bd_uniform = (action["beam_direction"] + math.pi) / (2.0 * math.pi)
+            bd_uniform = bd_uniform.clamp(1e-4, 1 - 1e-4)
+            bd_logp = bd_dist.log_prob(bd_uniform)
+            bd_entropy = bd_dist.entropy()
+        else:
+            # Legacy buffer: skip beam_direction contribution
+            bd_logp = torch.zeros_like(beam_logp)
+            bd_entropy = torch.zeros_like(beam_entropy)
 
         # Laser
         laser_logits = self.laser_target_head(h)
@@ -221,14 +257,18 @@ class TwoTeamCommanderActorCritic(nn.Module):
         chan_entropy = chan_dist.entropy()
 
         log_prob = (task_logp.sum(dim=-1) + beam_logp.sum(dim=-1)
+                    + bd_logp.sum(dim=-1)   # WP-1 M3: beam_direction
                     + laser_logp + emit_logp.sum(dim=-1)
                     + fh_logp.sum(dim=-1)
                     + chan_logp.sum(dim=-1))
         entropy = (task_entropy.sum(dim=-1) + beam_entropy.sum(dim=-1)
+                   + bd_entropy.sum(dim=-1)   # WP-1 M3: beam_direction
                    + laser_entropy + emit_entropy.sum(dim=-1)
                    + fh_entropy.sum(dim=-1)
                    + chan_entropy.sum(dim=-1)) / (
-                   self.n_aperture * 4 + 1 + self.n_aperture)   # +n_aperture channel heads
+                   self.n_aperture * 4 + 1 + self.n_aperture
+                   + self.n_aperture   # WP-1 M3: +n_aperture beam_direction
+                   + self.n_aperture)   # +n_aperture channel heads
 
         value = self.central_trunk(
             torch.cat([obs, privileged], dim=-1)).squeeze(-1)
@@ -256,6 +296,12 @@ class TwoTeamCommanderActorCritic(nn.Module):
             task_mean = alpha / alpha.sum(dim=-1, keepdim=True)
             beam_logits = self.beam_target_head(h).reshape(B, self.n_aperture, self.n_enemy)
             beam_argmax = beam_logits.argmax(dim=-1)
+            # WP-1 M3: beam_direction deterministic = Beta mean rescaled to [-π, π]
+            raw_bd = self.beam_direction_head(h).reshape(B, self.n_aperture, 2)
+            bd_alpha = F.softplus(raw_bd[..., 0]) + self.beta_min_concentration
+            bd_beta = F.softplus(raw_bd[..., 1]) + self.beta_min_concentration
+            bd_mean_uniform = bd_alpha / (bd_alpha + bd_beta)
+            bd_mean = bd_mean_uniform * 2.0 * math.pi - math.pi   # [B, n_aperture] ∈ [-π, π]
             laser_logits = self.laser_target_head(h)
             laser_argmax = laser_logits.argmax(dim=-1)
             emit_logits = self.emission_on_head(h)
@@ -272,6 +318,7 @@ class TwoTeamCommanderActorCritic(nn.Module):
             action = {
                 "task_alloc": task_mean,
                 "beam_target": beam_argmax.long(),
+                "beam_direction": bd_mean,   # WP-1 M3
                 "laser_target": laser_argmax.long(),
                 "emission_on": emit_round,
                 "freq_hop_rate": fh_mean,
