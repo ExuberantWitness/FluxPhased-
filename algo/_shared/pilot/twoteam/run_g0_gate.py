@@ -101,12 +101,13 @@ def run_episodes_two_commanders(
 
 
 def make_ac_action_fn(ac: TwoTeamCommanderActorCritic, deterministic: bool = True):
-    """Wrap AC into a (env, team) → action callable for run_episodes_two_commanders."""
+    """Wrap AC into a (env, team) -> action callable for run_episodes_two_commanders."""
     @torch.no_grad()
     def fn(env, team):
         obs_dict = env.get_obs()
+        detect_t = env.get_detect_list()[:, team]   # WP-3 M0/M1
         action, _ = ac.get_action_for_env(
-            obs_dict["obs"][:, team], obs_dict["privileged"][:, team],
+            obs_dict["obs"][:, team], detect_t, obs_dict["privileged"][:, team],
             deterministic=deterministic)
         return action
     return fn
@@ -264,8 +265,9 @@ def main(br_iters: int = 200, horizon: int = 200, n_envs: int = 8,
         sanity_env.reset()
         obs_dict = sanity_env.get_obs()
         with torch.no_grad():
+            detect_lt = sanity_env.get_detect_list()[:, 0]
             bc_action, _ = br_ac.get_action_for_env(
-                obs_dict["obs"][:, 0], obs_dict["privileged"][:, 0], deterministic=True)
+                obs_dict["obs"][:, 0], detect_lt, obs_dict["privileged"][:, 0], deterministic=True)
         ta_profile = bc_action["task_alloc"][0].mean(dim=0)   # [n_fn] averaged over apertures
         hop_mean = bc_action["freq_hop_rate"][0].mean().item()
         print(f"    BC task_alloc profile (4 fns, avg over 2 apertures): "

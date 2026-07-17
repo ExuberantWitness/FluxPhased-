@@ -31,13 +31,20 @@ def test_strong_rule_runs():
 
 
 def test_ac_action_shapes():
-    """AC outputs correct action shapes per team."""
+    """AC outputs correct action shapes per team.
+
+    WP-3 M0: AC signature requires detect_list [B, K_max, 5]; beam_target removed.
+    """
     env = TwoTeamVecEnv(n_envs=4, device="cuda", episode_steps=10)
     ac = TwoTeamCommanderActorCritic().to("cuda")
     obs = env.reset()
-    a_t0, lp0, v0, vl0 = ac(obs["obs"][:, 0], obs["privileged"][:, 0])
+    detect_0 = env.get_detect_list()[:, 0]
+    detect_1 = env.get_detect_list()[:, 1]
+    a_t0, lp0, v0, vl0 = ac(obs["obs"][:, 0], detect_0, obs["privileged"][:, 0])
     assert a_t0["task_alloc"].shape == (4, 2, 4), f"task_alloc shape: {a_t0['task_alloc'].shape}"
-    assert a_t0["beam_target"].shape == (4, 2), f"beam_target shape: {a_t0['beam_target'].shape}"
+    # WP-3 M0: beam_target removed; beam_direction is the blind API
+    assert "beam_target" not in a_t0, "beam_target should not exist (WP-3 M0 removed god-view)"
+    assert a_t0["beam_direction"].shape == (4, 2), f"beam_direction shape: {a_t0['beam_direction'].shape}"
     assert a_t0["laser_target"].shape == (4,), f"laser_target shape: {a_t0['laser_target'].shape}"
     assert a_t0["emission_on"].shape == (4, 2), f"emission_on shape: {a_t0['emission_on'].shape}"
     assert a_t0["freq_hop_rate"].shape == (4, 2), f"freq_hop_rate shape: {a_t0['freq_hop_rate'].shape}"
@@ -49,27 +56,34 @@ def test_ac_action_shapes():
     assert 1.0 <= fh_min and fh_max <= ac.freq_hop_max + 1e-4, \
         f"freq_hop_rate out of [1, {ac.freq_hop_max}]: min={fh_min}, max={fh_max}"
     # Action fits env.step
-    a_t1, _, _, _ = ac(obs["obs"][:, 1], obs["privileged"][:, 1])
+    a_t1, _, _, _ = ac(obs["obs"][:, 1], detect_1, obs["privileged"][:, 1])
     action = combine_team_actions(env, a_t0, a_t1)
     obs2, r, d, info = env.step(action)
     assert not torch.isnan(obs2["obs"]).any(), "NaN after AC step"
-    print(f"✅ AC action shapes OK; task_alloc sums to 1; freq_hop ∈ [{fh_min:.2f}, {fh_max:.2f}]; env step NaN-free")
+    print(f"AC action shapes OK; task_alloc sums to 1; freq_hop in [{fh_min:.2f}, {fh_max:.2f}]; env step NaN-free")
 
 
 def test_evaluate_actions_consistent():
-    """evaluate_actions should match forward log_prob for the same sample."""
+    """evaluate_actions should match forward log_prob for the same sample.
+
+    WP-3 M0: AC signature requires detect_list.
+    """
     env = TwoTeamVecEnv(n_envs=4, device="cuda", episode_steps=5)
     ac = TwoTeamCommanderActorCritic().to("cuda")
     obs = env.reset()
-    a, lp_fwd, _, _ = ac(obs["obs"][:, 0], obs["privileged"][:, 0])
-    lp_eval, _, _, _ = ac.evaluate_actions(obs["obs"][:, 0], a, obs["privileged"][:, 0])
+    detect = env.get_detect_list()[:, 0]
+    a, lp_fwd, _, _ = ac(obs["obs"][:, 0], detect, obs["privileged"][:, 0])
+    lp_eval, _, _, _ = ac.evaluate_actions(obs["obs"][:, 0], detect, a, obs["privileged"][:, 0])
     diff = (lp_fwd - lp_eval).abs().max().item()
     assert diff < 1e-4, f"log_prob diff: {diff}"
-    print(f"✅ evaluate_actions log_prob matches forward (diff {diff:.2e})")
+    print(f"evaluate_actions log_prob matches forward (diff {diff:.2e})")
 
 
 def test_br_trainer_smoke():
-    """BR trainer 5 iters without crash, no NaN."""
+    """BR trainer 5 iters without crash, no NaN.
+
+    WP-3 M0: BR trainer threads detect_list automatically via collect_rollout.
+    """
     env = TwoTeamVecEnv(n_envs=4, device="cuda", episode_steps=50, geometry=RANDOM_GEOMETRY)
     ac = TwoTeamCommanderActorCritic().to("cuda")
     rule = TwoTeamStrongRuleCommander()
@@ -84,7 +98,7 @@ def test_br_trainer_smoke():
     # Adv std reasonable
     last_adv_std = history[-1]["adv_std"]
     assert 0.05 < last_adv_std < 100, f"adv_std out of range: {last_adv_std}"
-    print(f"✅ BR trainer 5 iters OK; final adv_std={last_adv_std:.3f}, "
+    print(f"BR trainer 5 iters OK; final adv_std={last_adv_std:.3f}, "
           f"entropy={history[-1]['entropy']:.3f}, kl={history[-1]['approx_kl']:.4f}")
 
 

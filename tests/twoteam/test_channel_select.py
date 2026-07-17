@@ -70,7 +70,10 @@ def test_env_step_no_channel_select_keeps_reset_freq():
 
 
 def test_ac_has_channel_select_head():
-    """AC actor outputs channel_select in action dict."""
+    """AC actor outputs channel_select in action dict.
+
+    WP-3 M0: AC signature requires detect_list [B, K_max, 5].
+    """
     env = _make_env()
     ac = TwoTeamCommanderActorCritic(
         obs_dim=env.obs_dim, privileged_dim=env.privileged_dim,
@@ -80,8 +83,9 @@ def test_ac_has_channel_select_head():
     ).to(env.device)
 
     obs = torch.randn(8, env.obs_dim, device=env.device)
+    detect = torch.randn(8, env.k_max, 5, device=env.device)
     priv = torch.randn(8, env.privileged_dim, device=env.device)
-    action, log_prob, value, value_local = ac(obs, priv)
+    action, log_prob, value, value_local = ac(obs, detect, priv)
 
     assert "channel_select" in action, "AC action missing channel_select"
     assert action["channel_select"].shape == (8, env.n_radars_per_team)
@@ -91,7 +95,10 @@ def test_ac_has_channel_select_head():
 
 
 def test_ac_evaluate_actions_includes_channel_select():
-    """AC evaluate_actions computes log_prob including channel_select head."""
+    """AC evaluate_actions computes log_prob including channel_select head.
+
+    WP-3 M0: AC signature requires detect_list; beam_target removed.
+    """
     env = _make_env()
     ac = TwoTeamCommanderActorCritic(
         obs_dim=env.obs_dim, privileged_dim=env.privileged_dim,
@@ -102,16 +109,17 @@ def test_ac_evaluate_actions_includes_channel_select():
 
     B = 8
     obs = torch.randn(B, env.obs_dim, device=env.device)
+    detect = torch.randn(B, env.k_max, 5, device=env.device)
     priv = torch.randn(B, env.privileged_dim, device=env.device)
     action = {
         "task_alloc": torch.softmax(torch.randn(B, env.n_radars_per_team, env.n_fn, device=env.device), dim=-1),
-        "beam_target": torch.zeros(B, env.n_radars_per_team, dtype=torch.long, device=env.device),
+        "beam_direction": torch.zeros(B, env.n_radars_per_team, device=env.device),
         "laser_target": torch.zeros(B, dtype=torch.long, device=env.device),
         "emission_on": torch.ones(B, env.n_radars_per_team, device=env.device),
         "freq_hop_rate": torch.ones(B, env.n_radars_per_team, device=env.device) * 2.0,
         "channel_select": torch.zeros(B, env.n_radars_per_team, dtype=torch.long, device=env.device),
     }
-    log_prob, value, value_local, entropy = ac.evaluate_actions(obs, action, priv)
+    log_prob, value, value_local, entropy = ac.evaluate_actions(obs, detect, action, priv)
 
     assert log_prob.shape == (B,)
     assert torch.isfinite(log_prob).all()

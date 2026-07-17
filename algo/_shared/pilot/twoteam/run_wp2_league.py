@@ -44,6 +44,7 @@ if ROOT not in sys.path:
 
 from env.gpu.twoteam.twoteam_env import TwoTeamVecEnv, RANDOM_GEOMETRY
 from algo._shared.baselines.twoteam_strong_rule_commander import TwoTeamStrongRuleCommander
+from algo._shared.baselines.twoteam_blind_classical import BlindClassicalCommander
 from algo._shared.pilot.twoteam.commander_actor_critic import TwoTeamCommanderActorCritic
 from algo._shared.pilot.twoteam.br_trainer import TwoTeamBRTrainer
 from algo._shared.pilot.twoteam.bc_pretrain import TwoTeamBCPretrainer
@@ -62,6 +63,8 @@ class ACCommander:
 
     Required API: `get_action(env, team) -> action_dict` (matches ExtremeCommander
     and TwoTeamStrongRuleCommander, which is what br_trainer.frozen_opponent expects).
+
+    WP-3 M0/M1: passes `detect_list` slice to AC's get_action_for_env.
     """
 
     def __init__(self, ac: TwoTeamCommanderActorCritic, deterministic: bool = True):
@@ -71,8 +74,9 @@ class ACCommander:
     @torch.no_grad()
     def get_action(self, env, team: int) -> Dict[str, torch.Tensor]:
         obs_dict = env.get_obs()
+        detect_team = env.get_detect_list()[:, team]   # WP-3 M0/M1
         action, _ = self.ac.get_action_for_env(
-            obs_dict["obs"][:, team], obs_dict["privileged"][:, team],
+            obs_dict["obs"][:, team], detect_team, obs_dict["privileged"][:, team],
             deterministic=self.deterministic,
         )
         return action
@@ -97,6 +101,8 @@ def make_factory_commander(name: str):
     """Return a factory() that creates a fresh commander instance by name."""
     if name == "strong_rule":
         return lambda: TwoTeamStrongRuleCommander()
+    if name == "blind_classical":
+        return lambda: BlindClassicalCommander()
     if name in STRATEGIES:
         # STRATEGIES holds singletons; for factory semantics, return the same instance
         # (extreme commanders are stateless — safe to share)
@@ -122,6 +128,13 @@ def initialize_pool(
     pool.add(PolicyRecord(
         name="strong_rule", kind="rule",
         factory=make_factory_commander("strong_rule"),
+    ))
+
+    # 1b. WP-3 M3: BlindClassical — spec §0.3④ "competent blind classical" baseline.
+    # This is the primary BC teacher and a pool opponent (same blind API as the AC).
+    pool.add(PolicyRecord(
+        name="blind_classical", kind="rule",
+        factory=make_factory_commander("blind_classical"),
     ))
 
     # 2. 7 extreme strategies
@@ -264,10 +277,17 @@ def run_league(args):
     # concept from Gaussian heads doesn't apply — `args.log_std_floor` is
     # accepted for CLI compatibility but unused here.
 
-    rule = TwoTeamStrongRuleCommander()
+    # WP-3 M2: default teacher = BlindClassical (spec §0.3④ baseline; BC must
+    # not leak god-view, so it must match the AC's blind API).
+    if args.blind_teacher:
+        rule = BlindClassicalCommander()
+        print(f"  BC teacher: BlindClassicalCommander (blind, spec §0.3④ baseline)")
+    else:
+        rule = TwoTeamStrongRuleCommander()
+        print(f"  BC teacher: TwoTeamStrongRuleCommander (legacy god-view — for ablation only)")
 
     if args.bc_samples > 0:
-        print(f"\n  BC: collect {args.bc_samples} samples from StrongRule + 3 exploits...")
+        print(f"\n  BC: collect {args.bc_samples} samples...")
         bc_trainer = TwoTeamBCPretrainer(br_ac, lr=args.bc_lr, batch_size=args.bc_batch_size)
 
         bc_env = TwoTeamVecEnv(
@@ -296,14 +316,14 @@ def run_league(args):
         bc_ckpt_path=bc_ckpt, bc_iter=0,
         population_cap=args.population_cap, seed=args.seed,
     )
-    print(f"  pool size: {pool.num_records()} (rule + 7 extreme + 3 exploit + 1 BC)")
-    assert pool.num_records() == 12, f"expected 12 seed records, got {pool.num_records()}"
+    print(f"  pool size: {pool.num_records()} (rule×2 + 7 extreme + 3 exploit + 1 BC)")
+    assert pool.num_records() == 13, f"expected 13 seed records, got {pool.num_records()}"
 
     # ------------------------------------------------------------------
     # Step C: trainer setup (we'll swap frozen_opponent each iter)
     # ------------------------------------------------------------------
     print("\n=== Step C: PPO trainer setup ===")
-    # Initial frozen_opponent = StrongRule (will be replaced each iter by PFSP sample)
+    # Initial frozen_opponent = rule (will be replaced each iter by PFSP sample)
     trainer = TwoTeamBRTrainer(
         br_ac, frozen_opponent=rule,
         lr_actor=args.ppo_lr_actor, lr_critic=args.ppo_lr_critic,
@@ -314,10 +334,16 @@ def run_league(args):
         alpha_eff_alpha_max=0.5, alpha_eff_beta=2.0,
         reward_scale=0.1, value_huber_delta=1.0,
         lr_decay_iters=0,
+        # WP-3 M1: cosine entropy anneal — keeps exploration alive early, decays late
+        entropy_coef_min=args.ppo_entropy_coef_min,
+        entropy_decay_iters=args.n_iters,
+        # WP-3 dense reward shaping — mitigates zero-sum mirror symmetry (weak gradient)
+        shape_track_bonus=args.shape_track_bonus,
+        shape_exposure_penalty=args.shape_exposure_penalty,
         device="cuda",
     )
     print(f"  lr_actor={args.ppo_lr_actor} lr_critic={args.ppo_lr_critic} "
-          f"entropy_coef={args.ppo_entropy_coef}")
+          f"entropy_coef={args.ppo_entropy_coef} → {args.ppo_entropy_coef_min} (cosine)")
 
     # ------------------------------------------------------------------
     # Step D: league main loop
@@ -358,7 +384,7 @@ def run_league(args):
         try:
             buf = trainer.collect_rollout(env, args.horizon, learning_team=0)
             trainer._compute_gae(buf)
-            metrics = trainer.update(buf)
+            metrics = trainer.update(buf, iter_idx=it, n_iters=args.n_iters)
         except Exception as e:
             print(f"  [it={it}] PPO step FAILED: {e}", flush=True)
             opp_cleanup()
@@ -407,6 +433,28 @@ def run_league(args):
                   f"wr_vs_opp={wr:.2f} ema_var={ema_var:.3f} "
                   f"t={elapsed:.1f}min",
                   flush=True)
+
+        # WP-3 M3: health monitor every 100 iters (per PID 1296303 incident memory).
+        # Catches: (1) entropy collapse → 0 (deterministic policy, PPO stuck),
+        #          (2) policy_loss → 0 (PID 1296303 main symptom), (3) pool imbalance.
+        if it > 0 and (it + 1) % 100 == 0:
+            ent_val = float(entropy)
+            pi_loss_val = abs(float(metrics["policy_loss"]))
+            ema_var_val = float(pool.ema_variance())
+            warnings_emitted = []
+            if ent_val < 0.3:
+                warnings_emitted.append(
+                    f"entropy={ent_val:.3f} < 0.3 floor (policy near-deterministic)")
+            if pi_loss_val < 1e-4:
+                warnings_emitted.append(
+                    f"|policy_loss|={pi_loss_val:.2e} → 0 (PID 1296303 signature, "
+                    f"PPO may be stuck — check KL early-stop frequency)")
+            if ema_var_val < 0.05:
+                warnings_emitted.append(
+                    f"pool ema_var={ema_var_val:.3f} < 0.05 (PFSP collapsed to one opponent)")
+            if warnings_emitted:
+                print(f"  [it={it}] HEALTH WARN:", " | ".join(warnings_emitted),
+                      flush=True)
 
         # Periodic α_eff guard
         if it > 0 and it % 100 == 0:
@@ -541,7 +589,18 @@ def main():
     p.add_argument("--ppo-lr-actor", type=float, default=1e-4)
     p.add_argument("--ppo-lr-critic", type=float, default=1e-3)
     p.add_argument("--ppo-entropy-coef", type=float, default=0.01)
+    p.add_argument("--ppo-entropy-coef-min", type=float, default=0.001,
+                   help="WP-3 M1: cosine anneal floor for entropy_coef")
+    p.add_argument("--shape-track-bonus", type=float, default=0.0,
+                   help="WP-3 dense reward: per-step bonus per radar tracked (tau_track)")
+    p.add_argument("--shape-exposure-penalty", type=float, default=0.0,
+                   help="WP-3 dense reward: per-step penalty × exposure")
     p.add_argument("--log-std-floor", type=float, default=-6.0)
+    # WP-3 M3: BC teacher toggle (default blind, per spec §0.3④)
+    p.add_argument("--blind-teacher", action="store_true", default=True,
+                   help="Use BlindClassicalCommander as BC teacher (default)")
+    p.add_argument("--strong-rule-teacher", dest="blind_teacher", action="store_false",
+                   help="Use legacy StrongRule (god-view) as BC teacher — ablation only")
     # Env
     p.add_argument("--n-envs", type=int, default=8)
     p.add_argument("--horizon", type=int, default=200)

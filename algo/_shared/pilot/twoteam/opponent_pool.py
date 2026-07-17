@@ -219,8 +219,9 @@ def build_opponent_action_fn(record: PolicyRecord, device: str = "cuda"):
         def action_fn(env, team: int):
             obs = env.get_obs()
             o = obs["obs"][:, team]
+            detect_t = env.get_detect_list()[:, team]   # WP-3 M0/M1
             priv = obs["privileged"][:, team]
-            action, _ = ac.get_action_for_env(o, priv, deterministic=True)
+            action, _ = ac.get_action_for_env(o, detect_t, priv, deterministic=True)
             return action
 
         def cleanup():

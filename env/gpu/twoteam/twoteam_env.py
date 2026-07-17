@@ -379,6 +379,30 @@ class TwoTeamVecEnv:
             "tol": tol,
         }
 
+    def get_detect_list(self) -> torch.Tensor:
+        """Return last step's detection list for RL actor (WP-3 M0).
+
+        Returns: [E, T, K_max, 5] tensor of (z_x, z_y, snr_db, is_fa_float, mask_float).
+        - z_x, z_y: cartesian measurement position (m)
+        - snr_db: SNR in dB (0 for FA / padding)
+        - is_fa_float: 1.0 if false alarm, 0.0 otherwise
+        - mask_float: 1.0 if slot holds any detection (real or FA), 0.0 if padding
+
+        Returns zeros if no detections have been generated yet (first call before step).
+        """
+        E, T = self.E, self.n_teams
+        K = self.k_max
+        dev = self.device
+        out = torch.zeros(E, T, K, 5, device=dev)
+        if self._last_detections is None:
+            return out
+        dets = self._last_detections   # Detections dataclass: z[E,T,K,2], mask[E,T,K], is_false_alarm[E,T,K], snr_db[E,T,K]
+        out[..., 0:2] = dets.z
+        out[..., 2] = dets.snr_db
+        out[..., 3] = dets.is_false_alarm.float()
+        out[..., 4] = dets.mask.float()
+        return out
+
     def get_obs(self) -> Dict[str, torch.Tensor]:
         """Per-team obs: {"obs": [E, 2, obs_dim], "privileged": [E, 2, priv_dim]}."""
         E, T, R = self.E, self.n_teams, self.n_radars_per_team

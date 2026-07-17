@@ -217,8 +217,9 @@ def _run_eval_episode(env, rl_ac, opponent, f_emit_A, max_steps=200):
     for step in range(max_steps):
         obs_dict = env.get_obs()
         obs_t0 = obs_dict["obs"][:, 0]
+        detect_t0 = env.get_detect_list()[:, 0]
         priv_t0 = obs_dict["privileged"][:, 0]
-        a_rl, _ = rl_ac.get_action_for_env(obs_t0, priv_t0, deterministic=True)
+        a_rl, _ = rl_ac.get_action_for_env(obs_t0, detect_t0, priv_t0, deterministic=True)
         a_opp = opp.get_action(env, team=1)
         action = combine_team_actions(env, a_rl, a_opp)
         obs_dict, reward, done, info = env.step(action)

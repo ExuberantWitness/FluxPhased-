@@ -61,8 +61,9 @@ def _wrap_ac_ckpt(ckpt_path: str, device: str = "cuda", deterministic: bool = Tr
     @torch.no_grad()
     def fn(env, team):
         obs_dict = env.get_obs()
+        detect_t = env.get_detect_list()[:, team]   # WP-3 M0/M1
         action, _ = ac.get_action_for_env(
-            obs_dict["obs"][:, team], obs_dict["privileged"][:, team],
+            obs_dict["obs"][:, team], detect_t, obs_dict["privileged"][:, team],
             deterministic=deterministic,
         )
         return action

@@ -35,7 +35,10 @@ def configure_distinct_channels(env):
 
 
 def test_ac_outputs_beam_direction():
-    """AC forward produces beam_direction ∈ [-π, π] of shape [B, n_aperture]."""
+    """AC forward produces beam_direction ∈ [-π, π] of shape [B, n_aperture].
+
+    WP-3 M0: AC now requires `detect_list` [E, K_max, 5] (DeepSets encoder).
+    """
     env = TwoTeamVecEnv(n_envs=4, device="cuda", episode_steps=30, geometry=MIRROR_GEOMETRY)
     env.reset()
     ac = TwoTeamCommanderActorCritic(
@@ -46,7 +49,8 @@ def test_ac_outputs_beam_direction():
     ).to(env.device)
 
     obs_dict = env.get_obs()
-    action, _, _, _ = ac(obs_dict["obs"][:, 0], obs_dict["privileged"][:, 0])
+    detect_lt = env.get_detect_list()[:, 0]   # WP-3 M0/M1
+    action, _, _, _ = ac(obs_dict["obs"][:, 0], detect_lt, obs_dict["privileged"][:, 0])
 
     assert "beam_direction" in action, "AC action missing beam_direction"
     assert action["beam_direction"].shape == (4, env.n_radars_per_team)
@@ -56,7 +60,7 @@ def test_ac_outputs_beam_direction():
     assert -math.pi - 1e-3 <= bd_min and bd_max <= math.pi + 1e-3, (
         f"beam_direction out of [-π, π]: min={bd_min}, max={bd_max}"
     )
-    print(f"✅ AC outputs beam_direction ∈ [{bd_min:.3f}, {bd_max:.3f}]")
+    print(f"AC outputs beam_direction in [{bd_min:.3f}, {bd_max:.3f}]")
 
 
 def test_env_step_with_new_beam_direction():
@@ -149,8 +153,11 @@ def test_env_prefers_beam_direction_when_both_present():
     print(f"✅ env prefers beam_direction when both present: {bd_used:.4f}")
 
 
-def test_ac_evaluate_actions_handles_legacy_buffer():
-    """AC evaluate_actions doesn't crash on action dict without beam_direction."""
+def test_ac_evaluate_actions_handles_no_beam_target():
+    """WP-3 M0: AC evaluate_actions no longer accepts beam_target (god-view killed).
+
+    Confirms action dict has no beam_target key and evaluate_actions runs cleanly.
+    """
     env = TwoTeamVecEnv(n_envs=4, device="cuda", episode_steps=30, geometry=MIRROR_GEOMETRY)
     env.reset()
     ac = TwoTeamCommanderActorCritic(
@@ -162,27 +169,34 @@ def test_ac_evaluate_actions_handles_legacy_buffer():
 
     B = 8
     obs = torch.randn(B, env.obs_dim, device=env.device)
+    detect = torch.randn(B, env.k_max, 5, device=env.device)
     priv = torch.randn(B, env.privileged_dim, device=env.device)
-    # Legacy action: NO beam_direction key
+    # Blind action (no beam_target — god-view removed in WP-3 M0)
     action = {
         "task_alloc": torch.softmax(torch.randn(B, env.n_radars_per_team, env.n_fn, device=env.device), dim=-1),
-        "beam_target": torch.zeros(B, env.n_radars_per_team, dtype=torch.long, device=env.device),
+        "beam_direction": torch.zeros(B, env.n_radars_per_team, device=env.device),
         "laser_target": torch.zeros(B, dtype=torch.long, device=env.device),
         "emission_on": torch.ones(B, env.n_radars_per_team, device=env.device),
         "freq_hop_rate": torch.full((B, env.n_radars_per_team), 2.0, device=env.device),
         "channel_select": torch.zeros(B, env.n_radars_per_team, dtype=torch.long, device=env.device),
     }
-    log_prob, value, value_local, entropy = ac.evaluate_actions(obs, action, priv)
+    log_prob, value, value_local, entropy = ac.evaluate_actions(obs, detect, action, priv)
 
     assert log_prob.shape == (B,)
     assert torch.isfinite(log_prob).all(), "log_prob has NaN/inf"
     assert torch.isfinite(entropy).all(), "entropy has NaN/inf"
-    print(f"✅ AC evaluate_actions handles legacy buffer (no beam_direction): "
+    # WP-3 M0 contract: AC must NOT have beam_target_head attribute
+    assert not hasattr(ac, "beam_target_head"), (
+        "AC still has beam_target_head — god-view leak not fully removed")
+    print(f"AC evaluate_actions blind OK (no beam_target in action; no beam_target_head attr); "
           f"log_prob mean={log_prob.mean().item():.2f}")
 
 
 def test_ac_evaluate_actions_consistent_with_forward():
-    """forward log_prob matches evaluate_actions when action includes beam_direction."""
+    """forward log_prob matches evaluate_actions when action includes beam_direction.
+
+    WP-3 M0: AC signature now requires detect_list (DeepSets encoder).
+    """
     env = TwoTeamVecEnv(n_envs=4, device="cuda", episode_steps=30, geometry=MIRROR_GEOMETRY)
     env.reset()
     ac = TwoTeamCommanderActorCritic(
@@ -193,16 +207,20 @@ def test_ac_evaluate_actions_consistent_with_forward():
     ).to(env.device)
 
     obs = env.get_obs()["obs"][:, 0]
+    detect = env.get_detect_list()[:, 0]
     priv = env.get_obs()["privileged"][:, 0]
-    a, lp_fwd, _, _ = ac(obs, priv)
-    lp_eval, _, _, _ = ac.evaluate_actions(obs, a, priv)
+    a, lp_fwd, _, _ = ac(obs, detect, priv)
+    lp_eval, _, _, _ = ac.evaluate_actions(obs, detect, a, priv)
     diff = (lp_fwd - lp_eval).abs().max().item()
     assert diff < 1e-4, f"forward vs evaluate log_prob diff: {diff}"
-    print(f"✅ AC forward/evaluate consistent with beam_direction: diff={diff:.2e}")
+    print(f"AC forward/evaluate consistent with beam_direction: diff={diff:.2e}")
 
 
 def test_combine_team_actions_handles_beam_direction():
-    """combine_team_actions stacks beam_direction when both teams provide it."""
+    """combine_team_actions stacks beam_direction when both teams provide it.
+
+    WP-3 M0: AC now requires detect_list (DeepSets encoder).
+    """
     env = TwoTeamVecEnv(n_envs=4, device="cuda", episode_steps=30, geometry=MIRROR_GEOMETRY)
     env.reset()
     ac = TwoTeamCommanderActorCritic(
@@ -210,8 +228,10 @@ def test_combine_team_actions_handles_beam_direction():
     ).to(env.device)
 
     obs_dict = env.get_obs()
-    a_t0, _, _, _ = ac(obs_dict["obs"][:, 0], obs_dict["privileged"][:, 0])
-    a_t1, _, _, _ = ac(obs_dict["obs"][:, 1], obs_dict["privileged"][:, 1])
+    detect_0 = env.get_detect_list()[:, 0]
+    detect_1 = env.get_detect_list()[:, 1]
+    a_t0, _, _, _ = ac(obs_dict["obs"][:, 0], detect_0, obs_dict["privileged"][:, 0])
+    a_t1, _, _, _ = ac(obs_dict["obs"][:, 1], detect_1, obs_dict["privileged"][:, 1])
     combined = combine_team_actions(env, a_t0, a_t1)
 
     assert "beam_direction" in combined, "combined action missing beam_direction"
@@ -225,7 +245,7 @@ def test_combine_team_actions_handles_beam_direction():
     assert "beam_direction" not in combined_legacy, (
         "combine_team_actions shouldn't add beam_direction when teams don't provide it"
     )
-    print(f"✅ combine_team_actions stacks beam_direction when both teams provide it; "
+    print(f"combine_team_actions stacks beam_direction when both teams provide it; "
           f"omits when neither does")
 
 
@@ -237,7 +257,7 @@ if __name__ == "__main__":
         test_env_step_with_new_beam_direction,
         test_env_step_with_legacy_beam_target,
         test_env_prefers_beam_direction_when_both_present,
-        test_ac_evaluate_actions_handles_legacy_buffer,
+        test_ac_evaluate_actions_handles_no_beam_target,
         test_ac_evaluate_actions_consistent_with_forward,
         test_combine_team_actions_handles_beam_direction,
     ]

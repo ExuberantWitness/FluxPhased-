@@ -32,10 +32,16 @@ from algo._shared.pilot.twoteam.extreme_commanders import combine_team_actions
 
 
 class _RolloutBuffer:
-    """Per-team rollout buffer for BR training (team axis absent — only learning team)."""
+    """Per-team rollout buffer for BR training (team axis absent — only learning team).
+
+    WP-3 M1: removed `beam_target` (god-view, was killed in M0 actor-critic).
+    Added `beam_direction[H,E,R]` (continuous azimuth ∈ [-π,π]) and
+    `detect_list[H,E,K_max,5]` (detection encoder input from env.get_detect_list()).
+    """
 
     def __init__(self, horizon: int, n_envs: int, obs_dim: int, priv_dim: int,
-                 n_aperture: int, n_fn: int, device: str = "cuda"):
+                 n_aperture: int, n_fn: int, k_max: int = 5,
+                 device: str = "cuda"):
         self.H = horizon
         self.E = n_envs
         self.dev = device
@@ -43,11 +49,14 @@ class _RolloutBuffer:
         self.priv = torch.zeros(horizon, n_envs, priv_dim, device=device)
         # Actions
         self.task_alloc = torch.zeros(horizon, n_envs, n_aperture, n_fn, device=device)
-        self.beam_target = torch.zeros(horizon, n_envs, n_aperture, dtype=torch.long, device=device)
+        # WP-3 M0/M1: beam_direction (continuous azimuth ∈ [-π,π], Beta head)
+        self.beam_direction = torch.zeros(horizon, n_envs, n_aperture, device=device)
         self.laser_target = torch.zeros(horizon, n_envs, dtype=torch.long, device=device)
         self.emission_on = torch.zeros(horizon, n_envs, n_aperture, device=device)
         self.freq_hop_rate = torch.zeros(horizon, n_envs, n_aperture, device=device)   # FIX 1
         self.channel_select = torch.zeros(horizon, n_envs, n_aperture, dtype=torch.long, device=device)   # WP-C R3
+        # WP-3 M0/M1: detection list for DeepSets encoder
+        self.detect_list = torch.zeros(horizon, n_envs, k_max, 5, device=device)
         # PPO bookkeeping
         self.log_prob = torch.zeros(horizon, n_envs, device=device)
         self.value = torch.zeros(horizon, n_envs, device=device)
@@ -71,7 +80,7 @@ class TwoTeamBRTrainer:
         gamma: float = 0.99,
         gae_lambda: float = 0.95,
         clip: float = 0.2,
-        entropy_coef: float = 0.02,
+        entropy_coef: float = 0.01,
         value_coef: float = 0.5,
         max_grad_norm: float = 0.5,
         n_epochs: int = 4,
@@ -83,6 +92,10 @@ class TwoTeamBRTrainer:
         value_huber_delta: float = 1.0,   # use Huber for value loss (robust to large returns)
         lr_decay_iters: int = 0,   # >0 enables cosine annealing over n_iterations
         lr_decay_min_frac: float = 0.1,   # min LR = lr_init * frac
+        entropy_coef_min: float = 0.001,   # WP-3 M1: cosine anneal floor
+        entropy_decay_iters: int = 0,   # >0 enables cosine anneal over n_iterations
+        shape_track_bonus: float = 0.0,   # WP-3 dense reward: per-step bonus per radar tracked (tau_track)
+        shape_exposure_penalty: float = 0.0,   # WP-3 dense reward: per-step penalty × exposure
         device: str = "cuda",
     ):
         self.br_ac = br_ac
@@ -104,22 +117,37 @@ class TwoTeamBRTrainer:
         self.value_huber_delta = float(value_huber_delta)
         self.lr_decay_iters = int(lr_decay_iters)
         self.lr_decay_min_frac = float(lr_decay_min_frac)
+        self.entropy_coef_max = float(entropy_coef)
+        self.entropy_coef_min = float(entropy_coef_min)
+        self.entropy_decay_iters = int(entropy_decay_iters)
+        self.shape_track_bonus = float(shape_track_bonus)
+        self.shape_exposure_penalty = float(shape_exposure_penalty)
         self.device = torch.device(device)
 
-        # Separate actor/critic LRs via param groups
+        # Separate actor/critic LRs via param groups.
+        # WP-3 M0/M1: actor heads now include beam_direction_head (replaces removed
+        # beam_target_head) and detect_mlp (DeepSets encoder for env detection list).
         actor_params = list(br_ac.actor_trunk.parameters()) + \
                        list(br_ac.task_alloc_head.parameters()) + \
-                       list(br_ac.beam_target_head.parameters()) + \
+                       list(br_ac.beam_direction_head.parameters()) + \
                        list(br_ac.laser_target_head.parameters()) + \
                        list(br_ac.emission_on_head.parameters()) + \
                        list(br_ac.freq_hop_head.parameters()) + \
-                       list(br_ac.channel_select_head.parameters())
+                       list(br_ac.channel_select_head.parameters()) + \
+                       list(br_ac.detect_mlp.parameters())
         critic_params = list(br_ac.central_trunk.parameters()) + \
                         list(br_ac.local_trunk.parameters())
         self.opt = torch.optim.Adam([
             {"params": actor_params, "lr": lr_actor},
             {"params": critic_params, "lr": lr_critic},
         ])
+
+    def _entropy_coef(self, iter_idx: int, n_iters: int) -> float:
+        """Cosine-anneal entropy_coef from entropy_coef_max → entropy_coef_min."""
+        if self.entropy_decay_iters <= 0:
+            return self.entropy_coef_max
+        frac = 0.5 * (1 + math.cos(math.pi * iter_idx / max(1, n_iters)))
+        return self.entropy_coef_min + (self.entropy_coef_max - self.entropy_coef_min) * frac
 
     # ------------------------------------------------------------------
     # Rollout
@@ -131,15 +159,19 @@ class TwoTeamBRTrainer:
         dev = self.device
         buf = _RolloutBuffer(
             horizon, E, env.obs_dim, env.privileged_dim,
-            env.n_radars_per_team, env.n_fn, device=dev)
+            env.n_radars_per_team, env.n_fn,
+            k_max=getattr(env, "k_max", 5), device=dev)
 
         # Reset env
         obs_dict = env.reset()
         for t in range(horizon):
             obs_lt = obs_dict["obs"][:, learning_team]            # [E, obs_dim]
             priv_lt = obs_dict["privileged"][:, learning_team]    # [E, priv_dim]
+            # WP-3 M0/M1: detection list (post-step; zeros before first step)
+            detect_lt = env.get_detect_list()[:, learning_team]   # [E, K_max, 5]
             # Learning team acts (sampled)
-            br_action, br_logp, br_value, br_value_local = self.br_ac(obs_lt, priv_lt)
+            br_action, br_logp, br_value, br_value_local = self.br_ac(
+                obs_lt, detect_lt, priv_lt)
             # Frozen opponent acts
             opp_team = 1 - learning_team
             opp_action = self.frozen_opponent.get_action(env, opp_team)
@@ -152,15 +184,28 @@ class TwoTeamBRTrainer:
             obs_dict, reward, done, info = env.step(action)
             rew_lt = reward[:, learning_team] * self.reward_scale   # [E]
 
+            # WP-3 dense reward shaping (non-zero-sum, learning team only).
+            # Mitigates mirror-symmetric pool where zero-sum env reward → 0 gradient.
+            if self.shape_track_bonus > 0.0:
+                trace_P_t = env.tracker_P[:, learning_team, :, 0, 0] + \
+                            env.tracker_P[:, learning_team, :, 2, 2]
+                n_tracked = ((trace_P_t < env.tau_track) &
+                             env.tracker_initialized[:, learning_team]).float().sum(dim=-1)
+                rew_lt = rew_lt + self.shape_track_bonus * n_tracked
+            if self.shape_exposure_penalty > 0.0:
+                exp_lt = info["exposure"][:, learning_team]
+                rew_lt = rew_lt - self.shape_exposure_penalty * exp_lt
+
             # Record
             buf.obs[t] = obs_lt
             buf.priv[t] = priv_lt
             buf.task_alloc[t] = br_action["task_alloc"]
-            buf.beam_target[t] = br_action["beam_target"]
+            buf.beam_direction[t] = br_action["beam_direction"]
             buf.laser_target[t] = br_action["laser_target"]
             buf.emission_on[t] = br_action["emission_on"]
             buf.freq_hop_rate[t] = br_action["freq_hop_rate"]   # FIX 1
             buf.channel_select[t] = br_action["channel_select"]   # WP-C R3
+            buf.detect_list[t] = detect_lt
             buf.log_prob[t] = br_logp
             buf.value[t] = br_value
             buf.value_local[t] = br_value_local
@@ -218,7 +263,7 @@ class TwoTeamBRTrainer:
     # ------------------------------------------------------------------
     # PPO update
     # ------------------------------------------------------------------
-    def update(self, buf: _RolloutBuffer) -> Dict[str, float]:
+    def update(self, buf: _RolloutBuffer, iter_idx: int = 0, n_iters: int = 0) -> Dict[str, float]:
         dev = self.device
         H, E = buf.H, buf.E
         N = H * E
@@ -227,14 +272,15 @@ class TwoTeamBRTrainer:
         obs_flat = buf.obs.reshape(N, -1)
         priv_flat = buf.priv.reshape(N, -1)
         task_flat = buf.task_alloc.reshape(N, self.br_ac.n_aperture, self.br_ac.n_fn)
-        beam_flat = buf.beam_target.reshape(N, self.br_ac.n_aperture)
+        beam_flat = buf.beam_direction.reshape(N, self.br_ac.n_aperture)
         laser_flat = buf.laser_target.reshape(N,)
         emit_flat = buf.emission_on.reshape(N, self.br_ac.n_aperture)
         fh_flat = buf.freq_hop_rate.reshape(N, self.br_ac.n_aperture)   # FIX 1
         chan_flat = buf.channel_select.reshape(N, self.br_ac.n_aperture)   # WP-C R3
+        detect_flat = buf.detect_list.reshape(N, -1, 5)   # [N, K_env, 5] (AC mean-pools over K)
         action_flat = {
             "task_alloc": task_flat,
-            "beam_target": beam_flat,
+            "beam_direction": beam_flat,
             "laser_target": laser_flat,
             "emission_on": emit_flat,
             "freq_hop_rate": fh_flat,
@@ -246,8 +292,11 @@ class TwoTeamBRTrainer:
         ret_flat = buf.ret.reshape(N)
         adv_flat = buf.advantage.reshape(N)
 
+        # WP-3 M1: cosine-annealed entropy coef
+        ent_coef = self._entropy_coef(iter_idx, max(n_iters, 1))
+
         metrics = {"policy_loss": 0.0, "value_loss": 0.0, "entropy": 0.0,
-                   "approx_kl": 0.0, "clip_frac": 0.0}
+                   "approx_kl": 0.0, "clip_frac": 0.0, "entropy_coef": ent_coef}
         n_updates = 0
         early_stop = False
         for epoch in range(self.n_epochs):
@@ -258,10 +307,11 @@ class TwoTeamBRTrainer:
                     continue
                 obs_b = obs_flat[b]
                 priv_b = priv_flat[b]
+                detect_b = detect_flat[b]
                 act_b = {k: v[b] for k, v in action_flat.items()}
 
                 lp_new, v_new, vl_new, entropy = self.br_ac.evaluate_actions(
-                    obs_b, act_b, priv_b)
+                    obs_b, detect_b, act_b, priv_b)
                 ratio = torch.exp(lp_new - lp_old[b])
                 adv_b = adv_flat[b]
                 surr1 = ratio * adv_b
@@ -284,7 +334,7 @@ class TwoTeamBRTrainer:
                 value_loss_local = huber(vl_new - ret_flat[b])
                 value_loss = value_loss + value_loss_local
 
-                loss = policy_loss - self.entropy_coef * entropy.mean() \
+                loss = policy_loss - ent_coef * entropy.mean() \
                        + self.value_coef * value_loss
 
                 self.opt.zero_grad(set_to_none=True)
@@ -309,7 +359,7 @@ class TwoTeamBRTrainer:
                 early_stop = True
                 break
 
-        for k in metrics:
+        for k in ("policy_loss", "value_loss", "entropy", "approx_kl", "clip_frac"):
             metrics[k] /= max(1, n_updates)
         metrics["early_stop"] = float(early_stop)
         return metrics
@@ -337,7 +387,7 @@ class TwoTeamBRTrainer:
                     g["lr"] = lr0 * lr_scale
             buf = self.collect_rollout(env, horizon, learning_team=learning_team)
             self._compute_gae(buf)
-            metrics = self.update(buf)
+            metrics = self.update(buf, iter_idx=it, n_iters=n_iterations)
 
             # Health monitor
             r_mean = buf.reward.mean().item()

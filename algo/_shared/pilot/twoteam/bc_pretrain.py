@@ -1,21 +1,26 @@
-"""Behavioral-cloning pretrainer for two-team learning commander (WP1 BC → PPO).
+"""Behavioral-cloning pretrainer for two-team learning commander (WP-3 M2).
 
 Implements the AlphaStar SL → RL paradigm (Vinyals 2019, Nature):
-  1. Use StrongRule as expert, collect (obs, priv, action) triples
+  1. Use BlindClassicalCommander as expert, collect (obs, priv, detect_list, action) tuples
   2. NLL supervised training on AC's multi-head distribution
   3. Hand off BC-pretrained AC to PPO fine-tune (TwoTeamBRTrainer, unchanged)
 
-Why BC:
-  on-policy PPO from random init in 13 continuous + 5 discrete action space must
-  simultaneously "learn to play" AND "find exploit" — the former eats most samples.
-  BC starts PPO at rule's local optimum, freeing PPO to explore exploit structure.
+WP-3 M2 changes (from WP-2 baseline):
+  - Teacher swapped from `TwoTeamStrongRuleCommander` (legacy beam_target god-view) to
+    `BlindClassicalCommander` (continuous beam_direction, no god-view). This keeps BC
+    pretrain consistent with the WP-1 no-godview contract — the AC must not see
+    teacher demonstrations that themselves leak enemy truth.
+  - Buffer field renamed `beam_target` -> `beam_direction` (continuous azimuth in [-pi,pi]).
+  - Added `detect_list` buffer + threading — BC must see what the AC will see at
+    inference (env's per-step detection list).
 
 Loss: NLL via existing ac.evaluate_actions (multi-head log density already correct).
-  task_alloc   Dirichlet
-  beam_target  Categorical
-  laser_target Categorical
-  emission_on  Bernoulli
-  freq_hop     Beta (with [1, freq_hop_max] → [0,1] inverse rescale in evaluate_actions)
+  task_alloc      Dirichlet
+  beam_direction  Beta (continuous azimuth, [-pi,pi] -> [0,1] inverse rescale in evaluate_actions)
+  laser_target    Categorical
+  emission_on     Bernoulli
+  freq_hop        Beta (with [1, freq_hop_max] -> [0,1] inverse rescale in evaluate_actions)
+  channel_select  Categorical
 
 Critic NOT pretrained — PPO fine-tune learns value from scratch via GAE.
 """
@@ -37,7 +42,7 @@ from algo._shared.pilot.twoteam.commander_actor_critic import TwoTeamCommanderAc
 
 
 class TwoTeamBCPretrainer:
-    """BC pretrainer: collect expert demos from StrongRule, NLL-fit AC's actor."""
+    """BC pretrainer: collect expert demos from BlindClassical, NLL-fit AC's actor."""
 
     def __init__(
         self,
@@ -52,15 +57,18 @@ class TwoTeamBCPretrainer:
         self.batch_size = int(batch_size)
         self.val_split = float(val_split)
         self.device = torch.device(device)
-        # Only actor params — critic left for PPO fine-tune
+        # Only actor params — critic left for PPO fine-tune.
+        # WP-3 M0/M1: actor heads include beam_direction_head (replaces removed
+        # beam_target_head) and detect_mlp (DeepSets encoder for env detection list).
         actor_params = (
             list(self.ac.actor_trunk.parameters())
             + list(self.ac.task_alloc_head.parameters())
-            + list(self.ac.beam_target_head.parameters())
+            + list(self.ac.beam_direction_head.parameters())
             + list(self.ac.laser_target_head.parameters())
             + list(self.ac.emission_on_head.parameters())
             + list(self.ac.freq_hop_head.parameters())
             + list(self.ac.channel_select_head.parameters())
+            + list(self.ac.detect_mlp.parameters())
         )
         self.opt = torch.optim.Adam(actor_params, lr=self.lr)
 
@@ -77,12 +85,13 @@ class TwoTeamBCPretrainer:
         base_seed: int = 1000,
         verbose: bool = True,
     ) -> Dict[str, torch.Tensor]:
-        """Run rule vs ExtremeCommander episodes, collect (obs, priv, rule_action).
+        """Run rule vs ExtremeCommander episodes, collect (obs, priv, detect_list, rule_action).
 
         Per-episode:
           - Pick an ExtremeCommander opponent (cycling through diversified pool)
           - rule plays team 0 (collect rule's transitions), then team 1 (symmetric aug)
-          - Each step records (obs[:, team], priv[:, team], rule_action) per env
+          - Each step records (obs[:, team], priv[:, team], detect_list[:, team],
+            rule_action) per env
 
         Stop when total samples >= n_samples.
         """
@@ -93,19 +102,20 @@ class TwoTeamBCPretrainer:
             ]
 
         E = env.E
-        R = env.n_radars_per_team
         n_fn = env.n_fn
         obs_dim = env.obs_dim
         priv_dim = env.privileged_dim
+        K = getattr(env, "k_max", 5)
 
         obs_buf = []
         priv_buf = []
+        detect_buf = []
         task_alloc_buf = []
-        beam_target_buf = []
+        beam_direction_buf = []
         laser_target_buf = []
         emission_on_buf = []
         freq_hop_rate_buf = []
-        channel_select_buf = []   # WP-C R3: from env state (rule doesn't output)
+        channel_select_buf = []
 
         total = 0
         ep = 0
@@ -125,17 +135,19 @@ class TwoTeamBCPretrainer:
                 # Record rule's transition (obs BEFORE step)
                 obs_buf.append(obs_dict["obs"][:, 0].clone())
                 priv_buf.append(obs_dict["privileged"][:, 0].clone())
+                detect_buf.append(env.get_detect_list()[:, 0].clone())   # WP-3 M0/M1
                 task_alloc_buf.append(a_rule["task_alloc"].clone())
-                beam_target_buf.append(a_rule["beam_target"].clone())
+                beam_direction_buf.append(a_rule["beam_direction"].clone())   # WP-3 M2
                 laser_target_buf.append(a_rule["laser_target"].clone())
                 emission_on_buf.append(a_rule["emission_on"].clone())
                 freq_hop_rate_buf.append(a_rule["freq_hop_rate"].clone())
-                # WP-C R3: rule doesn't output channel_select — derive from env state
-                # (wrapper-set orthogonal config => BC learns "fixed orth" as the
-                # pre-PPO starting point; PPO fine-tune learns dynamic on top).
-                ch_idx_t0 = ((env.radar_freq_hz[:, 0, :] - env.fc_hz)
-                             / env.channel_spacing_hz).round().long().clamp(0, env.n_channels - 1)
-                channel_select_buf.append(ch_idx_t0.clone())
+                # Channel select: prefer rule output; fall back to env state if rule silent
+                if "channel_select" in a_rule:
+                    channel_select_buf.append(a_rule["channel_select"].clone())
+                else:
+                    ch_idx_t0 = ((env.radar_freq_hz[:, 0, :] - env.fc_hz)
+                                 / env.channel_spacing_hz).round().long().clamp(0, env.n_channels - 1)
+                    channel_select_buf.append(ch_idx_t0.clone())
                 total += E
                 if total >= n_samples:
                     break
@@ -153,15 +165,18 @@ class TwoTeamBCPretrainer:
                     a_rule = rule.get_action(env, 1)
                     obs_buf.append(obs_dict["obs"][:, 1].clone())
                     priv_buf.append(obs_dict["privileged"][:, 1].clone())
+                    detect_buf.append(env.get_detect_list()[:, 1].clone())   # WP-3 M0/M1
                     task_alloc_buf.append(a_rule["task_alloc"].clone())
-                    beam_target_buf.append(a_rule["beam_target"].clone())
+                    beam_direction_buf.append(a_rule["beam_direction"].clone())   # WP-3 M2
                     laser_target_buf.append(a_rule["laser_target"].clone())
                     emission_on_buf.append(a_rule["emission_on"].clone())
                     freq_hop_rate_buf.append(a_rule["freq_hop_rate"].clone())
-                    # WP-C R3: channel_select from env state (team 1 row)
-                    ch_idx_t1 = ((env.radar_freq_hz[:, 1, :] - env.fc_hz)
-                                 / env.channel_spacing_hz).round().long().clamp(0, env.n_channels - 1)
-                    channel_select_buf.append(ch_idx_t1.clone())
+                    if "channel_select" in a_rule:
+                        channel_select_buf.append(a_rule["channel_select"].clone())
+                    else:
+                        ch_idx_t1 = ((env.radar_freq_hz[:, 1, :] - env.fc_hz)
+                                     / env.channel_spacing_hz).round().long().clamp(0, env.n_channels - 1)
+                        channel_select_buf.append(ch_idx_t1.clone())
                     total += E
                     if total >= n_samples:
                         break
@@ -174,17 +189,12 @@ class TwoTeamBCPretrainer:
                 print(f"  [BC collect] ep={ep} total={total}/{n_samples} "
                       f"opp={opp_name} t={elapsed:.1f}s", flush=True)
 
-        # Trim to exactly n_samples
-        def trim(buf_list, target_shape, dtype):
-            cat = torch.cat([b.reshape(-1, *target_shape[1:]) if len(target_shape) > 1
-                             else b.reshape(-1) for b in buf_list], dim=0)
-            return cat[:n_samples].to(dtype)
-
         samples = {
             "obs": torch.cat([b for b in obs_buf], dim=0)[:n_samples].to(torch.float32),
             "priv": torch.cat([b for b in priv_buf], dim=0)[:n_samples].to(torch.float32),
+            "detect_list": torch.cat([b for b in detect_buf], dim=0)[:n_samples].to(torch.float32),
             "task_alloc": torch.cat([b for b in task_alloc_buf], dim=0)[:n_samples].to(torch.float32),
-            "beam_target": torch.cat([b for b in beam_target_buf], dim=0)[:n_samples].to(torch.long),
+            "beam_direction": torch.cat([b for b in beam_direction_buf], dim=0)[:n_samples].to(torch.float32),
             "laser_target": torch.cat([b for b in laser_target_buf], dim=0)[:n_samples].to(torch.long),
             "emission_on": torch.cat([b for b in emission_on_buf], dim=0)[:n_samples].to(torch.float32),
             "freq_hop_rate": torch.cat([b for b in freq_hop_rate_buf], dim=0)[:n_samples].to(torch.float32),
@@ -198,9 +208,9 @@ class TwoTeamBCPretrainer:
     # ------------------------------------------------------------------
     # NLL loss
     # ------------------------------------------------------------------
-    def _bc_loss(self, obs_b, priv_b, action_b):
+    def _bc_loss(self, obs_b, detect_b, priv_b, action_b):
         """NLL on rule's action under AC's current distribution."""
-        log_prob, _, _, _ = self.ac.evaluate_actions(obs_b, action_b, priv_b)
+        log_prob, _, _, _ = self.ac.evaluate_actions(obs_b, detect_b, action_b, priv_b)
         return -log_prob.mean()
 
     # ------------------------------------------------------------------
@@ -223,9 +233,10 @@ class TwoTeamBCPretrainer:
         # Move to device once
         obs = samples["obs"].to(dev)
         priv = samples["priv"].to(dev)
+        detect = samples["detect_list"].to(dev)
         action_full = {
             "task_alloc": samples["task_alloc"].to(dev),
-            "beam_target": samples["beam_target"].to(dev),
+            "beam_direction": samples["beam_direction"].to(dev),
             "laser_target": samples["laser_target"].to(dev),
             "emission_on": samples["emission_on"].to(dev),
             "freq_hop_rate": samples["freq_hop_rate"].to(dev),
@@ -240,6 +251,7 @@ class TwoTeamBCPretrainer:
 
         obs_tr, obs_val = obs[train_idx], obs[val_idx]
         priv_tr, priv_val = priv[train_idx], priv[val_idx]
+        detect_tr, detect_val = detect[train_idx], detect[val_idx]
         act_tr = {k: v[train_idx] for k, v in action_full.items()}
         act_val = {k: v[val_idx] for k, v in action_full.items()}
 
@@ -259,10 +271,11 @@ class TwoTeamBCPretrainer:
                 if b.numel() < 8:
                     continue
                 obs_b = obs_tr[b]
+                detect_b = detect_tr[b]
                 priv_b = priv_tr[b]
                 act_b = {k: v[b] for k, v in act_tr.items()}
 
-                loss = self._bc_loss(obs_b, priv_b, act_b)
+                loss = self._bc_loss(obs_b, detect_b, priv_b, act_b)
                 self.opt.zero_grad(set_to_none=True)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.ac.parameters(), 1.0)
@@ -281,9 +294,10 @@ class TwoTeamBCPretrainer:
                 for i in range(0, val_idx.shape[0], self.batch_size):
                     b = slice(i, min(i + self.batch_size, val_idx.shape[0]))
                     obs_b = obs_val[b]
+                    detect_b = detect_val[b]
                     priv_b = priv_val[b]
                     act_b = {k: v[b] for k, v in act_val.items()}
-                    vl = self._bc_loss(obs_b, priv_b, act_b)
+                    vl = self._bc_loss(obs_b, detect_b, priv_b, act_b)
                     val_loss_accum += vl.item()
                     n_val_batches += 1
                 val_loss = val_loss_accum / max(1, n_val_batches)
@@ -312,7 +326,7 @@ class TwoTeamBCPretrainer:
 
             # NaN guard
             if any(torch.isnan(p).any().item() for p in self.ac.parameters()):
-                print(f"  ❌ NaN detected in AC params at epoch {epoch}, aborting", flush=True)
+                print(f"  NaN detected in AC params at epoch {epoch}, aborting", flush=True)
                 break
 
         return history

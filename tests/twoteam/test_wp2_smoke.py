@@ -103,12 +103,14 @@ def test_league_loop_minimal():
         import argparse
         from algo._shared.pilot.twoteam.run_wp2_league import run_league
 
-        # Build minimal args
+        # Build minimal args (WP-3 M3: include blind_teacher + entropy_coef_min)
         args = argparse.Namespace(
             n_iters=3, snapshot_every=2, log_every=1, pfsp_hardness=1.0,
             population_cap=15,
             bc_samples=500, bc_epochs=1, bc_batch_size=64, bc_lr=1e-3,
             ppo_lr_actor=1e-4, ppo_lr_critic=1e-3, ppo_entropy_coef=0.01,
+            ppo_entropy_coef_min=0.001,
+            blind_teacher=True,
             log_std_floor=-6.0,
             n_envs=2, horizon=30, n_eval_episodes=2,
             ckpt_dir=tmp_ckpt, out=tmp_out, seed=42,
