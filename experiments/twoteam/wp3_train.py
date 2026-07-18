@@ -57,6 +57,21 @@ def main():
                    help="Per-step bonus per radar tracked (dense signal; default off)")
     p.add_argument("--shape-exposure-penalty", type=float, default=0.0,
                    help="Per-step penalty × exposure (dense signal; default off)")
+    # WP-3.1 Fix A: dense dwell progress + kill bonus
+    p.add_argument("--shape-dwell-bonus", type=float, default=0.0,
+                   help="WP-3.1 Fix A: per-step bonus × Σ radar_E[:,enemy]/e_kill (dwell progress)")
+    p.add_argument("--shape-kill-bonus", type=float, default=0.0,
+                   help="WP-3.1 Fix A: per new kill (delta info team_kills[:,learning_team])")
+    # WP-3.1 Fix B: PFSP f_var mix + ema_var health gate
+    p.add_argument("--pfsp-var-mix", type=float, default=0.0,
+                   help="WP-3.1 Fix B: PFSP f_var weight (0=纯 f_hard, 0.5=推荐)")
+    p.add_argument("--ema-var-uniform-floor", type=float, default=0.0,
+                   help="WP-3.1 Fix B: pool ema_var < floor 时强制均匀采样 (0=关, 0.05=推荐)")
+    # WP-3.1 Fix C: entropy gate + 80/20 self-play
+    p.add_argument("--entropy-gate-on-kill", action="store_true",
+                   help="WP-3.1 Fix C: hold entropy_coef at max until first kill observed (spec §3)")
+    p.add_argument("--self-play-frac", type=float, default=0.0,
+                   help="WP-3.1 Fix C: 0.2 = 20% iter 用 deepcopy(br_ac) 当对手 (OpenAI Five 80/20)")
     # Eval
     p.add_argument("--n-eval-episodes", type=int, default=10)
     # I/O — MUST NOT be /tmp (spec §4.3)
@@ -102,11 +117,18 @@ def main():
         "--ppo-entropy-coef-min", str(args.ppo_entropy_coef_min),
         "--shape-track-bonus", str(args.shape_track_bonus),
         "--shape-exposure-penalty", str(args.shape_exposure_penalty),
+        "--shape-dwell-bonus", str(args.shape_dwell_bonus),
+        "--shape-kill-bonus", str(args.shape_kill_bonus),
+        "--pfsp-var-mix", str(args.pfsp_var_mix),
+        "--ema-var-uniform-floor", str(args.ema_var_uniform_floor),
         "--n-eval-episodes", str(args.n_eval_episodes),
         "--ckpt-dir", ckpt_dir,
         "--out", report,
         "--seed", str(args.seed),
+        "--self-play-frac", str(args.self_play_frac),
     ]
+    if args.entropy_gate_on_kill:
+        cmd.append("--entropy-gate-on-kill")
     if args.strong_rule_teacher:
         cmd.append("--strong-rule-teacher")
     else:

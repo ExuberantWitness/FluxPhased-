@@ -64,10 +64,14 @@ class TwoTeamOpponentPool:
         pfsp_hardness_p: float = 1.0,
         ema_alpha: float = 0.1,
         rng_seed: Optional[int] = None,
+        pfsp_var_mix: float = 0.0,
+        ema_var_uniform_floor: float = 0.0,
     ):
         self.population_cap = int(population_cap)
         self.pfsp_hardness_p = float(pfsp_hardness_p)
         self.ema_alpha = float(ema_alpha)
+        self.pfsp_var_mix = float(pfsp_var_mix)
+        self.ema_var_uniform_floor = float(ema_var_uniform_floor)
         self.records: Dict[str, PolicyRecord] = {}
         self._self_snapshot_order: List[str] = []   # names of self-snapshots, in creation order
         if rng_seed is not None:
@@ -102,10 +106,19 @@ class TwoTeamOpponentPool:
                 del self.records[oldest]
 
     def sample_pfsp(self, exclude: Optional[str] = None) -> Optional[PolicyRecord]:
-        """Sample one opponent, weighted by f_hard(1 - wr)^p. None wr → hardest.
+        """Sample one opponent, weighted by f_hard ⊕ f_var. None wr → hardest.
+
+        PFSP weighting (AlphaStar Nature 2019, §4.5):
+          f_hard(known_wr) = (1 - known_wr)^p                    # 夯难对手
+          f_var(known_wr)  = known_wr * (1 - known_wr)           # ~50% wr 对手最高学习价值
+          weights = (1 - var_mix) · f_hard + var_mix · f_var
+          var_mix=0 → 旧行为 (纯 f_hard);var_mix=0.5 → 推荐 default.
+
+        Health gate: 若池已知 wr 的方差 < ema_var_uniform_floor(默认 0.0=关),
+        强制均匀采样一轮,防 PFSP 塌到单一对手。
 
         Args:
-            exclude: optional name to exclude (e.g. prevent same-as-last-iter).
+            exclude: optional name to exclude.
 
         Returns:
             One PolicyRecord, or None if pool is empty.
@@ -119,7 +132,18 @@ class TwoTeamOpponentPool:
         ])
         unknown = np.isnan(wr)
         known_wr = np.where(unknown, 0.0, wr)
-        weights = (1.0 - known_wr) ** self.pfsp_hardness_p
+
+        # Health gate: ema_var < floor → 强制均匀
+        if self.ema_var_uniform_floor > 0.0 and known_wr.size >= 2:
+            known_only = wr[~unknown]
+            if known_only.size >= 2 and float(np.var(known_only)) < self.ema_var_uniform_floor:
+                probs = np.ones(len(candidates)) / len(candidates)
+                idx = int(self._rng.choice(len(candidates), p=probs))
+                return candidates[idx]
+
+        f_hard = (1.0 - known_wr) ** self.pfsp_hardness_p
+        f_var = known_wr * (1.0 - known_wr)
+        weights = (1.0 - self.pfsp_var_mix) * f_hard + self.pfsp_var_mix * f_var
         if unknown.any():
             weights[unknown] = weights.max() if weights.max() > 0 else 1.0
         total = weights.sum()

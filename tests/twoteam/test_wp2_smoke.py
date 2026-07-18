@@ -106,12 +106,19 @@ def test_league_loop_minimal():
         # Build minimal args (WP-3 M3: include blind_teacher + entropy_coef_min)
         args = argparse.Namespace(
             n_iters=3, snapshot_every=2, log_every=1, pfsp_hardness=1.0,
+            pfsp_var_mix=0.0, ema_var_uniform_floor=0.0,
+            entropy_gate_on_kill=False, self_play_frac=0.0,
             population_cap=15,
             bc_samples=500, bc_epochs=1, bc_batch_size=64, bc_lr=1e-3,
             ppo_lr_actor=1e-4, ppo_lr_critic=1e-3, ppo_entropy_coef=0.01,
             ppo_entropy_coef_min=0.001,
             blind_teacher=True,
             log_std_floor=-6.0,
+            # WP-3 dense shaping defaults (off) + WP-3.1 Fix A
+            shape_track_bonus=0.0,
+            shape_exposure_penalty=0.0,
+            shape_dwell_bonus=0.0,
+            shape_kill_bonus=0.0,
             n_envs=2, horizon=30, n_eval_episodes=2,
             ckpt_dir=tmp_ckpt, out=tmp_out, seed=42,
         )

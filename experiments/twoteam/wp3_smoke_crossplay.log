@@ -1,0 +1,47 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 101.9 GB
+Loading RL ckpt: checkpoints/blind/wp3_100iter_dynamics/iter_final.pt
+  iter=100
+
+======================================================================
+  Condition: low_interference (channel_mode=orthogonal)
+======================================================================
+  [RL=team0] batch done, total eps=10/20
+  [RL=team0] batch done, total eps=20/20
+  [RL=team1] batch done, total eps=10/20
+  [RL=team1] batch done, total eps=20/20
+/home/ubuntu/CODE/FluxPhased-/experiments/twoteam/wp3_smoke_crossplay.py:134: RuntimeWarning: Precision loss occurred in moment calculation due to catastrophic cancellation. This occurs when the data are nearly identical. Results may be unreliable.
+  t, p = stats.ttest_ind(a, b, equal_var=False)
+
+  RL kills:    0.075 ± 0.263  (n=40)
+  BC kills:    1.000 ± 0.000
+  Δ = -0.925  (Welch t=-21.93, p=0.000)
+  RL survival: 0.765
+  RL expos:    2.183
+  RL trace_P:  292.091
+
+======================================================================
+  Condition: high_interference (channel_mode=same_channel)
+======================================================================
+  [RL=team0] batch done, total eps=10/20
+  [RL=team0] batch done, total eps=20/20
+  [RL=team1] batch done, total eps=10/20
+  [RL=team1] batch done, total eps=20/20
+
+  RL kills:    0.075 ± 0.263  (n=40)
+  BC kills:    0.225 ± 0.418
+  Δ = -0.150  (Welch t=-1.90, p=0.062)
+  RL survival: 0.811
+  RL expos:    2.220
+  RL trace_P:  309.593
+
+======================================================================
+Smoke cross-play done in 0.6 min
+======================================================================
+
+Verdict per WP-3 spec:
+  low_interference: Δ_kills=-0.925  → FAIL
+  high_interference: Δ_kills=-0.150  → MARGINAL/FAIL (诚实记录)
+
+Report → experiments/twoteam/wp3_smoke_crossplay_report.md

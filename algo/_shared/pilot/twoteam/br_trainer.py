@@ -96,6 +96,14 @@ class TwoTeamBRTrainer:
         entropy_decay_iters: int = 0,   # >0 enables cosine anneal over n_iterations
         shape_track_bonus: float = 0.0,   # WP-3 dense reward: per-step bonus per radar tracked (tau_track)
         shape_exposure_penalty: float = 0.0,   # WP-3 dense reward: per-step penalty × exposure
+        # WP-3.1 Fix A: dense dwell progress + kill bonus (per WP3_1_KILL_FIX_SPEC §1.2)
+        # Without these, optimal policy under non-zero-sum shaping is "never fire":
+        # track_bonus rewards tracking, exposure_penalty punishes laser emission,
+        # no term rewards the dwell→kill chain.
+        shape_dwell_bonus: float = 0.0,   # per-step bonus × Σ_radar_E[:,enemy]/e_kill (dwell progress)
+        shape_kill_bonus: float = 0.0,   # per new kill (delta info["team_kills"][:,learning_team])
+        # WP-3.1 Fix C: hold entropy_coef at max until first kill observed (spec §3).
+        entropy_gate_on_kill: bool = False,
         device: str = "cuda",
     ):
         self.br_ac = br_ac
@@ -122,6 +130,12 @@ class TwoTeamBRTrainer:
         self.entropy_decay_iters = int(entropy_decay_iters)
         self.shape_track_bonus = float(shape_track_bonus)
         self.shape_exposure_penalty = float(shape_exposure_penalty)
+        self.shape_dwell_bonus = float(shape_dwell_bonus)
+        self.shape_kill_bonus = float(shape_kill_bonus)
+        # WP-3.1 Fix C: kill-appeared flag (latch). entropy_gate_on_kill=True 时
+        # _entropy_coef 在 kill>0 出现前不退火。
+        self._kill_appeared = False
+        self.entropy_gate_on_kill = bool(entropy_gate_on_kill)
         self.device = torch.device(device)
 
         # Separate actor/critic LRs via param groups.
@@ -143,8 +157,16 @@ class TwoTeamBRTrainer:
         ])
 
     def _entropy_coef(self, iter_idx: int, n_iters: int) -> float:
-        """Cosine-anneal entropy_coef from entropy_coef_max → entropy_coef_min."""
+        """Cosine-anneal entropy_coef from entropy_coef_max → entropy_coef_min.
+
+        WP-3.1 Fix C (spec §3): 若 `entropy_gate_on_kill=True`,在 kill>0 出现前
+        不退火(保持 entropy_coef_max),让 RL 在没拿到 kill 信号前持续 explore;
+        kill 出现后才按 cosine 衰减到 min。
+        """
         if self.entropy_decay_iters <= 0:
+            return self.entropy_coef_max
+        # Fix C gate: hold max until first kill observed.
+        if getattr(self, "entropy_gate_on_kill", False) and not self._kill_appeared:
             return self.entropy_coef_max
         frac = 0.5 * (1 + math.cos(math.pi * iter_idx / max(1, n_iters)))
         return self.entropy_coef_min + (self.entropy_coef_max - self.entropy_coef_min) * frac
@@ -164,6 +186,9 @@ class TwoTeamBRTrainer:
 
         # Reset env
         obs_dict = env.reset()
+        # WP-3.1 Fix A: baseline team_kills for delta-kill bonus
+        et = 1 - learning_team   # enemy team; radar_E[:,et] = learning_team's dwell progress on enemy
+        prev_kills = env.team_kills[:, learning_team].clone()
         for t in range(horizon):
             obs_lt = obs_dict["obs"][:, learning_team]            # [E, obs_dim]
             priv_lt = obs_dict["privileged"][:, learning_team]    # [E, priv_dim]
@@ -183,6 +208,24 @@ class TwoTeamBRTrainer:
 
             obs_dict, reward, done, info = env.step(action)
             rew_lt = reward[:, learning_team] * self.reward_scale   # [E]
+
+            # WP-3.1 Fix A: dense dwell progress (laser dwell → e_kill chain).
+            # Absolute form (robust; radar_E saturates at e_kill, can't be farmed).
+            # spec §1.2 (A): dwell_frac = Σ_r radar_E[:,et]/e_kill
+            if self.shape_dwell_bonus > 0.0:
+                dwell_frac = env.radar_E[:, et].sum(dim=-1) / env.e_kill   # [E]
+                rew_lt = rew_lt + self.shape_dwell_bonus * dwell_frac
+            # WP-3.1 Fix A: explicit kill bonus (large one-shot per new kill).
+            # spec §1.2 (B): kill_bonus = shape_kill_bonus × Δteam_kills[:,learning_team]
+            if self.shape_kill_bonus > 0.0:
+                now_kills = info["team_kills"][:, learning_team]
+                new_kills = (now_kills - prev_kills).clamp(min=0).float()
+                rew_lt = rew_lt + self.shape_kill_bonus * new_kills
+                prev_kills = now_kills.clone()
+                # WP-3.1 Fix C: kill-appeared flag (latch on first new_kill).
+                # spec §3: "kill>0 出现前不退火"。
+                if not self._kill_appeared and float(new_kills.sum().item()) > 0.5:
+                    self._kill_appeared = True
 
             # WP-3 dense reward shaping (non-zero-sum, learning team only).
             # Mitigates mirror-symmetric pool where zero-sum env reward → 0 gradient.
@@ -214,6 +257,8 @@ class TwoTeamBRTrainer:
 
             if done.all():
                 obs_dict = env.reset()
+                # WP-3.1 Fix A: resync kill baseline after env reset
+                prev_kills = env.team_kills[:, learning_team].clone()
 
         return buf
 

@@ -115,6 +115,8 @@ def initialize_pool(
     bc_iter: int = 0,
     population_cap: int = 30,
     seed: int = 42,
+    pfsp_var_mix: float = 0.0,
+    ema_var_uniform_floor: float = 0.0,
 ) -> TwoTeamOpponentPool:
     """Build the initial opponent pool with rule + extreme + exploit + BC snapshot."""
     pool = TwoTeamOpponentPool(
@@ -122,6 +124,8 @@ def initialize_pool(
         pfsp_hardness_p=1.0,
         ema_alpha=0.1,
         rng_seed=seed,
+        pfsp_var_mix=pfsp_var_mix,
+        ema_var_uniform_floor=ema_var_uniform_floor,
     )
 
     # 1. StrongRule (the eventual champion target)
@@ -315,6 +319,8 @@ def run_league(args):
     pool = initialize_pool(
         bc_ckpt_path=bc_ckpt, bc_iter=0,
         population_cap=args.population_cap, seed=args.seed,
+        pfsp_var_mix=args.pfsp_var_mix,
+        ema_var_uniform_floor=args.ema_var_uniform_floor,
     )
     print(f"  pool size: {pool.num_records()} (rule×2 + 7 extreme + 3 exploit + 1 BC)")
     assert pool.num_records() == 13, f"expected 13 seed records, got {pool.num_records()}"
@@ -340,6 +346,10 @@ def run_league(args):
         # WP-3 dense reward shaping — mitigates zero-sum mirror symmetry (weak gradient)
         shape_track_bonus=args.shape_track_bonus,
         shape_exposure_penalty=args.shape_exposure_penalty,
+        # WP-3.1 Fix A: dwell progress + kill bonus (spec §1.2)
+        shape_dwell_bonus=args.shape_dwell_bonus,
+        shape_kill_bonus=args.shape_kill_bonus,
+        entropy_gate_on_kill=args.entropy_gate_on_kill,
         device="cuda",
     )
     print(f"  lr_actor={args.ppo_lr_actor} lr_critic={args.ppo_lr_critic} "
@@ -378,6 +388,18 @@ def run_league(args):
                                             deterministic=True)
         else:
             frozen_cmd = opp_rec.factory()
+
+        # WP-3.1 Fix C (spec §3): self-play 80/20 — 20% iter 用 deepcopy(br_ac) 当对手.
+        # OpenAI Five 2019: pure self-play + dense hand-shaped reward 路线;对称对手
+        # 提供 zero-sum mirror + 与 PFSP 池对手互补的 diverse exploration.
+        using_self_play = False
+        if args.self_play_frac > 0.0:
+            import copy as _copy
+            if pool._rng.random() < args.self_play_frac:
+                sp_ac = _copy.deepcopy(br_ac).eval()
+                frozen_cmd = ACCommander(sp_ac, deterministic=True)
+                using_self_play = True
+
         trainer.frozen_opponent = frozen_cmd
 
         # 4) One PPO iteration: collect_rollout + GAE + update
@@ -410,7 +432,9 @@ def run_league(args):
             n_episodes=args.n_eval_episodes, horizon=args.horizon,
             learning_team=0, seed_base=9000 + it * 17,
         )
-        pool.update_win_rate(opp_rec.name, wr >= 0.5)
+        # Skip pool EMA update for self-play (deepcopy isn't a pool member).
+        if not using_self_play:
+            pool.update_win_rate(opp_rec.name, wr >= 0.5)
 
         # Log
         history.append({
@@ -579,6 +603,15 @@ def main():
     p.add_argument("--snapshot-every", type=int, default=50)
     p.add_argument("--log-every", type=int, default=10)
     p.add_argument("--pfsp-hardness", type=float, default=1.0)
+    p.add_argument("--pfsp-var-mix", type=float, default=0.0,
+                   help="WP-3.1 Fix B: PFSP f_hard ⊕ f_var mix (0=纯 f_hard, 0.5=推荐 default)")
+    p.add_argument("--ema-var-uniform-floor", type=float, default=0.0,
+                   help="WP-3.1 Fix B: ema_var < floor 时强制均匀采样 (0=关, 推荐 0.05)")
+    # WP-3.1 Fix C: entropy gate
+    p.add_argument("--entropy-gate-on-kill", action="store_true",
+                   help="WP-3.1 Fix C: hold entropy_coef at max until first kill observed (spec §3)")
+    p.add_argument("--self-play-frac", type=float, default=0.0,
+                   help="WP-3.1 Fix C: 0.2 = 20% iter 用 deepcopy(br_ac) 当对手 (OpenAI Five 80/20)")
     p.add_argument("--population-cap", type=int, default=30)
     # BC
     p.add_argument("--bc-samples", type=int, default=50000)
@@ -595,6 +628,10 @@ def main():
                    help="WP-3 dense reward: per-step bonus per radar tracked (tau_track)")
     p.add_argument("--shape-exposure-penalty", type=float, default=0.0,
                    help="WP-3 dense reward: per-step penalty × exposure")
+    p.add_argument("--shape-dwell-bonus", type=float, default=0.0,
+                   help="WP-3.1 Fix A: per-step bonus × Σ radar_E[:,enemy]/e_kill (dwell progress)")
+    p.add_argument("--shape-kill-bonus", type=float, default=0.0,
+                   help="WP-3.1 Fix A: per new kill (delta info team_kills[:,learning_team])")
     p.add_argument("--log-std-floor", type=float, default=-6.0)
     # WP-3 M3: BC teacher toggle (default blind, per spec §0.3④)
     p.add_argument("--blind-teacher", action="store_true", default=True,
