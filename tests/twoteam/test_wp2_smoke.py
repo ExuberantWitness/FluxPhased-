@@ -119,6 +119,11 @@ def test_league_loop_minimal():
             shape_exposure_penalty=0.0,
             shape_dwell_bonus=0.0,
             shape_kill_bonus=0.0,
+            shape_init_bonus=0.0,
+            shape_detect_in_beam_bonus=0.0,
+            shape_belief_bonus=0.0,
+            curriculum_p_start=0.0,
+            curriculum_anneal_iters=0,
             n_envs=2, horizon=30, n_eval_episodes=2,
             ckpt_dir=tmp_ckpt, out=tmp_out, seed=42,
         )

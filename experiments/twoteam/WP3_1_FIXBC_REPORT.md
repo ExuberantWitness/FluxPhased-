@@ -186,28 +186,96 @@ ckpt_dir = checkpoints/blind/wp3_20260718_090802/  (非 /tmp ✓)
 
 ---
 
-## 8. 满足 spec §5 硬规则
+## 8. 修正:不是 "vs BC 真 floor",是 "BC 杀不动规避目标"(对称 floor)
 
-> ⚠️ 在装了正确 kill reward 之前,禁止再下 'IET floor / RL 学不会' 的结论——那是从 reward 错配的跑下的,无效。**只有正确 kill reward 下仍 kill=0,才是带证据的真 floor**。
+### 8.1 上游用户 2026-07-18 反驳(原 §8 判断过早)
 
-**带证据的判定**:
-- ✅ reward 已装正确(Fix A + microverify PASS)
-- ✅ 训练 r 在 vs SR 上 +1.4(Fix A)、+0.95 kill(Fix B+C)— reward 系统工作
-- ✅ smoke vs BC 仍 kill=0.031 — 不是 reward 错配,是 tracker init 物理失败
-- ✅ probe 直接证据:vs BC tracker_init=0/2 全程,dwell_frac=0 全程
+原 §8 判 "vs BC 真 floor" 的结论被上游用户推翻,理由:
+> vs BC 的 kill=0.04 不是物理 floor,是稀疏墙上移了一层。
 
-**这是带证据的真 floor** — 不是"RL 学不会",而是"IMM-PDAF tracker 在 BC 这种 blind 对手下物理性失败,RL 没有有效输入信号"。
+代码硬理由(逐行核实):
+- [twoteam_env.py:699-700](env/gpu/twoteam/twoteam_env.py#L699-L700): `lsr_track_ok = (trace_P < tau_track) & tracker_initialized`
+- [twoteam_env.py:718](env/gpu/twoteam/twoteam_env.py#L718): `accum_mask = lsr_track_ok & hit_mask & emitting` → `radar_E` 累积被门控
+- [twoteam_env.py:723, 782](env/gpu/twoteam/twoteam_env.py#L723): `track_bonus` 也门控 `tracker_initialized`
+
+→ tracker 不 init 时,`radar_E` 恒 0 → Fix A 的 `dwell_bonus`、`kill_bonus`、原 `track_bonus` 三个 shaping **同时归零**。**RL 对"获取航迹"这一步完全没有奖励梯度**,跟最初 kill=0 的病同构,只是稀疏墙从 "dwell" 上移到 "track acquisition"。
+
+### 8.2 决定性对照:BC vs BC(`/tmp/bc_vs_bc.py`,2026-07-18)
+
+| 配置 | t0 kill | t1 kill | tracker_init | radar_E |
+|---|---|---|---|---|
+| BC vs BC (orthogonal) | **0.000** | **0.000** | 0.45/2 | 0.063 |
+| BC vs BC (same_channel) | **0.000** | **0.000** | 0.00/2 | 0.000 |
+| (对比) RL vs BC | 0.031 | **0.938** | — | — |
+
+**关键判决**:BC 杀 RL=0.83-0.90 是因为 RL 不规避(盲态 forward),BC 锁定容易;**BC 杀不动 BC(规避目标)**。
+
+→ 这就是用户 stop criterion (a):**BC vs BC 也杀不动规避目标 → 对称 floor**。
+→ 不是 "RL 输给 BC",是 "经典 tracker 杀不动规避对手"。
+→ Smoke cross-play "BC kill RL=0.938" 不能证明 BC 能跟踪规避目标,因为 RL 不规避。
+
+### 8.3 架构核实:RL 不能绕过经典 tracker
+
+[twoteam_env.py:417-426](env/gpu/twoteam/twoteam_env.py#L417-L426) obs 包含 `tracker_x`(IMM-PDAF 输出)、`trace_P`、`tracker_initialized`。同时 RL 也喂原始 detection(DeepSets)。
+
+[twoteam_env.py:699-718](env/gpu/twoteam/twoteam_env.py#L699-L718) **激光命中门控** `tracker_x`(`lsr_belief = tracker_x[:, t, laser_slot]` → 比 laser_hit_radius_m)。
+
+→ 即使 RL 拿原始 detection,**物理命中门控 tracker_x**。tracker 不 init 时 RL 物理性 miss,不能绕过。
+
+→ Fix D 必须**让 tracker init**,不是绕过它。
+
+### 8.4 Thesis reframe(用户 2026-07-18)
+
+现在的瓶颈 = 规避对手 + 杂波/干扰下的**主动感知 / 航迹获取**——这正是 RL 立命的 regime(认知雷达 / active-perception POMDP,Kreucher-Hero;经典波束调度做不好的地方)。
+
+若 RL 学会在经典跟不住规避目标的地方主动搜索、获取航迹、再击杀 → 这就是论文最强的点。**这不是 floor,这是被正确隔离出来的真正研究问题。**
+
+### 8.5 修正后的停止判据(用户 2026-07-18)
+
+floor 只有在以下两者之一成立时才是真 floor:
+- (a) BC vs BC 也杀不动规避目标 → **已成立**,但这是对称 floor,不是 RL 劣势
+- (b) RL 装了正确主动感知 reward + curriculum 后仍无法获取航迹 → 未测试
+
+**当前状态**:(a) 成立但叙事需修正;(b) 未测试 = Fix D 待做。
 
 ---
 
 ## 9. 下一步选项
 
-| 选项 | 成本 | 预期 |
-|---|---|---|
-| **A. 接受真 floor,写 WP-4 报告** | 0 | 诚实记录 RL vs BC 物理受限;RL vs SR 数据可用 |
-| B. Fix D:`beam_direction` fallback(tracker 不 init 时 sweeping) | 2-3h | 可能打开 BC 上的 dwell |
-| C. Fix E:obs 加 `tracker_init` mask(策略侧学 sweeping) | 1-2h | 类 D 但 RL 自己学 |
-| D. 调 IMM-PDAF init 阈值(env 侧) | 1h + 重训 | 可能破 BC 上的 init 失败 |
+### 当前判断(修正后)
+"vs BC 真 floor" 判断**过早**,被上游用户推翻。当前状态:
+- (a) BC vs BC 也 0 kill(对称 floor)— 已确认
+- (b) RL 装主动感知 reward + curriculum 后能否获取航迹 — 未测
+
+→ Fix D 是下一步,**不是 "救不活",是被正确隔离的研究问题**。
+
+### Fix D 设计草案(active perception shaping + reverse curriculum)
+
+**Fix D1 — track-init shaping**(让 RL 因主动获取航迹而得奖):
+- `shape_init_bonus`:每次新 `tracker_initialized[laser_slot]` 从 False→True 时给 bonus
+- `shape_belief_bonus` = -Δ‖tracker_x - 最近 detection‖(belief 收敛奖励)
+- `shape_detect_in_beam_bonus`:检测落在 beam_direction 半功率波束内时给 bonus
+
+**Fix D2 — reverse curriculum**(Florensa CoRL 2017):
+- 部分 episode 从"航迹已 init"起步,逐步退火到"全 cold start"
+- 或从"弱规避 BC"→"标准 BC"逐步加强对手
+- 直接打破 "track 不 init ⟺ beam 学不会" 的鸡生蛋
+
+**Fix D3 — 架构侧(若 D1/D2 不够)**:
+- RL actor 加 "tracker_init mask" 输入(让策略知道哪些 slot 没 init)
+- 或:beam_direction_head 加 explicit sweeping fallback(no init → 周期扫描)
+
+### 决定性实验顺序
+1. Fix D1(track-init shaping)单独装 + 100-iter → smoke + probe
+2. 若仍 0 kill → 加 Fix D2(curriculum)
+3. 若仍 0 → Fix D3(架构)
+4. 三层做完仍 0 kill → **带证据的真 floor**(stop criterion (b))
+
+### 跳过项
+- ~~A. 接受真 floor,写 WP-4 报告~~(过早,不诚实)
+- ~~B. Fix D beam_direction fallback(架构)~~(在 D1/D2 shaping 之前跳过)
+- ~~C. Fix E obs tracker_init mask~~(并入 Fix D3)
+- ~~D. 调 IMM-PDAF init 阈值(env 侧)~~(改 env 物理不是本研究路线)
 
 ---
 

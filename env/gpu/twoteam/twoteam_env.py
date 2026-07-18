@@ -403,6 +403,46 @@ class TwoTeamVecEnv:
         out[..., 4] = dets.mask.float()
         return out
 
+    def warm_start_tracker(self, team: int, p: float = 1.0, rng_seed: Optional[int] = None):
+        """WP-3.1 Fix D2: reverse curriculum — pre-init tracker for fraction of envs.
+
+        For each env with prob `p`, set tracker_x[team] to true enemy position,
+        tracker_P[team] to small value (< tau_track), tracker_initialized[team]=True.
+        Used by br_trainer.collect_rollout at episode start when curriculum active.
+
+        Args:
+            team: which team's tracker to warm-start (usually learning_team)
+            p: probability per env (0..1); 0 = no warm start, 1 = always
+            rng_seed: optional seed for deterministic testing
+        """
+        if p <= 0.0:
+            return
+        E, R = self.E, self.n_radars_per_team
+        et = 1 - team
+        if rng_seed is not None:
+            gen = torch.Generator(device=self.device).manual_seed(rng_seed)
+            mask = torch.rand(E, generator=gen, device=self.device) < p
+        else:
+            mask = torch.rand(E, device=self.device) < p
+        mask = mask & self.radar_alive[:, et, 0]   # only if enemy alive
+        # Set tracker_x[team] = true enemy pos (use slot 0 of enemy)
+        enemy_pos = self.radar_pos[:, et, 0]   # [E, 2]
+        for r in range(R):
+            # Only update masked envs
+            m = mask
+            self.tracker_x[:, team, r, 0] = torch.where(
+                m, enemy_pos[:, 0], self.tracker_x[:, team, r, 0])
+            self.tracker_x[:, team, r, 2] = torch.where(
+                m, enemy_pos[:, 1], self.tracker_x[:, team, r, 2])
+            # velocity components left at current value (typically 0)
+            # Set tracker_P small (well below tau_track) to mark "tight track"
+            tight = torch.tensor(self.tau_track * 0.1, device=self.device)
+            self.tracker_P[:, team, r, 0, 0] = torch.where(
+                m, tight, self.tracker_P[:, team, r, 0, 0])
+            self.tracker_P[:, team, r, 2, 2] = torch.where(
+                m, tight, self.tracker_P[:, team, r, 2, 2])
+            self.tracker_initialized[:, team, r] = self.tracker_initialized[:, team, r] | mask
+
     def get_obs(self) -> Dict[str, torch.Tensor]:
         """Per-team obs: {"obs": [E, 2, obs_dim], "privileged": [E, 2, priv_dim]}."""
         E, T, R = self.E, self.n_teams, self.n_radars_per_team

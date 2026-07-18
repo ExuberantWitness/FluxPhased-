@@ -102,6 +102,17 @@ class TwoTeamBRTrainer:
         # no term rewards the dwell→kill chain.
         shape_dwell_bonus: float = 0.0,   # per-step bonus × Σ_radar_E[:,enemy]/e_kill (dwell progress)
         shape_kill_bonus: float = 0.0,   # per new kill (delta info["team_kills"][:,learning_team])
+        # WP-3.1 Fix D1: active-perception shaping (track acquisition chain).
+        # All three target the "tracker_initialized gate" wall: without them, RL gets
+        # zero reward gradient for acquiring tracks (dwell+kill+track shaping all
+        # gate on tracker_initialized → all zero when tracker fails to init vs BC).
+        shape_init_bonus: float = 0.0,        # per new slot tracker_init False→True
+        shape_detect_in_beam_bonus: float = 0.0,  # per detection falling inside beam_direction HPBW
+        shape_belief_bonus: float = 0.0,      # per-step potential: -trace_P (lower cov = higher reward)
+        # WP-3.1 Fix D2: reverse curriculum (Florensa CoRL 2017). Warm-start
+        # tracker for fraction of envs at episode start; anneal p → 0 over training.
+        curriculum_p_start: float = 0.0,       # 0 = disabled; 1.0 = always warm-start at iter 0
+        curriculum_anneal_iters: int = 0,      # iters to anneal p from curriculum_p_start → 0
         # WP-3.1 Fix C: hold entropy_coef at max until first kill observed (spec §3).
         entropy_gate_on_kill: bool = False,
         device: str = "cuda",
@@ -132,6 +143,13 @@ class TwoTeamBRTrainer:
         self.shape_exposure_penalty = float(shape_exposure_penalty)
         self.shape_dwell_bonus = float(shape_dwell_bonus)
         self.shape_kill_bonus = float(shape_kill_bonus)
+        # WP-3.1 Fix D1: active-perception shaping (Kreucher-Hero; track acquisition).
+        self.shape_init_bonus = float(shape_init_bonus)
+        self.shape_detect_in_beam_bonus = float(shape_detect_in_beam_bonus)
+        self.shape_belief_bonus = float(shape_belief_bonus)
+        # WP-3.1 Fix D2: reverse curriculum.
+        self.curriculum_p_start = float(curriculum_p_start)
+        self.curriculum_anneal_iters = int(curriculum_anneal_iters)
         # WP-3.1 Fix C: kill-appeared flag (latch). entropy_gate_on_kill=True 时
         # _entropy_coef 在 kill>0 出现前不退火。
         self._kill_appeared = False
@@ -156,6 +174,71 @@ class TwoTeamBRTrainer:
             {"params": critic_params, "lr": lr_critic},
         ])
 
+    # ------------------------------------------------------------------
+    # WP-3.1 Fix D1: active-perception helpers
+    # ------------------------------------------------------------------
+    def _curriculum_p(self, iter_idx: int) -> float:
+        """WP-3.1 Fix D2: reverse curriculum probability.
+
+        Linear anneal from curriculum_p_start (at iter 0) → 0 (at iter_anneal).
+        Returns 0 after anneal complete (pure cold-start phase).
+        """
+        if self.curriculum_anneal_iters <= 0 or self.curriculum_p_start <= 0.0:
+            return 0.0
+        if iter_idx >= self.curriculum_anneal_iters:
+            return 0.0
+        frac = 1.0 - iter_idx / max(1, self.curriculum_anneal_iters)
+        return self.curriculum_p_start * frac
+
+    def _trace_P_mean(self, env, learning_team: int) -> torch.Tensor:
+        """Mean trace_P across learning_team radars. Lower = tighter track."""
+        trace_P_t = env.tracker_P[:, learning_team, :, 0, 0] + \
+                    env.tracker_P[:, learning_team, :, 2, 2]   # [E, R]
+        return trace_P_t.mean(dim=-1)   # [E]
+
+    def _n_detects_in_beam(self, env, learning_team: int, action: Dict[str, torch.Tensor]) -> torch.Tensor:
+        """Count real (non-FA) detections whose bearing from a learning_team radar
+        falls inside that radar's beam_direction HPBW.
+
+        Args:
+            env: TwoTeamVecEnv
+            learning_team: 0 or 1
+            action: action dict from br_ac; must contain `beam_direction` [E, R]
+
+        Returns:
+            [E] tensor of normalized count ∈ [0, K_max]. Per real detection inside
+            any beam, contributes 1/K_max (so max = K_max detections all in beam = 1.0).
+        """
+        E = env.E
+        R = env.n_radars_per_team
+        K = env.k_max
+        dev = env.device
+        beam_dir = action["beam_direction"]   # [E, R] azimuth ∈ [-π, π]
+        hpbw = float(env.beam_width_rad)      # half-power beam width (rad)
+        radar_pos = env.radar_pos[:, learning_team]   # [E, R, 2]
+
+        detect_list = env.get_detect_list()[:, learning_team]   # [E, K, 5]
+        # z_x, z_y cartesian; is_fa at idx 3
+        z = detect_list[..., 0:2]   # [E, K, 2]
+        is_fa = detect_list[..., 3]   # [E, K]
+        # Real detection mask
+        real_mask = (is_fa < 0.5) & (detect_list[..., 4] > 0.5)   # [E, K]
+
+        # For each (E, R, K): bearing from radar r to detection k
+        # radar_pos[E, R, 1, 2] - z[E, 1, K, 2] → bearing diff
+        rel = z.unsqueeze(1) - radar_pos.unsqueeze(2)   # [E, R, K, 2]
+        bearing = torch.atan2(rel[..., 1], rel[..., 0])   # [E, R, K]
+        # beam_dir [E, R] → broadcast to [E, R, 1]
+        bd = beam_dir.unsqueeze(-1)   # [E, R, 1]
+        # angular diff wrapped to [-π, π]
+        ang_diff = (bearing - bd + math.pi) % (2 * math.pi) - math.pi
+        in_beam = (ang_diff.abs() < hpbw / 2.0)   # [E, R, K]
+        # Only count real detections; per (E, K), if any radar r has it in beam, count once
+        real_in_beam_per_radar = in_beam & real_mask.unsqueeze(1)   # [E, R, K]
+        # [E, K] → any radar → sum over K → [E]
+        n_in_beam = real_in_beam_per_radar.any(dim=1).float().sum(dim=-1)   # [E]
+        return n_in_beam / max(K, 1)   # normalize to [0, 1]
+
     def _entropy_coef(self, iter_idx: int, n_iters: int) -> float:
         """Cosine-anneal entropy_coef from entropy_coef_max → entropy_coef_min.
 
@@ -175,7 +258,8 @@ class TwoTeamBRTrainer:
     # Rollout
     # ------------------------------------------------------------------
     @torch.no_grad()
-    def collect_rollout(self, env, horizon: int, learning_team: int = 0) -> _RolloutBuffer:
+    def collect_rollout(self, env, horizon: int, learning_team: int = 0,
+                        iter_idx: int = 0) -> _RolloutBuffer:
         """Run `horizon` env steps; collect learning_team transitions."""
         E = env.E
         dev = self.device
@@ -186,9 +270,17 @@ class TwoTeamBRTrainer:
 
         # Reset env
         obs_dict = env.reset()
+        # WP-3.1 Fix D2: reverse curriculum — warm-start tracker for fraction of envs.
+        p_cur = self._curriculum_p(iter_idx)
+        if p_cur > 0.0 and hasattr(env, "warm_start_tracker"):
+            env.warm_start_tracker(learning_team, p=p_cur)
         # WP-3.1 Fix A: baseline team_kills for delta-kill bonus
         et = 1 - learning_team   # enemy team; radar_E[:,et] = learning_team's dwell progress on enemy
         prev_kills = env.team_kills[:, learning_team].clone()
+        # WP-3.1 Fix D1: prev tracker_init mask for delta-init bonus
+        prev_init = env.tracker_initialized[:, learning_team].clone()   # [E, R] bool
+        # WP-3.1 Fix D1: prev trace_P mean for potential-based belief shaping
+        prev_trace_P_mean = self._trace_P_mean(env, learning_team)   # [E]
         for t in range(horizon):
             obs_lt = obs_dict["obs"][:, learning_team]            # [E, obs_dim]
             priv_lt = obs_dict["privileged"][:, learning_team]    # [E, priv_dim]
@@ -239,6 +331,32 @@ class TwoTeamBRTrainer:
                 exp_lt = info["exposure"][:, learning_team]
                 rew_lt = rew_lt - self.shape_exposure_penalty * exp_lt
 
+            # WP-3.1 Fix D1: active-perception shaping (Kreucher-Hero track acquisition).
+            # All three break the "tracker_initialized gate" wall — they give RL dense
+            # reward for *acquiring* tracks, not just for downstream dwell/kill that
+            # gates on tracker_init and thus zero-gradient when tracker fails vs BC.
+            #
+            # (D1.a) shape_init_bonus: per slot False→True transition (event-based).
+            if self.shape_init_bonus > 0.0:
+                now_init = env.tracker_initialized[:, learning_team]   # [E, R] bool
+                new_inits = (now_init & ~prev_init).float().sum(dim=-1)   # [E]
+                rew_lt = rew_lt + self.shape_init_bonus * new_inits
+                prev_init = now_init.clone()
+            # (D1.b) shape_belief_bonus: potential-based -Φ where Φ = mean trace_P.
+            # Lower cov (tighter track) = higher reward; PBRS-style policy-invariant.
+            if self.shape_belief_bonus > 0.0:
+                now_trace_P_mean = self._trace_P_mean(env, learning_team)   # [E]
+                # ΔΦ = Φ_post - Φ_prev = -(now - prev); reward = -ΔΦ = (now - prev)↓ → +
+                delta = prev_trace_P_mean - now_trace_P_mean   # [E]; + when cov shrinks
+                rew_lt = rew_lt + self.shape_belief_bonus * delta.clamp(min=0.0)
+                prev_trace_P_mean = now_trace_P_mean.clone()
+            # (D1.c) shape_detect_in_beam_bonus: per real detection falling inside
+            # any learning_team beam_direction HPBW. Encourages beam to point at RF
+            # sources even when tracker hasn't locked yet (chicken-egg breaker).
+            if self.shape_detect_in_beam_bonus > 0.0:
+                rew_lt = rew_lt + self.shape_detect_in_beam_bonus * \
+                    self._n_detects_in_beam(env, learning_team, br_action)
+
             # Record
             buf.obs[t] = obs_lt
             buf.priv[t] = priv_lt
@@ -257,8 +375,14 @@ class TwoTeamBRTrainer:
 
             if done.all():
                 obs_dict = env.reset()
+                # WP-3.1 Fix D2: re-apply curriculum warm-start after mid-rollout reset.
+                if p_cur > 0.0 and hasattr(env, "warm_start_tracker"):
+                    env.warm_start_tracker(learning_team, p=p_cur)
                 # WP-3.1 Fix A: resync kill baseline after env reset
                 prev_kills = env.team_kills[:, learning_team].clone()
+                # WP-3.1 Fix D1: resync prev tracker_init mask + trace_P baseline
+                prev_init = env.tracker_initialized[:, learning_team].clone()
+                prev_trace_P_mean = self._trace_P_mean(env, learning_team)
 
         return buf
 

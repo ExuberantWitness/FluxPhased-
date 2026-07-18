@@ -62,6 +62,18 @@ def main():
                    help="WP-3.1 Fix A: per-step bonus × Σ radar_E[:,enemy]/e_kill (dwell progress)")
     p.add_argument("--shape-kill-bonus", type=float, default=0.0,
                    help="WP-3.1 Fix A: per new kill (delta info team_kills[:,learning_team])")
+    # WP-3.1 Fix D1: active-perception shaping
+    p.add_argument("--shape-init-bonus", type=float, default=0.0,
+                   help="WP-3.1 Fix D1: per slot tracker_init False→True event")
+    p.add_argument("--shape-detect-in-beam-bonus", type=float, default=0.0,
+                   help="WP-3.1 Fix D1: per real detection inside beam HPBW")
+    p.add_argument("--shape-belief-bonus", type=float, default=0.0,
+                   help="WP-3.1 Fix D1: potential-based -trace_P (belief convergence)")
+    # WP-3.1 Fix D2: reverse curriculum
+    p.add_argument("--curriculum-p-start", type=float, default=0.0,
+                   help="WP-3.1 Fix D2: tracker warm-start prob at iter 0 (0=disabled, 1.0=full)")
+    p.add_argument("--curriculum-anneal-iters", type=int, default=0,
+                   help="WP-3.1 Fix D2: iters to anneal p_start → 0")
     # WP-3.1 Fix B: PFSP f_var mix + ema_var health gate
     p.add_argument("--pfsp-var-mix", type=float, default=0.0,
                    help="WP-3.1 Fix B: PFSP f_var weight (0=纯 f_hard, 0.5=推荐)")
@@ -119,6 +131,11 @@ def main():
         "--shape-exposure-penalty", str(args.shape_exposure_penalty),
         "--shape-dwell-bonus", str(args.shape_dwell_bonus),
         "--shape-kill-bonus", str(args.shape_kill_bonus),
+        "--shape-init-bonus", str(args.shape_init_bonus),
+        "--shape-detect-in-beam-bonus", str(args.shape_detect_in_beam_bonus),
+        "--shape-belief-bonus", str(args.shape_belief_bonus),
+        "--curriculum-p-start", str(args.curriculum_p_start),
+        "--curriculum-anneal-iters", str(args.curriculum_anneal_iters),
         "--pfsp-var-mix", str(args.pfsp_var_mix),
         "--ema-var-uniform-floor", str(args.ema_var_uniform_floor),
         "--n-eval-episodes", str(args.n_eval_episodes),

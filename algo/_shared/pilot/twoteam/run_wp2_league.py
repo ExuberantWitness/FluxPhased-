@@ -349,6 +349,11 @@ def run_league(args):
         # WP-3.1 Fix A: dwell progress + kill bonus (spec §1.2)
         shape_dwell_bonus=args.shape_dwell_bonus,
         shape_kill_bonus=args.shape_kill_bonus,
+        shape_init_bonus=args.shape_init_bonus,
+        shape_detect_in_beam_bonus=args.shape_detect_in_beam_bonus,
+        shape_belief_bonus=args.shape_belief_bonus,
+        curriculum_p_start=args.curriculum_p_start,
+        curriculum_anneal_iters=args.curriculum_anneal_iters,
         entropy_gate_on_kill=args.entropy_gate_on_kill,
         device="cuda",
     )
@@ -404,7 +409,7 @@ def run_league(args):
 
         # 4) One PPO iteration: collect_rollout + GAE + update
         try:
-            buf = trainer.collect_rollout(env, args.horizon, learning_team=0)
+            buf = trainer.collect_rollout(env, args.horizon, learning_team=0, iter_idx=it)
             trainer._compute_gae(buf)
             metrics = trainer.update(buf, iter_idx=it, n_iters=args.n_iters)
         except Exception as e:
@@ -632,6 +637,18 @@ def main():
                    help="WP-3.1 Fix A: per-step bonus × Σ radar_E[:,enemy]/e_kill (dwell progress)")
     p.add_argument("--shape-kill-bonus", type=float, default=0.0,
                    help="WP-3.1 Fix A: per new kill (delta info team_kills[:,learning_team])")
+    # WP-3.1 Fix D1: active-perception shaping (track acquisition)
+    p.add_argument("--shape-init-bonus", type=float, default=0.0,
+                   help="WP-3.1 Fix D1: per slot tracker_init False→True event")
+    p.add_argument("--shape-detect-in-beam-bonus", type=float, default=0.0,
+                   help="WP-3.1 Fix D1: per real detection inside beam_direction HPBW")
+    p.add_argument("--shape-belief-bonus", type=float, default=0.0,
+                   help="WP-3.1 Fix D1: potential-based -trace_P (lower cov = higher reward)")
+    # WP-3.1 Fix D2: reverse curriculum (Florensa 2017)
+    p.add_argument("--curriculum-p-start", type=float, default=0.0,
+                   help="WP-3.1 Fix D2: tracker warm-start prob at iter 0 (0=disabled, 1.0=full)")
+    p.add_argument("--curriculum-anneal-iters", type=int, default=0,
+                   help="WP-3.1 Fix D2: iters to anneal p_start → 0 (e.g. 50)")
     p.add_argument("--log-std-floor", type=float, default=-6.0)
     # WP-3 M3: BC teacher toggle (default blind, per spec §0.3④)
     p.add_argument("--blind-teacher", action="store_true", default=True,
