@@ -23,6 +23,8 @@ No environment, PPO or experiment code is changed by this branch.
 5. [Execution tracker](pipeline/refine-logs/EXPERIMENT_TRACKER_20260728_023103.md)
 6. [Source handoff template](pipeline/SOURCE_HANDOFF.template.json)
 7. [Current sync-time source revalidation](SYNC_REVALIDATION.md)
+8. [GitHub download and P0 resume prompt](offline/PRO6000_GITHUB_DOWNLOAD_PROMPT.md)
+9. [Offline upload manifest and packages](offline/UPLOAD_MANIFEST.md)
 
 PRO6000 must copy `SOURCE_HANDOFF.template.json` to `SOURCE_HANDOFF.json`, fill
 and independently verify it, produce the P0 binding packet, and stop for

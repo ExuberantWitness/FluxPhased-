@@ -7,6 +7,7 @@ PRO6000 `node15` network-path failure.
 
 | File | Purpose |
 | --- | --- |
+| `PRO6000_GITHUB_DOWNLOAD_PROMPT.md` | Fixed-commit GitHub download and P0 entrypoint |
 | `PRO6000_RESUME_PROMPT.md` | Transport-gated P0 resume instructions |
 | `ORPHAN_MFR_QUARANTINE_PROTOCOL.md` | Original-host evidence capture and source-promotion rules |
 | `README.md` | Offline package usage |
