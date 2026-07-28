@@ -1,0 +1,44 @@
+{
+  "schema_version": "1.0",
+  "project": "FluxPhased M7/MFR-IQ",
+  "repository": {
+    "url": "REQUIRED",
+    "local_path": "REQUIRED",
+    "branch": "REQUIRED",
+    "commit": "REQUIRED_40_HEX",
+    "dirty": false
+  },
+  "source_archive": {
+    "uri": "REQUIRED_IF_NOT_IN_GIT",
+    "sha256": "REQUIRED_IF_ARCHIVE_USED"
+  },
+  "required_paths": [
+    "env/gpu/mfr",
+    "algo/_shared/pilot/mfr"
+  ],
+  "legacy_artifacts": {
+    "uri": "REQUIRED_OR_EXPLICITLY_UNAVAILABLE",
+    "sha256_manifest": "REQUIRED_OR_EXPLICITLY_UNAVAILABLE"
+  },
+  "owner": {
+    "name": "REQUIRED",
+    "contact": "REQUIRED"
+  },
+  "platform_binding": {
+    "emitter_count": "REQUIRED",
+    "per_emitter_peak_power_w": "REQUIRED",
+    "per_emitter_episode_energy_j": "REQUIRED",
+    "energy_pooling_supported": "REQUIRED_BOOLEAN",
+    "simultaneous_beam_limit_basis": "REQUIRED",
+    "service_selectivity_mechanism": "REQUIRED",
+    "radar_receiver_binding": "REQUIRED",
+    "cross_talk_model": "REQUIRED"
+  },
+  "task_semantics_owner": "REQUIRED",
+  "handoff_utc": "REQUIRED_ISO8601",
+  "approved_by": [
+    "SOURCE_OWNER",
+    "RF_OR_SIMULATION_PHYSICS_OWNER",
+    "EXPERIMENT_OWNER"
+  ]
+}

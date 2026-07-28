@@ -1,0 +1,11 @@
+{
+  "call_number": 1,
+  "purpose": "proposal-critical-review",
+  "timestamp": "2026-07-28T02:58:33Z",
+  "tool": "mcp__codex__codex",
+  "model": "gpt-5.6-sol",
+  "effort": "ultra",
+  "fallback_reason": "",
+  "status": "ok",
+  "prompt": "Act as a fresh hostile-but-constructive research and implementation reviewer. Work read-only; do not edit files.\n\nRead fully:\n\n- the original pasted G2'a report;\n- `artifacts/fluxphased_m7_g2a_audit/EXPERIMENT_AUDIT.md`;\n- all current brief, literature, jury, `FINAL_PROPOSAL`, `EXPERIMENT_PLAN`, and PRO6000 implementation specification files.\n\nReview physics correctness, causal observation, action masking/PPO correctness, resource assumptions, baseline/oracle fairness, statistical gate, seed hierarchy, scope, and whether PRO6000 can execute despite missing source. Find contradictions, overclaims, unsafe thresholds, and missing tests.\n\nReturn in Chinese: verdict; fatal blockers; major issues; minor issues; exact required revisions keyed to section/file; what to preserve; confidence. Do not edit and do not infer experimental success.\n"
+}

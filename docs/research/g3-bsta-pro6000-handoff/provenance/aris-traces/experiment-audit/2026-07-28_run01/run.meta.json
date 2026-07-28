@@ -1,0 +1,12 @@
+{
+  "skill": "experiment-audit",
+  "run_id": "2026-07-28_run01",
+  "started_at": "2026-07-28T02:13:09Z",
+  "executor": "codex",
+  "executor_model": "gpt-5",
+  "executor_family": "openai",
+  "review_independence": "same-family",
+  "acceptance_status": "provisional",
+  "project_dir": "/home/exuber/CODE/CORE/pythonProject1/AUTORESEARCH",
+  "target_project_dir": "/home/exuber/CODE/CORE/pythonProject1/FLUXPH/FluxPhased-"
+}

@@ -1,0 +1,191 @@
+我正在开发：https://github.com/ExuberantWitness/FluxPhased-
+
+
+目前遇到如下问题：
+# G2'a Gate 结构性负结果诊断报告
+
+**日期**:2026-07-28
+**里程碑**:MFR-IQ Phase B / M7(learning jammer)
+**结论**:G2'a gate(learning jammer 超 best scripted ≥5pp)在当前 env 物理设定下**结构性不可达**。本文档列出完整实验证据与物理诊断,供讨论。
+
+---
+
+## 1. Gate 定义与历史背景
+
+**Plan §7 G2'a gate**(原话):
+> Learning jammer 必须在 rule radar 对手下达到 drop_ratio,**比最强 scripted jammer 高 ≥5pp**,且 8 seeds 配对 t 检验 p<0.05。
+
+Phase A(M0-M3)已 PASS:rule radar drop=0.090,MAPPO radar drop 0.35-0.40(但被裁定为 RL 平台不如规则,采纳负结果)。
+Phase B(M5-M6)扩展 env:3 个脚本干扰策略(noise/reactive/blink)+ 2 个载波类型 + 2 个反干扰杠杆。G1' gate PASS:rule radar 在 blink 干扰下 drop≈0.21-0.26(打破 near-Nash)。
+
+M7 任务 = 训练一个 learning jammer PPO,验证它能在 rule radar 对手下打败最强脚本。
+
+---
+
+## 2. 物理设定(σ-progress coupling)
+
+**初始问题**:Phase B 第一版 trainer + env(无 σ-coupling)在 30W 和 100W 下,3 种 scripted 策略(noise/reactive/blink)的 drop_ratio 都≈0.203,PPO 训 100 iter 也 plateau 在 0.205。drop 完全由队列过载 + EW 自动 cue 决定,跟干扰物理无关 → PPO 无学习信号。
+
+**修复(M7a)**:在 `mfr_env.py:step()` 加入 σ-progress 耦合:
+
+```python
+sigma_scale = torch.sqrt(1.0 + tgt_jnr.clamp(min=0.0, max=1e4))
+prog_factor = (1.0 / sigma_scale).clamp(min=0.1, max=1.0)
+progress_add = progress_add * prog_factor
+```
+
+物理动机:低 SNR 时雷达需要更长驻留时间才能达到检测所需的积分能量。所以干扰目标的进度速率按 1/√(1+JNR) 衰减,地板 clamp 在 0.1(10× 慢)。
+
+**修复后 scripted sweep**(`/tmp/scripted_sweep.py`,seed=0,32 envs × 600 step):
+
+| 干扰策略 | drop_ratio |
+|---|---|
+| noise | **0.518** |
+| reactive | 0.483 |
+| blink | 0.449 |
+
+→ 7pp 内拉开梯度,G2'a gate 看起来变得可行了。
+
+---
+
+## 3. PPO 训练细节
+
+`algo/_shared/pilot/mfr/jammer_trainer.py`:
+- 单中央 PPO 智能体,控制所有 J 个 off-board jammer
+- 输出 J 维独立 Bernoulli logits(每 jammer 每步 on/off 二选一)
+- Obs 维度 = 38(env-side 状态,无 god-view)
+- 奖励 = -radar_team_reward(zero-sum)
+- PPO 超参:lr 3e-4, γ 0.99, GAE λ 0.95, clip 0.2,entropy 0.01→0.005→0.001
+- 4 epoch × 4 minibatch 每 iter
+
+**v1 训练**(80 iter, 100W):训练 drop 稳定在 0.518,entropy 1.386→1.21→反弹到 1.36。
+**v2 训练**(150 iter, 100W, sharpen entropy anneal 0.005→0.001):训练 drop 稳定在 0.515,entropy 1.386→1.10。
+
+两次训练的 **greedy eval**(sigmoid>0.5)都是 **0.484**,几乎一致。
+
+---
+
+## 4. G2'a Gate 结果(8 seeds 配对 t-test)
+
+`/tmp/g2a_gate.py`,32 envs × 4 episodes × 8 seeds:
+
+| 干扰类型 | drop_ratio (mean ± std) |
+|---|---|
+| noise | **0.520 ± 0.017** ← 最强 |
+| reactive | 0.489 ± 0.018 |
+| blink | 0.450 ± 0.022 |
+| **learning (v1)** | 0.491 ± 0.018 |
+| **learning (v2)** | 0.475 ± 0.018 |
+
+| 对照 | Δdrop | 配对 t | p | gate |
+|---|---|---|---|---|
+| learning v1 − blink | +4.1 pp | 16.4 | <0.0001 | **FAIL** (差 0.9pp) |
+| learning v2 − blink | +2.6 pp | 13.3 | <0.0001 | **FAIL** (差 2.4pp,v2 更差) |
+
+**learning jammer 实际上连 reactive 都打不过**(0.491 < reactive 0.489 in v1;0.475 < reactive 0.489 in v2)。
+
+---
+
+## 5. 根因诊断
+
+### 5.1 Actor logit 分布检查(`/tmp/inspect_logits.py`)
+
+在 fresh env 上跑 50 step,记录每步的 actor logits:
+
+| 统计量 | v1 | v2 |
+|---|---|---|
+| logit 均值 | -0.071 | -0.025 |
+| logit 标准差 | 0.212 | 0.217 |
+| logit 范围 | [-0.385, +0.208] | [-0.348, +0.298] |
+| sigmoid 均值 | 0.483 | 0.494 |
+| **\|logit\| < 0.5 比例** | **100%** | **100%** |
+| logit > +2(committed on) | 0% | 0% |
+| logit < -2(committed off) | 0% | 0% |
+
+→ **PPO 完全没有 commit**,输出退化为 sigmoid≈0.5 的"无信息"策略。这是 PPO 在奖励信号弱 + entropy regularization 下的典型崩溃模式。
+
+### 5.2 Greedy vs Sampled 评估对比(`/tmp/eval_sampled.py`)
+
+| 评估方式 | v1 drop | v2 drop |
+|---|---|---|
+| Greedy (sigmoid > 0.5) | 0.486 | 0.471 |
+| **Sampled (Bernoulli)** | **0.520** | **0.519** |
+| noise script | 0.520 | 0.520 |
+
+→ **PPO 学到的策略,sampled 行为下精确匹配 noise 脚本**。Greedy 阈值化只是把 logits 在 ±0.3 范围内的小差异变成 0/1 翻转,破坏了行为匹配。
+
+### 5.3 为什么"matching noise"是 PPO 的天花板
+
+`env/gpu/mfr/jammer.py:102-103`:
+```python
+if self.policy == JAM_POLICY_NOISE:
+    act_off = self.off_alive.clone()   # 一直 ON
+```
+
+noise 脚本就是"always-on"。在 σ-coupling 物理下:
+- always-on → JNR 持续高位 → progress factor 持续 clamp 在 0.1 地板
+- 任何低于 always-on 的策略 → progress factor 平均更高 → drop 更低
+- 没有任何策略可以**结构上超过 always-on**
+
+PPO 通过 Bernoulli(0.5) 独立采样 → 大数平均后等同 always-on 50% 强度。但因为 σ-coupling 的非线性 clamp,**50% 占空比 Bernoulli 的 effective drop 跟 100% always-on 几乎相同**(0.520 vs 0.520)——这是因为 EW cue admission 饱和之后,drop 主要由"是否有干扰"决定,而不是"干扰强度多大"。
+
+### 5.4 关键证据链
+
+1. PPO 在 sampled 下达到 0.520 = noise,说明 PPO **能找到 always-on-equivalent 策略**
+2. PPO 的 logits 全部 |logit| < 0.5,说明 PPO **没有 commit 到 always-on**
+3. 之所以"行为等同但 logits 不 commit":大数平均下 Bernoulli(0.5) 与 always-on 在 drop 维度不可区分 → 没有梯度信号推 logits 离开 0
+4. Greedy 评估在 logits 跨 0.5 阈值时丢掉了 marginal 决策 → drop 跌到 0.47-0.49
+
+---
+
+## 6. 结论:G2'a gate 结构性不可达
+
+**核心命题**:在 σ-coupling 物理下,"always-on"是 near-optimaljammer 策略,而 noise 脚本已经实现了它。任何 learning jammer(无论算法、训练量)最多能 match noise,不可能 structurally 超过它 5pp。
+
+**gating 哲学问题**:plan §7 G2'a 的"超 best scripted ≥5pp"假设了 scripted 是次优的。当 scripted 本身就是 near-optimal 时(比如本场景的 noise = always-on),这个 gate 在物理上没有可学习空间。
+
+**这是 PPO 的失败吗?** 不是。PPO 成功学到了 noise-equivalent 策略(证据:sampled eval 0.520 = noise 0.520)。只是"达到最优"不等于"超过最优 5pp"。
+
+---
+
+## 7. 物理上"超 noise"需要什么
+
+要让 learning 有真实发力空间,必须**让"always-on"不再 near-optimal**。三种物理改造(按改动量排序):
+
+### 7.1 加 active-cost(最小改动)
+- `jam_rew -= α × active_frac_per_step`
+- 物理动机:jammer 有功率/电池约束
+- 效果:always-on 有代价,blink 类有占空比策略空间
+- α 调节:noise drop 会被压低;learning 可以学一个 sweet spot
+
+### 7.2 频率敏捷(中等改动)
+- 雷达每步跳频,jammer 必须学习跟踪雷达当前频率才有效
+- 物理动机:现代雷达 frequency-hopping spread spectrum
+- 效果:always-on 错频时无效 → 必须学雷达频谱行为
+
+### 7.3 多目标优先级 + 稀疏 JNR(大改动)
+- 干扰只能聚焦少量目标,必须学**优先级策略**(干扰高 P 任务 vs 低 P 任务)
+- 物理动机:jammer beam 稀疏
+- 效果:有明确决策空间,learning > script
+
+---
+
+## 8. 建议讨论点
+
+1. **gate 哲学**:当 best scripted = near-optimal 时,如何设定合理的 learning gate?是否应该改 gate 为"learning ≥ best scripted (parity)"?
+2. **物理改造优先级**:7.1-7.3 哪个最值得做?active-cost 最便宜,但可能让 blink 变最优反而压低 learning 上限
+3. **是否跳过 G2'a 走 M8**:M8 联赛是 radar 视角(rule/MAPPO vs 各种 jammer),不依赖 G2'a 通过。当前 learning jammer(0.49-0.52 drop)已可用作 M8 的一个对手
+4. **negative result 的发表价值**:这个诊断本身(σ-coupling 让 always-on near-optimal,RL parity 但不能超越)是否能成为 Phase B 的核心 finding?
+
+---
+
+## 附录:实验产物路径
+
+- σ-coupling 实现:`env/gpu/mfr/mfr_env.py:step()`(progress_add 乘以 prog_factor)
+- 训练入口:`algo/_shared/pilot/mfr/run_stage_b_jammer.py`
+- Trainer:`algo/_shared/pilot/mfr/jammer_trainer.py`
+- Gate 脚本:`/tmp/g2a_gate.py`,`/tmp/inspect_logits.py`,`/tmp/eval_sampled.py`
+- v1 checkpoint:`experiments/mfr_phaseB/jammer_sigma_100W_s0/final.pt`
+- v2 checkpoint:`experiments/mfr_phaseB/jammer_sigma_100W_s0_v2/final.pt`
+- 训练曲线:`experiments/mfr_phaseB/jammer_sigma_100W_s0{,_v2}/train_curve.csv`
+- G2'a gate 结果:`experiments/mfr_phaseB/g2a_gate/g2a_summary.json`

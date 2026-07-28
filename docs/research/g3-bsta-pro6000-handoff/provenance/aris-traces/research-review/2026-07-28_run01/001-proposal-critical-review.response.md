@@ -1,0 +1,50 @@
+# Independent Research / Implementation Review
+
+**Run**: `fluxphased-g2a-redesign-20260728`  
+**Reviewer**: `/root/proposal_reviewer`  
+**Model / effort**: `gpt-5.6-sol / ultra`  
+**Independence**: `same-family`  
+**Acceptance status**: `provisional`  
+**Verdict**: `BLOCK / MAJOR REVISION`  
+**Confidence**: `0.93` implementation/statistics; `0.82` physics
+
+## Fatal blockers
+
+1. **No verifiable source handoff.** Visible refs contain no MFR/M7 source. PRO6000 may execute P0 only until `SOURCE_HANDOFF.json` supplies exact repository/commit/URI/hash/owner.
+2. **Target-local interference is physically undefined.** An internal target/task ID is not an RF-selective service. The design must bind emitter, receiver and selectivity through beam direction, radar receiver, range/Doppler/angle gate, frequency/channel, time-aligned dwell or an explicit deception mechanism. Otherwise stop with `BLOCK_TARGET_LOCALITY`.
+3. **The proposed energy inequality was wrong.** To exclude fixed-power always-on, compare episode energy against `fixed_beam_power_w * active_duration_s`, not team peak power.
+4. **Detection/tracking transition is under-specified.** `Pd` calibration needs baseline signal/clutter/receiver/filter/integration/target-model axes. Tracking requires prediction, process noise, misses, association and a frozen completion mapping; a standalone Fisher increment is insufficient.
+5. **Headroom development and confirmation were mixed.** Planner development must be separated from an untouched headroom-confirmation split.
+6. **Invalid-action fallback invalidates PPO samples.** Scientific training requires `requested_action == executed_action`; mismatch must fail the rollout/run, never silently project to idle.
+
+## Major revisions required
+
+- every mask bit must be a deterministic function of actor-visible observation/history;
+- slot association/lifecycle must not leak truth;
+- if delayed history is needed, actor and causal planner must share a recurrent/belief contract;
+- freeze one transition semantics and one training reward before measuring headroom;
+- compare against every frozen competent script, not a selected winner or per-scenario post-hoc maximum;
+- use stateless event-key exogenous randomness for CRN;
+- distinguish a two-seed smoke pilot from full-budget variance pilots and formal power analysis;
+- state whether inference is conditional on the locked scenario suite or generalizes to a scenario distribution;
+- label engineering thresholds as project error-budget choices;
+- define zero denominators, unfinished tasks, macro/micro aggregation and `drop_per_kJ` at zero energy;
+- add tests for mask causality, requested/executed equality, slot identity, tracker recursion, RNG event-key invariance and gate-null coverage;
+- assign the redesigned benchmark a new gate ID; original G2'a remains FAIL.
+
+## Required stop logic
+
+The executor must stop, preserve evidence and avoid PPO/full training when any of these holds:
+
+- source handoff cannot be verified;
+- resource/beam/emitter binding lacks platform support;
+- no physical service selectivity exists;
+- task transition cannot be calibrated;
+- exact/admissible current-environment bound rules out 5pp;
+- the reduced problem has no material causal action-value gap;
+- all-script headroom or robustness gate fails;
+- learnability controls do not distinguish trained policy from frozen/random/permuted controls.
+
+## Reviewer conclusion
+
+The research direction is worth retaining, but the current evidence supports only a staged implementation proposal. It supports neither a successful v3 result nor any post-hoc change to original G2'a.

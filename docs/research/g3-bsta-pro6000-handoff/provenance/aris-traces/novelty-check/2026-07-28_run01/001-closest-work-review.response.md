@@ -1,0 +1,62 @@
+# Independent Novelty Review
+
+**Run**: `fluxphased-g2a-redesign-20260728`  
+**Reviewer**: `/root/novelty_reviewer`  
+**Model / effort**: `gpt-5.6-sol / xhigh`  
+**Independence**: `same-family`  
+**Acceptance status**: `provisional`  
+**Verdict**: `LOW NOVELTY`  
+**Confidence**: `0.92`
+
+## Bottom line
+
+“受限 target/beam/power jammer allocation + PPO”本身约为 `2/10` 新颖性；“MFR-IQ benchmark 病理诊断、物理校准修复与 oracle-first admissibility protocol”若有完整实验和公开 artifact，潜在约为 `4/10`；工程价值约为 `8/10`。
+
+当前只有提案和实施规格，没有 IQ 校准、headroom、learnability 或 superiority 结果。不得把 v3 描述成已成功，也不得把原 G2'a 改写为 PASS。
+
+## Closest work
+
+| Work | Direct overlap | Remaining distinction |
+|---|---|---|
+| Yang et al., 2025, [IMAHPPO](https://doi.org/10.1109/TAES.2025.3564286) | MFR network；多 jammer/beam；联合 jamming type/power；PPO-family MARL | 未见 raw-IQ calibration、共享 episode energy 和 pre-training headroom gate |
+| Wang et al., 2025, [multiple-jammer resource allocation](https://doi.org/10.1049/rsn2.70031) | beam/target selection、power allocation、检测概率目标、MAPPO 等 comparator | 连续功率/多波束；未见因果 observation 审计 |
+| Hao et al., 2025, [HPN-PPO2](https://doi.org/10.3390/app15168898) | PPO hybrid beam selection/power，按 radar state 自适应 | 功率主要经 reward，不是同一 hard feasible set |
+| Cai et al., 2025, [MA-CJD](https://doi.org/10.1007/s43684-025-00090-4) | idle/target/type/power action，SINR-to-Pd，radar task state transition | 功能级模拟，无 MFR-IQ held-out detector calibration |
+| Xin et al., 2024, [cooperative jamming resource allocation](https://doi.org/10.3390/rs16111955) | 空间、频率、能量约束；beam/power matrix；Pd objective | 更接近逐轮组合优化 |
+| Song et al., 2026, [VAM-PPO target allocation](https://doi.org/10.3390/sym18020295) | 多 jammer/target、平台约束、动态 allocation、PPO | 通信目标，无 radar IQ/Pd/Fisher task chain |
+| Yang et al., 2026, [joint beam/power allocation](https://doi.org/10.1049/rsn2.70174) | visibility、beam count、platform power、joint beam/power、detection/localization | 非 RL；无 episode-energy/admissibility gate |
+| Zhang et al., 2024, [power allocation for stable tracking](https://doi.org/10.3390/rs16152699) | SINR/Pd、fixed Pfa、BCRLB、multi-frame tracking | radar-side allocation；不定义 FluxPhased task progress |
+| Shaghaghi et al., [MFR scheduling](https://doi.org/10.1049/iet-rsn.2018.5276) | reduced exact B&B、MCTS/policy approximation | 未将 oracle 结果用于训练前 5pp headroom STOP gate |
+| 2026 [SAC quantized jammer power allocation](https://doi.org/10.1016/j.sigpro.2026.110765) | finite-energy dynamic jammer power allocation | 未覆盖本项目的 benchmark pathology protocol |
+
+## Defensible contribution boundary
+
+只有以下内容经实验成立后才可能构成贡献：
+
+1. 同一 raw-IQ/receiver/detector path 同时产生 detector-specific `Pd`、track uncertainty 和最终 task/drop outcome；
+2. actor observation/mask 的严格因果 contract 与干预测试；
+3. 训练前 exact reduced oracle、same-observation causal witness、强脚本和 calibration uncertainty 联合判定 benchmark admissibility；
+4. 旧环境 saturation、untrained-policy parity、admissibility gate 预测训练价值等可复现实证发现；
+5. 可审计的 calibration data、seed hierarchy、frozen baselines 和 raw episode rows。
+
+## Prohibited claims
+
+- 不得声称首次用 RL/PPO 做 target、beam、timing 或 power allocation；
+- 不得把 hard budget、masked categorical、oracle comparison 当算法创新；
+- 没有 held-out IQ 证据时不得称 physics-accurate；
+- approximate planner 不得称 upper bound；
+- headroom witness 不证明 PPO 可学习；
+- observation shuffle 单独不证明 causal feature use；
+- Marcum/Swerling/CRB 文献不支持通用 `progress` 公式；
+- `8 seeds`、`7.5pp`、`32 scenarios` 和 `Pd error <= .03` 是项目阈值，不是文献常数；
+- artificial floor 只“可能”造成 duty parity，不能写成必然相等。
+
+## Required positioning
+
+若继续，论文/报告定位应为：
+
+> benchmark pathology + calibrated repair + oracle-first admissibility methodology
+
+而不是：
+
+> a novel PPO jammer allocation algorithm

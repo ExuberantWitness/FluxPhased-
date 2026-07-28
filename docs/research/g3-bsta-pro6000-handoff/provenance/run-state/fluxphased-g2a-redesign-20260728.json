@@ -1,0 +1,77 @@
+{
+  "run_id": "fluxphased-g2a-redesign-20260728",
+  "executor_model": "codex-gpt-5.6-sol",
+  "executor_family": "openai",
+  "policy": {
+    "provisional_advances": true
+  },
+  "created": "2026-07-28T02:23:10Z",
+  "updated": "2026-07-28T03:05:28Z",
+  "phases": [
+    {
+      "phase": "idea-discovery",
+      "status": "provisional",
+      "artifact": "artifacts/fluxphased_m7_research_pipeline/idea-stage/JURY_DECISION_20260728_023103.md",
+      "verdict_id": "jury-budgeted-target-v3",
+      "reviewer": "gpt-5.6-sol",
+      "reviewer_family": "openai",
+      "review_independence": "same-family",
+      "acceptance_status": "provisional",
+      "executor_model": "gpt-5.6-sol",
+      "executor_family": "openai",
+      "updated": "2026-07-28T02:47:31Z"
+    },
+    {
+      "phase": "experiment-bridge",
+      "status": "provisional",
+      "artifact": "artifacts/fluxphased_m7_research_pipeline/PRO6000_AGENT_IMPLEMENTATION_SPEC_20260728_023103.md",
+      "verdict_id": "g3-bsta-implementation-spec",
+      "reviewer": "gpt-5.6-sol",
+      "reviewer_family": "openai",
+      "review_independence": "same-family",
+      "acceptance_status": "provisional",
+      "executor_model": "gpt-5.6-sol",
+      "executor_family": "openai",
+      "updated": "2026-07-28T03:05:28Z"
+    },
+    {
+      "phase": "auto-review-loop",
+      "status": "provisional",
+      "artifact": "artifacts/fluxphased_m7_research_pipeline/review-traces/REVIEW_RESPONSE_20260728_105723.md",
+      "verdict_id": "g3-bsta-independent-reviews",
+      "reviewer": "gpt-5.6-sol",
+      "reviewer_family": "openai",
+      "review_independence": "same-family",
+      "acceptance_status": "provisional",
+      "executor_model": "gpt-5.6-sol",
+      "executor_family": "openai",
+      "updated": "2026-07-28T03:05:28Z"
+    },
+    {
+      "phase": "summary",
+      "status": "done",
+      "artifact": "artifacts/fluxphased_m7_research_pipeline/PIPELINE_SUMMARY_20260728_105723.md",
+      "verdict_id": null,
+      "reviewer": null,
+      "reviewer_family": null,
+      "review_independence": null,
+      "acceptance_status": null,
+      "executor_model": "codex-gpt-5.6-sol",
+      "executor_family": "openai",
+      "updated": "2026-07-28T03:05:28Z"
+    },
+    {
+      "phase": "paper-writing",
+      "status": "skipped",
+      "artifact": "artifacts/fluxphased_m7_research_pipeline/PIPELINE_SUMMARY_20260728_105723.md",
+      "verdict_id": null,
+      "reviewer": null,
+      "reviewer_family": null,
+      "review_independence": null,
+      "acceptance_status": null,
+      "executor_model": "codex-gpt-5.6-sol",
+      "executor_family": "openai",
+      "updated": "2026-07-28T03:05:28Z"
+    }
+  ]
+}

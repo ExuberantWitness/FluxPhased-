@@ -1,0 +1,101 @@
+{
+  "audit_skill": "experiment-audit",
+  "verdict": "FAIL",
+  "reason_codes": [
+    "ARTIFACTS_ABSENT",
+    "BASELINE_SUBSTITUTION",
+    "WRONG_STATISTICAL_NULL",
+    "SINGLE_TRAIN_SEED",
+    "SIMULATION_ONLY",
+    "STRUCTURAL_OVERCLAIM"
+  ],
+  "summary": "The report indicates that two seed-0 checkpoints fail the original gate, but all cited MFR artifacts are absent, the tests use blink instead of the best scripted noise baseline, the null tests zero rather than the 5pp margin, and the universal structural claim is unproved.",
+  "audited_input_hashes": {
+    "pasted-text.txt": "sha256:0c381b0ca6c9d29dda1e258b11b6eadd80a5139a17a8a62a1a7559b89c7fdad4",
+    "local_repo_head": "git:fa485ad4cf6314df8a747498f4179d702a7c4923",
+    "public_branch_snapshot": "git:80769974cb41fd86e2f80bc2a8992955fb228058"
+  },
+  "trace_path": ".aris/traces/experiment-audit/2026-07-28_run01/",
+  "agent_id": "/root/integrity_auditor",
+  "verdict_id": "/root/integrity_auditor",
+  "executor_model": "gpt-5",
+  "executor_family": "openai",
+  "reviewer_model": "gpt-5.6-sol",
+  "reviewer_family": "openai",
+  "reviewer_reasoning": "ultra",
+  "review_independence": "same-family",
+  "acceptance_status": "provisional",
+  "generated_at": "2026-07-28T02:13:23Z",
+  "date": "2026-07-28",
+  "auditor": "gpt-5.6-sol-ultra",
+  "overall_verdict": "fail",
+  "integrity_status": "fail",
+  "checks": {
+    "gt_provenance": {
+      "status": "fail",
+      "details": "drop_ratio definition, raw counts, reset semantics, aggregation order, and seed arrays are unavailable"
+    },
+    "score_normalization": {
+      "status": "fail",
+      "details": "no explicit self-normalization is visible in prose, but missing executable metric code makes the check unauditable"
+    },
+    "result_existence": {
+      "status": "fail",
+      "details": "all 13 cited implementation, evaluation, checkpoint, curve, and summary targets are absent"
+    },
+    "dead_code": {
+      "status": "fail",
+      "details": "no reachable MFR implementation or evaluation call path exists in the inspected trees"
+    },
+    "scope": {
+      "status": "fail",
+      "details": "one training seed per variant; eight apparent evaluation RNG seeds do not estimate training variability"
+    },
+    "eval_type": "simulation_only"
+  },
+  "statistics": {
+    "actual_best_scripted": "noise",
+    "best_scripted_mean": 0.52,
+    "v1_minus_best_pp": -2.9,
+    "v2_minus_best_pp": -4.5,
+    "v1_shortfall_to_gate_pp": 7.9,
+    "v2_shortfall_to_gate_pp": 9.5,
+    "exact_paired_best_baseline_ci_available": false,
+    "required_null": "H0: delta <= 0.05",
+    "reported_tests_appear_to_use": "H0: delta = 0 against blink"
+  },
+  "claims": [
+    {
+      "id": "C1",
+      "claim": "The two checkpoints failed G2'a",
+      "impact": "directionally_consistent_but_unverified"
+    },
+    {
+      "id": "C2",
+      "claim": "PPO learned a noise-equivalent policy",
+      "impact": "unsupported"
+    },
+    {
+      "id": "C3",
+      "claim": "No learning jammer can beat noise by 5pp",
+      "impact": "unsupported_without_upper_bound_or_dominance_proof"
+    },
+    {
+      "id": "C4",
+      "claim": "The reported p-values validate the gate",
+      "impact": "false_wrong_comparator_and_null"
+    },
+    {
+      "id": "C5",
+      "claim": "The negative result is publication-ready",
+      "impact": "unsupported"
+    }
+  ],
+  "recommended_decision": {
+    "original_gate": "retain_as_fail_do_not_retrofit_to_parity",
+    "environment_change": "hard_shared_resource_constraint_plus_sparse_target_allocation",
+    "active_cost_only": "reject_for_raw_drop_gate",
+    "m8": "may_proceed_as_independent_radar_robustness_track_with_current_ppo_relabelled_until_learnability_is_shown",
+    "publication": "diagnostic_or_ablation_only_until_reproduced_and_formalized"
+  }
+}

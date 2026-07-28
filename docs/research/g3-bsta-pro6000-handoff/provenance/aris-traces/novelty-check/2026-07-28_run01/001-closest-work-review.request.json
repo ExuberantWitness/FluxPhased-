@@ -1,0 +1,11 @@
+{
+  "call_number": 1,
+  "purpose": "closest-work-review",
+  "timestamp": "2026-07-28T02:58:33Z",
+  "tool": "mcp__codex__codex",
+  "model": "gpt-5.6-sol",
+  "effort": "xhigh",
+  "fallback_reason": "",
+  "status": "ok",
+  "prompt": "Act as a fresh independent novelty reviewer. Work read-only; do not edit files.\n\nRead fully:\n\n- `RESEARCH_BRIEF.md`\n- `LITERATURE_REPORT_20260728_023103.md`\n- `idea-stage/JURY_DECISION_20260728_023103.md`\n- `refine-logs/FINAL_PROPOSAL_20260728_023103.md`\n- `refine-logs/EXPERIMENT_PLAN_20260728_023103.md`\n- `PRO6000_AGENT_IMPLEMENTATION_SPEC_20260728_023103.md`\n\nThen do targeted multi-source searches of primary papers/official records for the closest prior work on:\n\n1. constrained target/beam/power jammer allocation;\n2. SINR/Pd/Fisher-information task progress;\n3. oracle-first feasibility gates and RL statistical controls.\n\nReturn in Chinese: novelty verdict with confidence; closest-work table with URLs and exact overlap; what is genuinely differentiable vs merely engineering integration; claims that must not be made; minimum experiments needed for any publishable contribution; any source/claim mismatch in our literature report. Distinguish novelty from engineering usefulness. Do not claim success.\n"
+}

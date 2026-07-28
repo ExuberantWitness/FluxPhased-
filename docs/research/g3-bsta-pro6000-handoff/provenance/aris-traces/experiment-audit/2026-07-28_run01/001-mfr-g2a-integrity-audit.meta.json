@@ -1,0 +1,13 @@
+{
+  "call_number": 1,
+  "purpose": "mfr-g2a-integrity-audit",
+  "timestamp": "2026-07-28T02:13:09Z",
+  "thread_id": "/root/integrity_auditor",
+  "model": "gpt-5.6-sol",
+  "reviewer_family": "openai",
+  "review_independence": "same-family",
+  "acceptance_status": "provisional",
+  "effort": "ultra",
+  "fallback_reason": "",
+  "status": "ok"
+}
