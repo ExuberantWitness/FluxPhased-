@@ -7,8 +7,8 @@ status: PASS (Gate 4 cleared: BC warm-start PPO at witness level on
               KL excursion caught by early stop; no entropy/clip collapse)
 branch: g3-bsta/mfr-lite-fastwork
 base_commit: 954d9ae (F4 tip)
-git_commit: <to be filled at commit>
-tree_sha: <to be filled at commit>
+git_commit: 723c3addc4dd10343907d924a46815207d910e6e
+tree_sha: 5ca3a5dad23f15f5d17854fe7caefbd11ced97ba
 changed_files:
   - experiments/g3_bsta_lite/baseline_freeze/run_f5.py             (new)
   - experiments/g3_bsta_lite/baseline_freeze/f5_ppo_bc.pt          (new, .gitignored)
