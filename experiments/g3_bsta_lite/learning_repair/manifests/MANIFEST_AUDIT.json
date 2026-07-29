@@ -1,0 +1,89 @@
+{
+  "document": "MANIFEST_AUDIT.json",
+  "generated_by_commit": "526ab938cfa991952ce5eb03f5d304a5dda789cf",
+  "legacy_range_check": {
+    "checkpoint_validation": {
+      "leaked_count": 0,
+      "leaked_seeds": [],
+      "legacy_range": [
+        20260801,
+        20260832
+      ],
+      "verdict": "CLEAN"
+    },
+    "dagger_train": {
+      "leaked_count": 0,
+      "leaked_seeds": [],
+      "legacy_range": [
+        20260801,
+        20260832
+      ],
+      "verdict": "CLEAN"
+    },
+    "locked_test": {
+      "leaked_count": 0,
+      "leaked_seeds": [],
+      "legacy_range": [
+        20260801,
+        20260832
+      ],
+      "verdict": "CLEAN"
+    },
+    "ppo_train": {
+      "leaked_count": 0,
+      "leaked_seeds": [],
+      "legacy_range": [
+        20260801,
+        20260832
+      ],
+      "verdict": "CLEAN"
+    }
+  },
+  "manifest_sizes": {
+    "checkpoint_validation": 64,
+    "dagger_train": 128,
+    "locked_test": 128,
+    "ppo_train": 64
+  },
+  "overall_verdict": "ALL_DISJOINT_AND_LEGACY_CLEAN",
+  "pairwise_intersections": {
+    "checkpoint_validation__locked_test": {
+      "intersection_seeds": [],
+      "intersection_size": 0,
+      "verdict": "DISJOINT"
+    },
+    "dagger_train__checkpoint_validation": {
+      "intersection_seeds": [],
+      "intersection_size": 0,
+      "verdict": "DISJOINT"
+    },
+    "dagger_train__locked_test": {
+      "intersection_seeds": [],
+      "intersection_size": 0,
+      "verdict": "DISJOINT"
+    },
+    "dagger_train__ppo_train": {
+      "intersection_seeds": [],
+      "intersection_size": 0,
+      "verdict": "DISJOINT"
+    },
+    "ppo_train__checkpoint_validation": {
+      "intersection_seeds": [],
+      "intersection_size": 0,
+      "verdict": "DISJOINT"
+    },
+    "ppo_train__locked_test": {
+      "intersection_seeds": [],
+      "intersection_size": 0,
+      "verdict": "DISJOINT"
+    }
+  },
+  "preregistration": "experiments/g3_bsta_lite/learning_repair/PREREGISTRATION.md",
+  "profile": {
+    "arrival_rate_per_service": 0.15,
+    "baseline_snr_db": 22.0,
+    "device": "cpu",
+    "horizon": 64,
+    "n_services": 2
+  }
+}

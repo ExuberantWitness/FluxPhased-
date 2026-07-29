@@ -1,0 +1,1295 @@
+{
+  "base_seed": 21003101,
+  "entries": [
+    {
+      "arrivals_sha256": "e96d1275124d241e43607c82e5011fd604348ae89de0e685174ca17acf82ade8",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003101
+    },
+    {
+      "arrivals_sha256": "d905bf91cebe482fb42ffacfafbab6fb2e54088a580792c251ff415074259203",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003102
+    },
+    {
+      "arrivals_sha256": "571932ea758567f816008d24417892a0f57b719985a8ed8b48c159d0a703529d",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003103
+    },
+    {
+      "arrivals_sha256": "53533ddaf72dc3e08861132203ce7a2f0c65558bf547ba2f25e4c03a86726f04",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003104
+    },
+    {
+      "arrivals_sha256": "7601c4cbcbb02fa9649dd725045e3f2326b723ba5f3797cc05c93ab5fbb1d144",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003105
+    },
+    {
+      "arrivals_sha256": "29009367dd01c4e8a85a3b771957dd8934f4aa52b51c5cba7efc0d9291b578f3",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003106
+    },
+    {
+      "arrivals_sha256": "0a84f28c1f746eef2223fa11194febb3198a5fcb91123fcb3aaa484ddab1d8ca",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003107
+    },
+    {
+      "arrivals_sha256": "12f063576bc847645d61ba113e0c80de4b71706ecf13285c832e106586a6d4d0",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003108
+    },
+    {
+      "arrivals_sha256": "7d6d3ae164dabcdad7e010cd21d38b2c92ad822b5f105ece28db7fd1c389eec3",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003109
+    },
+    {
+      "arrivals_sha256": "99b7d220ec5ec4f07522132e781cbff3a6a39a7d13b2976199535992e7780eb2",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003110
+    },
+    {
+      "arrivals_sha256": "046851ed67b3303f56050b5d554337a0144ff30d631a5a498e1c98fe4f350f0c",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003111
+    },
+    {
+      "arrivals_sha256": "9c31da091229363494e5fbc5a76b228c01c935cfc1b069072fd745313e3881a0",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003112
+    },
+    {
+      "arrivals_sha256": "e7801bf41a6157f94ac69b01c8e71d36e6441bc33463b60a904b19a6d556492c",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003113
+    },
+    {
+      "arrivals_sha256": "90d4927aceb6ddbc943f0e3ea90fd60c68e3c6978578550b821a53f5580820cd",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003114
+    },
+    {
+      "arrivals_sha256": "f6a25aca4e952e15214b85453486094c3c9ba5bcfd9d23c4d06bec9b0c5dc6a6",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003115
+    },
+    {
+      "arrivals_sha256": "6cb12b43b4ff626eb575a8ac7cecbd33644b633b6b981a1201c34d37874cc732",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003116
+    },
+    {
+      "arrivals_sha256": "d84bcbb8f762af3a716cc9ac17b71f971b853efbef744cc7ee726ea2097f2941",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003117
+    },
+    {
+      "arrivals_sha256": "db14df2b69e456e3968c90c96a4a746484bf46e5523968306f8cc3dde0e3a4e3",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003118
+    },
+    {
+      "arrivals_sha256": "7aa1284cb7b53eb0df83f8dcb3bb5d22587ac4b4afcf1503f1fe9c4021f8b5bb",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003119
+    },
+    {
+      "arrivals_sha256": "d979fc257acb6db38187c69ad3bdb9199fdc8cc98dea1a921320d19e11725b21",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003120
+    },
+    {
+      "arrivals_sha256": "d372d7a65ff1e9cf32d750479a17635b4fd1471e5d5a791ed735ba2ebbaf05c0",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003121
+    },
+    {
+      "arrivals_sha256": "d1de2bf483c5efeb705babbc9c8f5e3d06dcb56da5df0e698701184eea5bff9a",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003122
+    },
+    {
+      "arrivals_sha256": "a43b57b1d96a86bb042797a884ad7ceca77ce96dbe942e14da79d19722a248e7",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003123
+    },
+    {
+      "arrivals_sha256": "3921605e8c64ec9419a8ba883c2779ecad1b9c121ab2a0916d6b32548916a113",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003124
+    },
+    {
+      "arrivals_sha256": "3dd1b7c481b3fb3c16c8d380c8d701ab6e84176f228ce8fc80543b84fd466ecf",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003125
+    },
+    {
+      "arrivals_sha256": "914e759fd6a4f16034bc363d5f0e2c1f3ce70247ddcd2a530c51ff4b789bce19",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003126
+    },
+    {
+      "arrivals_sha256": "2437c781f540942b889af79fdd11d5ee0272337b2be9bf0ebb66a5242c7c5f2a",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003127
+    },
+    {
+      "arrivals_sha256": "98395dca9a09e8b352aee8e2237dd81dff7c132e4ad779afebc4b6761f078e10",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003128
+    },
+    {
+      "arrivals_sha256": "64f65cd337148bab674c830663bef7e67fbed50bdf1dad815df86983bc3ca85b",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003129
+    },
+    {
+      "arrivals_sha256": "1afe133c6f4ee0601c4f02abaafba7993a0595e0ee6c503f8f3765be1cae2b81",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003130
+    },
+    {
+      "arrivals_sha256": "5e38739b8e90a78871637ba79fa06d64e629872e7a0a5d0102eebb4227311df8",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003131
+    },
+    {
+      "arrivals_sha256": "531a861ac70b92426c7ee8e4aee93cda10692fad5b2da355a2169315c2d220e1",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003132
+    },
+    {
+      "arrivals_sha256": "8bf0f729ce8115eb40abdf92bf98131143b10f24ac26adae93f0705a92152cee",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003133
+    },
+    {
+      "arrivals_sha256": "857649f7821513dd03dac7bdae4e6d0c0cc26da83998744c9f4a2e4121833eb4",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003134
+    },
+    {
+      "arrivals_sha256": "1bfe9c4b9b6028975a5e6b33aadeb3aba7872e72487cbf1ddca9cfb3534ebe24",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003135
+    },
+    {
+      "arrivals_sha256": "6d84844f61d87efdffb2ac6fb345c12b07cf25177ab8956f4c760f8223a4e4bb",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003136
+    },
+    {
+      "arrivals_sha256": "f2468baa4496149f094a743fb6292e5af4e994f93fee4a47f82606356618df32",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003137
+    },
+    {
+      "arrivals_sha256": "0a0618633e0a3197cfe5ff596a0346e99b3bfa731ed43036d46dbdf5fa155df4",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003138
+    },
+    {
+      "arrivals_sha256": "8fd62c776fa0d236be0b98f3fde8834b5e82e0f64acac1c8e7161f0c5b4934a6",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003139
+    },
+    {
+      "arrivals_sha256": "5bb34e8d826584e81027a2caac6d157a575b787c04a2eb108ae9b41e03512c30",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003140
+    },
+    {
+      "arrivals_sha256": "02cc657d25d71ea0b3348c812adc394b277d57a9bf3e083513a3f6e002955be9",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003141
+    },
+    {
+      "arrivals_sha256": "854b06eb8b8e009a030e57d7c029543ea9f26ea57a5171dddadae7995d2758b2",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003142
+    },
+    {
+      "arrivals_sha256": "18e06112d8fde15b963ee3b09dd46177941ed59b556c7f95bd14415e88f5575e",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003143
+    },
+    {
+      "arrivals_sha256": "0e052b82122ae4b5c4d57489cc43fad2d90afde5c2a60fdf1a46868eb8c0490e",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003144
+    },
+    {
+      "arrivals_sha256": "1de374cefbbc5ecf9d5a7271cc6971c9bb590d9bc420a2f9e23db1fe18988aea",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003145
+    },
+    {
+      "arrivals_sha256": "fd9c74189d13ae123848ffc293c2a63adf648b81f04314293e6f09a80ca6cfb9",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003146
+    },
+    {
+      "arrivals_sha256": "8c98a588b4dfdd8ff725581b3d2b00092b5a5ff03ee23dbd8b041955ecf2e886",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003147
+    },
+    {
+      "arrivals_sha256": "e9d830c9ed8e922360123dd37d77b9d4818be540e03235c8e022fe45f43e99bf",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003148
+    },
+    {
+      "arrivals_sha256": "7caa5fc03410882481bf7a0f8972a8526971582137e1d5342b4a4bce55f34175",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003149
+    },
+    {
+      "arrivals_sha256": "c4ff61f1216e4a19f364621a8967074b0df2843b0d6a9fb7045a9242e75c152d",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003150
+    },
+    {
+      "arrivals_sha256": "eb716a1aad6292be5011d4fffb2e55a5a756ec5d007293cba59b78e7ff68fcba",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003151
+    },
+    {
+      "arrivals_sha256": "21ce77825bfadcbb3a78250ca159945399e2f7d325d54edd9b105e18a7e3acb9",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003152
+    },
+    {
+      "arrivals_sha256": "8199ef3a2456673abdbd4f3bc7a7a4a2da662f416533c2f63d3c3e96daaf9314",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003153
+    },
+    {
+      "arrivals_sha256": "537c095b78044e0039b193b7ef3939c453c556c5e683393674caf393530d1266",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003154
+    },
+    {
+      "arrivals_sha256": "e3525ce1e0c4a9581397afe424c8574afeb4c58b288328e25ff3a5eea76acfb1",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003155
+    },
+    {
+      "arrivals_sha256": "97d0ca5894ddc88e7d115321ee57b4f048f97acc8305b82a39eee159ec6bf5df",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003156
+    },
+    {
+      "arrivals_sha256": "9f6a7474de9db18a87a3adfc036b21cf3c10e5fb4a7ef867231fd5ed44727059",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003157
+    },
+    {
+      "arrivals_sha256": "c1db375a30fa6cc7783972834c81e4efecb75a45c43854158042ce96eda5ce99",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003158
+    },
+    {
+      "arrivals_sha256": "68e7c43f12b8337d5c36db073508b80b19edf505a84b8e7e8cf04bbbe1bd68a1",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003159
+    },
+    {
+      "arrivals_sha256": "4a56a1fba6658143a96e7c8b0e4b4499c7e5c76a042e56e1d24b44aa1d08c0a2",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003160
+    },
+    {
+      "arrivals_sha256": "e03ffc4fcd8a29870870d77c4907ba9df1aeb1cd031c0998a665f11673665097",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003161
+    },
+    {
+      "arrivals_sha256": "ac405ec40aef6936246508db8fc393f2e4fd617c1e9ef6f76db45f3a5c1b8325",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003162
+    },
+    {
+      "arrivals_sha256": "e47db83da0816de85fcbdab66293e8943f7eb50159da50d897f3dd76e5a7b142",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003163
+    },
+    {
+      "arrivals_sha256": "bd35e56e06f6872dbcabe4ac2802c77633c25bde40891f29c8c5bdaa4945892f",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003164
+    },
+    {
+      "arrivals_sha256": "0ae1500f591a8800b890187c0c6b5cb13e574cafca4f0642f96097c4b2f09eea",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003165
+    },
+    {
+      "arrivals_sha256": "03d88508e3a0a5463fd8f1fcebedc26117ef830c96bb7df3441ac45256aff7e3",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003166
+    },
+    {
+      "arrivals_sha256": "2967d9fc7b8b90925e3e0fdd2f2d600ede1e021084fecdd2346c54ceb85c3970",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003167
+    },
+    {
+      "arrivals_sha256": "3205706efa03e0ba17c6edcc176f8ef79aae5376453d27d2de42315757cd9f34",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003168
+    },
+    {
+      "arrivals_sha256": "7b9e6bd3e123f4201e68db75ce19b6548ce0ffbcca5cd72dbfe766356163a46d",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003169
+    },
+    {
+      "arrivals_sha256": "9a9d6e7b7974cf5495b75ffce06c28c6dea1f7bc1718d8536af2da71bc7abcd9",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003170
+    },
+    {
+      "arrivals_sha256": "90bb94c82105dd1efd44e0d33e76129b153e8fb2d75a20f9121a1f5af6a8693b",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003171
+    },
+    {
+      "arrivals_sha256": "fdc94cefb9d60a57e750cd727826816de41e737f83a052023200332667ddbb9e",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003172
+    },
+    {
+      "arrivals_sha256": "8caef442fd1210d0ed9a38d3377176e2655929344c489a826907211d2489e9f9",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003173
+    },
+    {
+      "arrivals_sha256": "c032b44af2f6bfc352cd7905787cb69e6023533f8bb04729a4d111dc09ba1f7f",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003174
+    },
+    {
+      "arrivals_sha256": "a962acc64bc6a8275a943b43e345bbc214d84fd50d2613ad0966fb16d828e1ea",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003175
+    },
+    {
+      "arrivals_sha256": "781356a85069ac31eee649f6114c0baf8c15736dd4d8747a2e00c30f798c5724",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003176
+    },
+    {
+      "arrivals_sha256": "a832fb85e7dddd62955d76427f79d61942ea24e58c3d4a3b98cb280425312934",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003177
+    },
+    {
+      "arrivals_sha256": "11b9beb1c1d7f88af116c7b1fb536326c7e6a4799e74b74547200e2eb6fb7ef7",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003178
+    },
+    {
+      "arrivals_sha256": "d332e896f85e1cf16e19172bed4ee22e6bf601219beb046c7c8a71d977719a76",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003179
+    },
+    {
+      "arrivals_sha256": "762f2599339a6e0011c26eff4272f494aba711f4a3b94bd9c3165996f1fe1e29",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003180
+    },
+    {
+      "arrivals_sha256": "ba42361a0df56ecb656fa2030937d83930116c482c7eef9a53de7ad226156cb1",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003181
+    },
+    {
+      "arrivals_sha256": "4c1e5523d58843edceaac67f795e6b026b5eb72f37ca9bb80a1ab9811ff70d22",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003182
+    },
+    {
+      "arrivals_sha256": "a18144d9e3d37199e0469102f1303610d146446531e7bb5c410201fcad4f73d9",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003183
+    },
+    {
+      "arrivals_sha256": "011830e2696a3b246b9ed36b65c1a95bf88cbf9ef32cfc576689f61adc3eb21e",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003184
+    },
+    {
+      "arrivals_sha256": "8bd2834029d7ac64d75915713a2ce324160656b78bc41c3f7b502247f4272bc5",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003185
+    },
+    {
+      "arrivals_sha256": "a32a18fef9a68e28967389e847e66c6deda32773976022e74d563e1ff4fcee52",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003186
+    },
+    {
+      "arrivals_sha256": "39bda17731a8624e4065fa192a301a3dde6d2aa7909c7fde5148c6142d4300d8",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003187
+    },
+    {
+      "arrivals_sha256": "46fe3df7c9ccf02d507bd5f5eae87230bd5782cdac5140f9c4a669dca428340e",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003188
+    },
+    {
+      "arrivals_sha256": "ae7e8a210620ad741bd606bc89a1a794130bdd2b2d52c34de1d038b03ddc5d5a",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003189
+    },
+    {
+      "arrivals_sha256": "99472a778a0b1b443f1608fd113b5df6eb2fd9ca8a3870a18d125f5393c6bab0",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003190
+    },
+    {
+      "arrivals_sha256": "31132936d6762078fcb26558a5e4fd810a5655170fb4c3e90bf30ce553c40dea",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003191
+    },
+    {
+      "arrivals_sha256": "f2b25b5260cfd25d1f112655d9c9e384c6c6ec9eb19c4da60aba08b32efa7b5e",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003192
+    },
+    {
+      "arrivals_sha256": "e46d98cc4a7c6963504588e736ad747103d41f9d768ec39687ed494385d3f96f",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003193
+    },
+    {
+      "arrivals_sha256": "4b97c4a9f76c252f3a332c7d6ea9517aa4cc51277e48b01cdebfdb24804f8d13",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003194
+    },
+    {
+      "arrivals_sha256": "2cd520876686d69b44441e86e0221f7f8c0acaa08b508cd914cb40b4abd8d26f",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003195
+    },
+    {
+      "arrivals_sha256": "e6df59a18d994281cab0b29aebc18408446880d5d4e413b821ec6f9eb337355d",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003196
+    },
+    {
+      "arrivals_sha256": "18d2b1290289e87742456659e264bcea1f040faa5d0e8d7192e112628c7c0eaf",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003197
+    },
+    {
+      "arrivals_sha256": "45f351c560aab11fce20f96a48f1324a235252269dfd97fab099cf5ef540bc2a",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003198
+    },
+    {
+      "arrivals_sha256": "b55cc5e680e23118f75558d4b6e200f1928d973d2cfb8b948e56c0f7b1570617",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003199
+    },
+    {
+      "arrivals_sha256": "4b3a44673f3353bd72e5de84ebf3228665057b1d49f60a20c508352d0f843b3d",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003200
+    },
+    {
+      "arrivals_sha256": "9cfc88cf511d679280cd4233c0526499ca4c8d3a876d3a966a1508c5deeb90d4",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003201
+    },
+    {
+      "arrivals_sha256": "35910eb459d3d3cd2850788c4c01fcf6f4eec476c4259b08ccc682e76fd2c197",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003202
+    },
+    {
+      "arrivals_sha256": "6e86585f3d5c0cbd61c468279617967c402f7a3206c2477515b98b22fd1f5beb",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003203
+    },
+    {
+      "arrivals_sha256": "5b498d6e73e46d8f83641e358c0113ee72eeae2eebf68038e18bf817fa3b66bc",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003204
+    },
+    {
+      "arrivals_sha256": "27723cddb1b4d4edb96284c81481da1960a1f2d972ff3388ea9fc89a47328637",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003205
+    },
+    {
+      "arrivals_sha256": "973b1ce6114fafd656c30583b20fee08dbbdaa7d3a5ebfb5bfc7a939f35d9ff3",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003206
+    },
+    {
+      "arrivals_sha256": "1976e9c4fd6ba5265959c79ce15e329407fd35c6e2bb4e5a6024f391ac941d37",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003207
+    },
+    {
+      "arrivals_sha256": "75eeada05447c1163a02cc64824de62a03d44fd38a2517727c0388df70d3d7cf",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003208
+    },
+    {
+      "arrivals_sha256": "f6dc6b23c6139732982d9ddb6c7972838dafefd52310578fd8aa592ba26df067",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003209
+    },
+    {
+      "arrivals_sha256": "fa5c1cd8e2b96e4db4d537d7e02aa7e838e64584be6f54a36cd9efbd908d93f0",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003210
+    },
+    {
+      "arrivals_sha256": "3cfedde90bbbd5e168f1b5009c2f258f4089e4254a54b377dd65244cfaefe203",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003211
+    },
+    {
+      "arrivals_sha256": "e6b326ee83948dcafde6c708da56948843d8b22a27df3e255c37fbb51c094a1c",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003212
+    },
+    {
+      "arrivals_sha256": "cdad3e00c002061044885212968970833f13a6cbef315153934736fe9d0f934b",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003213
+    },
+    {
+      "arrivals_sha256": "c37a64d56e85dd0a3f9f76aae09dc5722fc4e967c5324497b0eb46e4f39d3e10",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003214
+    },
+    {
+      "arrivals_sha256": "3b84c974716c736e3d309967e98d217d417fc40f5cc66d94a6d470addf4d0e94",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003215
+    },
+    {
+      "arrivals_sha256": "3572eba16c13cff73bd9a5672b8364fbfac23350af51077db9e771ce82f70c72",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003216
+    },
+    {
+      "arrivals_sha256": "14f67b9bd42e91d2aefd7d8b5102c805590f2870edd462b1c4888ff43affef0f",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003217
+    },
+    {
+      "arrivals_sha256": "252df573d05d17e54641494646fe7beee1126656956af9b717bf54963d0d982e",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003218
+    },
+    {
+      "arrivals_sha256": "eb02b65af7c8e59faa3623369e6f5f48f32c3f73508aaa470f563cf230226296",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003219
+    },
+    {
+      "arrivals_sha256": "3cc8d40b924feeeb397b67d15c9a4d92e4633e6abd6169c47924d3003a88f65c",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003220
+    },
+    {
+      "arrivals_sha256": "4e89204cf699ea904e67454e1056cb21f218fe8b35ef4b3b5f38e5ad8d71ae9d",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003221
+    },
+    {
+      "arrivals_sha256": "500389181bf55bf3f4d6cf054870981a155644a0cd7b99dd0d735b5de2714da8",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003222
+    },
+    {
+      "arrivals_sha256": "76db594656b96d0049306c9d696c817eb650ca3478f7723d6835578815ac77d8",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003223
+    },
+    {
+      "arrivals_sha256": "5fc4340cf662f5f4a68b53ac5d305855f19206e727ca3b1ddfd5cfc320c09fcb",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003224
+    },
+    {
+      "arrivals_sha256": "0ac87a9fed233d837c03978c2ee3815a85a53b17dc5575e974cad0d1ee254ac5",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003225
+    },
+    {
+      "arrivals_sha256": "275967d71a32243c0f4b795992db764df9e36ae50dea7a7fee7740afe781acf1",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003226
+    },
+    {
+      "arrivals_sha256": "fda3936ca25d5d4a4f73709aeae4bc4dee3a4ccffbe7b6d4cf3c9126d39a93c5",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003227
+    },
+    {
+      "arrivals_sha256": "b25208ecb833d605d991ca9d63451d668331fbb8e1a32c6e91149150e50e87a6",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21003228
+    }
+  ],
+  "generator_commit": "526ab938cfa991952ce5eb03f5d304a5dda789cf",
+  "manifest": "locked_test",
+  "profile": {
+    "arrival_rate_per_service": 0.15,
+    "baseline_snr_db": 22.0,
+    "device": "cpu",
+    "horizon": 64,
+    "n_services": 2
+  },
+  "size": 128
+}

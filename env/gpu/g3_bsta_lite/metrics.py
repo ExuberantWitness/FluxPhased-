@@ -145,14 +145,28 @@ class MissionTracker:
 
         Missions still pending at horizon are NOT finalized here; they are
         flushed by ``finalize_horizon`` to ``horizon_failure``.
+
+        R1D: per-env lists ``_last_finalize_step`` / ``_last_finalize_timeout``
+        record which (svc, arrival_step, dl, ds) tuples were finalized on
+        this call, so the per-mission event ledger can stamp the right
+        disposition on the right identity. The lists are reset at the top
+        of each call.
         """
+        if not hasattr(self, "_last_finalize_step"):
+            self._last_finalize_step = {env_idx: [] for env_idx in range(self.n_envs)}
+            self._last_finalize_timeout = {env_idx: [] for env_idx in range(self.n_envs)}
+            self._last_finalize_horizon = {env_idx: [] for env_idx in range(self.n_envs)}
+        self._last_finalize_step[env_idx] = []
+        self._last_finalize_timeout[env_idx] = []
         keep: list[tuple[int, int, int, int]] = []
         for (svc, arr, dl, ds) in self.pending[env_idx]:
             if dl <= step:
                 if ds >= self.detects_required:
                     counters.n_success[env_idx] += 1
+                    self._last_finalize_step[env_idx].append((svc, arr, dl, ds))
                 else:
                     counters.n_timeout[env_idx] += 1
+                    self._last_finalize_timeout[env_idx].append((svc, arr, dl, ds))
             else:
                 keep.append((svc, arr, dl, ds))
         self.pending[env_idx] = keep
@@ -163,8 +177,14 @@ class MissionTracker:
         env_idx: int,
         counters: MissionCounterBatch,
     ):
+        if not hasattr(self, "_last_finalize_horizon"):
+            self._last_finalize_step = {env_idx: [] for env_idx in range(self.n_envs)}
+            self._last_finalize_timeout = {env_idx: [] for env_idx in range(self.n_envs)}
+            self._last_finalize_horizon = {env_idx: [] for env_idx in range(self.n_envs)}
+        self._last_finalize_horizon[env_idx] = []
         for (svc, arr, dl, ds) in self.pending[env_idx]:
             counters.n_horizon_failure[env_idx] += 1
+            self._last_finalize_horizon[env_idx].append((svc, arr, dl, ds))
         self.pending[env_idx] = []
 
     def pending_count(self, env_idx: int) -> int:

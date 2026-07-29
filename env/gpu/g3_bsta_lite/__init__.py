@@ -31,7 +31,14 @@ from .metrics import (
     MissionCounterBatch,
     MissionTracker,
 )
-from .observation import OBS_DIM, PRIVILEGED_DIM
+from .observation import (
+    OBS_DIM,
+    PRIVILEGED_DIM,
+    PROFILE_MDP_SANITY,
+    PROFILE_POMDP,
+    PROFILES,
+    pomdp_urgency_proxy,
+)
 from .physics import (
     DebugPhysicsConfig,
     ServiceChannel,
@@ -60,6 +67,10 @@ __all__ = [
     "N_ACTIONS",
     "OBS_DIM",
     "PRIVILEGED_DIM",
+    "PROFILE_MDP_SANITY",
+    "PROFILE_POMDP",
+    "PROFILES",
+    "pomdp_urgency_proxy",
     "Scenario",
     "ServiceChannel",
     "TransitionTrace",
