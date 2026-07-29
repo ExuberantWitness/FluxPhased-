@@ -1,0 +1,118 @@
+{
+  "case_id": "mfr-orphans-20260728T094154Z",
+  "route": "A",
+  "report_path": "/home/ubuntu/evidence/route_a_recovery/M7_RECOVERY_REPORT.md",
+  "generated_utc_approx": "2026-07-29T01:30:00Z",
+  "host": "node15",
+  "author": "PRO6000 agent",
+
+  "verdict": {
+    "historical_source": "FAIL",
+    "status": "ROUTE_A_EXHAUSTED_NO_CANDIDATE",
+    "allowed_claim_tier": "NONE_FROM_ROUTE_A",
+    "next_authorized_phase": "PROCEED_TO_ROUTE_B_PLUS_ELIGIBILITY",
+    "candidate_files_generated": ["M7_RECOVERY_REPORT.md", "M7_RECOVERY_REPORT.json"],
+    "candidate_files_skipped": [
+      "SOURCE_HANDOFF.candidate.json",
+      "SYMBOL_MAP.candidate.md",
+      "LEGACY_ARTIFACT_MANIFEST.md"
+    ],
+    "skip_reason": "no historical source candidate discovered in any authorized search surface"
+  },
+
+  "budget_used": {
+    "calendar_days": 0,
+    "calendar_limit": 5,
+    "engineer_hours": 0.5,
+    "engineer_hour_limit": 16
+  },
+
+  "search_coverage": {
+    "main_repo_reachable_commits": {"query": "git log --all -- env/gpu/mfr/* algo/_shared/pilot/mfr/* tests/mfr/*", "hits": 0},
+    "main_repo_unreachable_commits": {"count_scanned": 22, "hits": 0, "method": "fsck --unreachable + ls-tree -r per commit"},
+    "main_repo_unreachable_blobs": {
+      "orphan_blob_hashes_checked": 16,
+      "present_in_object_db": 1,
+      "present_hashes": ["e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"],
+      "present_hash_note": "generic empty-file blob; not MFR-specific",
+      "absent_hashes": [
+        "e144ab2d3e9d74fb5046ee7d6566448515079ca8",
+        "ce801116ca2b195f060b7aa3a5f3b1018a15a6bf",
+        "a7d953b9219d25b3299400ce0681efcf90838d7e",
+        "5429c3be9ce447daa545ac44bb150a3a647bc5ac",
+        "a69e8ef08065f8e55d69f5cbac80057a3c4ef9a9",
+        "cae0f837f8307eeae3e8a915678fa72715cc42c4",
+        "9679c5b3ff3b48e3a338f05babbf17245104a4df",
+        "4d883ebd8d51d74b41634709adb039eae6c07df8",
+        "e6010a8a333b62acbbba0288d3186aca28c743bb",
+        "d33b5efd3f3bf78319bbd368e2ba04f5189849f8",
+        "2b96754e7391e5bda1f9c94e66e5dd6569ed8437",
+        "144d268245ea2a8e30c6cd08bfe32616f8d10788",
+        "aa2749448884125bb4f1c9e8b14f6daf83528c4a",
+        "bd37c49c559792de5c2ad7649250bad6cb515b82",
+        "9f178fe93952186bbd057795f0f80c41ac7d50eb"
+      ]
+    },
+    "main_repo_stash": {"hits": 0, "stash_subject": "On phase1.5/three-way-baselines: coma-diagnostic-print"},
+    "main_repo_reflog": {"hits": 0},
+    "copy_repo_reachable_commits": {"hits": 0},
+    "copy_repo_unreachable_commits": {"count_scanned": 30, "hits": 0},
+    "tmp_var_tmp_cache": {"hits": 0},
+    "bash_history_grep_mfr": {"hits": 0},
+    "bundle_tar_zip_backups": {"hits": 0, "note": "only handoff document archives found"},
+    "ide_local_history": {"vscode_history_dir": "empty", "jetbrains_cache": "absent"},
+    "bare_mirror_ls_remote": {"result": "TIMEOUT", "exit_code": 143, "timeout_seconds": 60, "transport": "git-over-https"},
+    "github_api_branches": {
+      "total_branches": 9,
+      "branches": [
+        {"name": "appint/data-preflight", "sha": "5d0c70358bd89530e2c371a67c5515b046f85167"},
+        {"name": "docs/g3-bsta-pro6000-handoff", "sha": "5cafbbfdb9f636aa5bffbd53dbfa58188e9dfe16"},
+        {"name": "evo/laser-fix", "sha": "81f1abb61b946688f2c7442893d0f275ad8effab"},
+        {"name": "evo/main-p14-docs", "sha": "9938a116e3bb76c35a007d6f8a1a2c19bc6b697d"},
+        {"name": "fix/kalman-reset-episode", "sha": "566cc21a6d78e926bdfd8d9b56466eb407ac837c"},
+        {"name": "legacy-main", "sha": "81f1abb61b946688f2c7442893d0f275ad8effab"},
+        {"name": "main", "sha": "af0d4c20fd2a693cdb14bc64bb786bcb62561883"},
+        {"name": "phase1.5/three-way-baselines", "sha": "4329bae9ec1a7c34b674f2f68f77e9540406a516"},
+        {"name": "twoteam/bc-ppo", "sha": "80769974cb41fd86e2f80bc2a8992955fb228058"}
+      ],
+      "default_branch": "main",
+      "pushed_at": "2026-07-28T09:21:04Z",
+      "tags_count": 0
+    },
+    "github_api_code_search": {
+      "filename_mfr_env_py": {"total_count": 0, "covers": "all branches and historical commits"},
+      "path_env_gpu_mfr": {"total_count": 0, "covers": "all branches and historical commits"}
+    }
+  },
+
+  "key_findings": {
+    "mfr_never_committed_to_any_local_ref": true,
+    "mfr_never_committed_to_any_unreachable_object": true,
+    "mfr_never_committed_to_github_remote": true,
+    "orphan_files_are_working_tree_only": true,
+    "orphan_blob_hashes_absent_from_object_db_count": "15_of_16",
+    "network_to_github_api": "REACHABLE",
+    "network_to_git_smart_http": "UNSTABLE_TIMEOUT"
+  },
+
+  "evidence_archive_sha256_authoritative": "37bb3c9c13442d3eaf3e6d4fdeae99eb66b65925e70adea37489f4c7586d576a",
+  "head_full_40hex": "807588cab7d367bedd415b45efc85a72f2a38b89",
+
+  "prohibited_actions_not_taken": [
+    "did not fetch in original worktree",
+    "did not create any commit on any FluxPhased branch",
+    "did not promote orphan files to historical M7",
+    "did not fabricate source owner attestation",
+    "did not enter P1 implementation phase",
+    "did not write G3-BSTA implementation code",
+    "did not execute any orphan Python file"
+  ],
+
+  "transition": {
+    "next_route": "B_PLUS",
+    "policy": "A_FIRST_B_PLUS_FALLBACK",
+    "orphan_adoption_review_authorized": true,
+    "orphan_adoption_authorized_without_owner_signature": false,
+    "adoption_commit_creation_authorized": false
+  }
+}

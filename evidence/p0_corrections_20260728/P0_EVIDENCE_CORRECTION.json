@@ -1,0 +1,84 @@
+{
+  "case_id": "mfr-orphans-20260728T094154Z",
+  "correction_record": "P0_EVIDENCE_CORRECTION.md",
+  "generated_utc_approx": "2026-07-28T10:50:00Z",
+  "host": "node15",
+  "author": "PRO6000 agent",
+
+  "evidence_archive": {
+    "path": "/home/ubuntu/evidence/mfr-orphans-20260728T094154Z.tar.gz",
+    "sha256_authoritative": "37bb3c9c13442d3eaf3e6d4fdeae99eb66b65925e70adea37489f4c7586d576a",
+    "sha256_hex_length": 64,
+    "size_bytes": 61428,
+    "mtime": "2026-07-28T17:50:16+08:00",
+    "recompute_command": "sha256sum /home/ubuntu/evidence/mfr-orphans-20260728T094154Z.tar.gz",
+    "previously_recorded_sha_in_PACKAGE_INFO_txt": "856d98bfd8ea09e41f4ccb713554f824ef5c7f5a5c78681a1ade97a33cb39d7c",
+    "previously_recorded_sha_in_ORPHAN_EVIDENCE_REPORT_md": "32236db9fb90d6864669528e0d988048a524405250137190a614ffc4b833606a",
+    "sha_inconsistency_disclosed": true,
+    "sha_inconsistency_severity": "LOW",
+    "sha_inconsistency_explanation": "Archive was rebuilt at least twice during packaging; PACKAGE_INFO.txt and ORPHAN_EVIDENCE_REPORT.md were hand-edited and not re-aligned with the final rebuilt archive. Per-file SHA256SUMS.txt entries all match recomputation, so archive CONTENTS are intact; only the archive-level SHA metadata is inconsistent."
+  },
+
+  "head_commit": {
+    "short_input": "807588c",
+    "full_40hex": "807588cab7d367bedd415b45efc85a72f2a38b89",
+    "branch": "refs/heads/twoteam/bc-ppo",
+    "source": "SCENE.txt L21 (read-only Git metadata capture at 20260728T094154Z)"
+  },
+
+  "orphan_source_file_count": {
+    "canonical_count": 17,
+    "all_files_python": true,
+    "all_files_stable": true,
+    "double_hash_passA_on_original": "PASS",
+    "double_hash_passB_on_original_after_copy": "PASS",
+    "hash_of_copy": "PASS",
+    "symlink_present": false,
+    "count_by_directory": {
+      "algo/_shared/pilot/mfr/": 9,
+      "env/gpu/mfr/": 5,
+      "tests/mfr/": 3
+    },
+    "early_estimate_of_18_explanation": {
+      "canonical_18_evidence": "NONE_FOUND_IN_PACKAGE",
+      "orphan_file_list_count": 17,
+      "manifest_jsonl_count": 17,
+      "sha256sums_txt_orphan_byte_entries": 17,
+      "probable_source_of_estimate": "Early verbal approximation in conversation; may have transiently included experiments/mfr_phaseB/G2a_diagnosis_report.md (Markdown, non-source) or another untracked artifact.",
+      "eighteenth_source_file_conjured": false,
+      "policy": "Exclude all non-source artifacts (logs, csv, json, pt, md) under experiments/mfr*/ from source closure count; list them only in RELATED_EXPERIMENTS_DIR_LISTING.txt."
+    }
+  },
+
+  "fetch_constraint_violation": {
+    "count": 1,
+    "constraint": "POST_INSTRUCTION_FETCH_BEFORE_EVIDENCE_CAPTURE",
+    "command": "timeout 30 git -C /home/ubuntu/CODE/FluxPhased- fetch origin",
+    "exit_status": 124,
+    "stderr": "curl 28 / GnuTLS recv error (-110) The TLS connection was non-properly terminated",
+    "approximate_utc": "2026-07-28T17:0X",
+    "fetch_head_artifact": "/home/ubuntu/CODE/FluxPhased-/.git/FETCH_HEAD (0 bytes, mtime 2026-07-28 17:01)",
+    "remotes_may_have_been_touched": true,
+    "fetch_head_wrote_remote_refs": false,
+    "reflog_metadata_may_have_been_touched": true,
+    "working_tree_bytes_untouched_by_fetch": true,
+    "double_hash_stiability_unaffected": true
+  },
+
+  "git_metadata_scene_freshness": {
+    "claim_pristine_pre_fetch_metadata": "RETRACTED",
+    "claim_orphan_byte_stability_within_capture_interval": "HOLDS",
+    "capture_interval_utc": "[20260728T094154Z, 20260728T094820Z]",
+    "host_clock_source": "node15 system clock",
+    "mtime_ctime_proof_of_creation_time": "NOT_CLAIMED"
+  },
+
+  "next_phase_authorization": {
+    "ready_for_route_A_search": true,
+    "ready_for_route_B_plus_eligibility": true,
+    "may_enter_P1_implementation": false,
+    "may_write_G3_BSTA_implementation_code": false,
+    "may_quarantine_orphan_as_M7_authoritative": false,
+    "may_create_adoption_commit_without_owner_signature": false
+  }
+}

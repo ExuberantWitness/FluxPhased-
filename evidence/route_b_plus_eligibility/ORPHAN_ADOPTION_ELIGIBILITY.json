@@ -1,0 +1,181 @@
+{
+  "case_id": "mfr-orphans-20260728T094154Z",
+  "route": "B_PLUS",
+  "report_path": "/home/ubuntu/evidence/route_b_plus_eligibility/ORPHAN_ADOPTION_ELIGIBILITY.md",
+  "generated_utc_approx": "2026-07-29T01:50:00Z",
+  "host": "node15",
+  "author": "PRO6000 agent",
+
+  "verdict": {
+    "adoption_eligibility": "CONDITIONAL_PASS",
+    "historical_source": "FAIL",
+    "status": "AWAIT_ADOPTION_OWNER_APPROVAL",
+    "allowed_claim_tier_if_signed": "NEW_BENCHMARK_ONLY",
+    "recommended_branch_name": "g3-bsta/clean-successor",
+    "recommended_benchmark_name": "G3-BSTA-v0",
+    "next_authorized_phase_without_signature": "NONE",
+    "code_changes_made": "none"
+  },
+
+  "evidence_archive_sha256_authoritative": "37bb3c9c13442d3eaf3e6d4fdeae99eb66b65925e70adea37489f4c7586d576a",
+  "head_full_40hex": "807588cab7d367bedd415b45efc85a72f2a38b89",
+
+  "eligibility_checklist": {
+    "a_complete_evidence_and_chain_of_custody": {"status": "PASS"},
+    "b_no_unresolved_secrets_or_malicious_content": {"status": "PASS"},
+    "c_license_and_use_rights_confirmable_by_owner": {
+      "status": "PENDING",
+      "blocker": "FluxPhased- repo has no top-level LICENSE; orphan has no in-file license markers; needs repo-owner signature"
+    },
+    "d_adoption_owner_willing_to_assume_responsibility": {
+      "status": "PENDING",
+      "blocker": "user has not yet named adoption owner; needs human signature"
+    },
+    "e_dependency_closure_closable": {
+      "status": "PASS",
+      "evidence": "8 stdlib + torch + 3 twoteam modules (present in HEAD) + 9 internal cross-refs"
+    },
+    "f_core_semantics_static_determinable": {
+      "status": "CONDITIONAL",
+      "evidence": "AST OK for 17/17 files; main symbols present; but §2.3 physics bindings (8 items) all UNKNOWN and need owner decision"
+    },
+    "g_verified_base_selectable": {
+      "status": "PASS",
+      "evidence": "HEAD 807588cab7d367bedd415b45efc85a72f2a38b89"
+    },
+    "h_new_commit_buildable_at_current_time": {
+      "status": "PASS",
+      "evidence": "technical; must be on new branch"
+    },
+    "i_commit_records_attribution_explicitly": {
+      "status": "PENDING",
+      "evidence": "adoption commit template prepared; not yet written; requires owner signature"
+    },
+    "summary": "6 PASS / 3 PENDING / 0 FAIL"
+  },
+
+  "static_review_10_items": {
+    "item1_sha256_blob_metadata": {"status": "COMPLETE", "manifest": "ORPHAN_EVIDENCE_MANIFEST.jsonl", "blob_match": "ORPHAN_BLOB_MATCH.csv"},
+    "item2_symlink_hardlink_binary_secret_malicious": {
+      "status": "PASS",
+      "symlink_count": 0,
+      "hardlink_count": 0,
+      "true_binary_count": 0,
+      "secret_patterns_hit": 0,
+      "network_calls_hit": 0,
+      "dangerous_eval_exec_os_system_shell_true": 0
+    },
+    "item3_authorship_third_party_license": {
+      "status": "CONDITIONAL",
+      "license_markers": 0,
+      "author_markers": 0,
+      "third_party_borrowing_evidence": "none",
+      "report": "LICENSE_AND_AUTHORSHIP_RISK.md"
+    },
+    "item4_per_file_compare_to_refs_reflogs_unreachable_mirrors": {
+      "status": "COMPLETE",
+      "compared_against": [
+        "main repo reachable commits (5 local + 8 remote refs)",
+        "main repo unreachable commits (22)",
+        "Copy repo reachable commits (4 local + 6 remote refs)",
+        "Copy repo unreachable commits (30)",
+        "main repo stash",
+        "main repo reflog --all",
+        "GitHub remote 9 branches via code search API"
+      ],
+      "hits": 0,
+      "relation_label_all_17_files": "NO_VERIFIABLE_HISTORY_MATCH"
+    },
+    "item5_relation_labels_used": {
+      "labels_used": ["NO_VERIFIABLE_HISTORY_MATCH"],
+      "labels_not_applicable": ["EXACT_PATH_AND_BLOB_MATCH", "CONTENT_MATCH_DIFFERENT_PATH", "DERIVED_PATCH_AGAINST"]
+    },
+    "item6_imports_dependency_closure": {
+      "first_party_resolvable_in_HEAD": [
+        "env.gpu.twoteam.detection",
+        "env.gpu.twoteam.iq_interference",
+        "env.gpu.twoteam.tracker"
+      ],
+      "first_party_orphan_internal": [
+        "env.gpu.mfr.mfr_env",
+        "env.gpu.mfr.target_pool",
+        "env.gpu.mfr.task_layer",
+        "env.gpu.mfr.jammer",
+        "algo._shared.pilot.mfr.rule_scheduler",
+        "algo._shared.pilot.mfr.random_scheduler",
+        "algo._shared.pilot.mfr.mappo_trainer",
+        "algo._shared.pilot.mfr.jammer_trainer"
+      ],
+      "third_party": ["torch"],
+      "stdlib": ["argparse", "csv", "json", "math", "os", "sys", "time", "__future__"],
+      "unresolved_imports": "none"
+    },
+    "item7_missing_closure_components": {
+      "config_templates": "none",
+      "raw_row_schemas": "none",
+      "checkpoints_as_source": "none (only untracked run artifacts)",
+      "conftest_py_mfr_specific": "none",
+      "license": "none at repo or file level",
+      "report": "SOURCE_CLOSURE_GAP.md"
+    },
+    "item8_transition_reward_obs_action_drop_slot_static_determinability": {
+      "drop_ratio": "partial (definition needs inferred from mfr_env.py)",
+      "action_mask": "partial (construction needs P4 audit)",
+      "prog_factor_sigma_progress_coupling": "yes (explicit formula in mfr_env.py)",
+      "tau_track_threshold": "yes (literal 4.0)",
+      "tracker_initialized": "partial (depends on twoteam.tracker)",
+      "target_slot_identity": "partial (false-alarm/ID-reuse policy needs inferred)",
+      "JNR_SINR_path": "partial (via iq_interference)"
+    },
+    "item9_hidden_target_id_causal_observation_violation": {
+      "target_id_keyword_hits": 0,
+      "target_slot_usage": "expected in jammer.py and task_layer.py (action domain)",
+      "no_godview_test_coverage": "partial (orphan has some tests; full audit at P4)",
+      "red_flags_found": "none at static level"
+    },
+    "item10_eight_physics_bindings_UNKNOWN_status": {
+      "1_emitter_count": "UNKNOWN (K=4 subarrays vs RF emitters distinction unclear)",
+      "2_per_emitter_peak_power_energy": "UNKNOWN (no platform basis)",
+      "3_energy_pooling_basis": "UNKNOWN (no team energy pool in orphan)",
+      "4_simultaneous_beam_limit_basis": "UNKNOWN (K=4 independent, no team cap)",
+      "5_service_selectivity_mechanism": "UNKNOWN (no frequency/selectivity dimension)",
+      "6_radar_receiver_binding": "UNKNOWN (tracker is generic IMM-PDAF)",
+      "7_cross_talk_model": "UNKNOWN (uses iq_interference generically)",
+      "8_detect_track_establish_semantics": "UNKNOWN (Wang 7-class, no IQ calibration)",
+      "all_eight_require": "adoption owner + RF physics owner decision; orphan cannot self-attest"
+    }
+  },
+
+  "adoption_commit_required_trailers": [
+    "Source-attribution: unknown",
+    "Adoption-status: adopted-new",
+    "Evidence-case: mfr-orphans-20260728T094154Z",
+    "Evidence-sha256: 37bb3c9c13442d3eaf3e6d4fdeae99eb66b65925e70adea37489f4c7586d576a",
+    "Historical-M7-recovery: false",
+    "License-inherited-from: <must-be-set-by-repo-owner>",
+    "Adoption-owner-signed: <human-name> <date>"
+  ],
+
+  "naming": {
+    "preferred": "G3-BSTA-v0 / g3-bsta/clean-successor",
+    "prohibited": ["recovered-M7", "original-M7", "fixed-G2a", "mfr-restored"]
+  },
+
+  "human_signoff_required_before_adoption": [
+    "repo-level LICENSE selection (repo owner)",
+    "orphan adoption authorization (repo owner)",
+    "eight physics bindings fill-in (RF / simulation physics owner)",
+    "metrics schema + tests/mfr framework freeze (experiment owner)",
+    "G3-BSTA-v0 current-version responsibility (adoption owner)"
+  ],
+
+  "prohibited_actions": [
+    "no auto entry into P1 implementation",
+    "no training or test execution",
+    "no commit creation in original worktree",
+    "no branch push to any remote",
+    "no SYMBOL_MAP population from orphan as authoritative",
+    "no claim of G2'a historical reproduction (raw rows are absent)",
+    "no claim of G2'a PASS retroactively"
+  ]
+}
