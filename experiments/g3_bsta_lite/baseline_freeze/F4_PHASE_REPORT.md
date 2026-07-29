@@ -7,8 +7,8 @@ status: PASS (Gate 3 cleared on BC warm-start PPO; scratch PPO secondary
               thresholds inside 30 iterations)
 branch: g3-bsta/mfr-lite-fastwork
 base_commit: 15c56e2 (F3 tip)
-git_commit: <to be filled at commit>
-tree_sha: <to be filled at commit>
+git_commit: 6d14e1cdf297026c47de95e17bd1b959c6b81165
+tree_sha: a843abf5f869b677c38f6174f58ada21ee33f234
 changed_files:
   - algo/_shared/pilot/g3_bsta_lite/ppo.py            (new)
   - experiments/g3_bsta_lite/baseline_freeze/run_f4.py (new)
