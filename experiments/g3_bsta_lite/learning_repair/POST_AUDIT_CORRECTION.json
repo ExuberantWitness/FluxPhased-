@@ -1,0 +1,110 @@
+{
+  "document": "POST_AUDIT_CORRECTION.json",
+  "branch": "g3-bsta/mfr-lite-learning-repair",
+  "base_commit": "01ea4283f422cd01fec5fb15037c5012543adf7a",
+  "base_tree": "e1e502e5ac7089ee9e8a0649d46307731780e8be",
+  "issued": "2026-07-29",
+  "status": ["DEBUG_VERTICAL_SLICE_COMPLETE", "PPO_LEARNING_NOT_ESTABLISHED"],
+  "tests": {
+    "baseline_pass_count": 46,
+    "baseline_command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=$PWD pytest -q tests/g3_bsta_lite",
+    "baseline_result": "46 passed"
+  },
+  "gate_revisions": {
+    "gate_0": {"status": "PASS", "scope": "contract invariants for the debug slice"},
+    "gate_1": {
+      "status": "PASS",
+      "scope": "oracle headroom + witness LCB on 128 paired scenarios",
+      "privileged_clairvoyant_macro_drop": 0.3313,
+      "causal_witness_macro_drop": 0.2680,
+      "best_non_witness_macro_drop": 0.1601,
+      "oracle_vs_best_baseline_pp": 17.12,
+      "witness_min_lcb_vs_non_witness_pp": 9.12,
+      "neighbor_sweep_min_lcb_pp": 7.50
+    },
+    "gate_2": {
+      "status": "PASS_FOR_IMITATION_FEASIBILITY_ONLY",
+      "scope": "F3 DAgger imitation; NOT evidence of PPO learning",
+      "held_out_top1_acc": 1.0,
+      "held_out_rollout_gap_recovery": 1.015
+    },
+    "gate_3": {
+      "status": "FAIL_FOR_SCRATCH_PPO",
+      "scope": "F4 fixed-scenario overfit; original scratch criterion",
+      "scratch_ppo_macro_drop": 0.16891,
+      "best_non_witness_macro_drop": 0.13109,
+      "witness_macro_drop": 0.25112,
+      "witness_headroom_recovery_pct": 31.5,
+      "scratch_vs_round_robin_pp": 3.78,
+      "scenario_lcb95_one_sided": "negative",
+      "note": "BC warm-start MUST NOT be substituted for scratch PPO"
+    },
+    "gate_4": {"status": "INVALID", "reason": "held-out set overlaps DAgger train; no controls; checkpoint selection on validation masquerading as test"},
+    "gate_5": {"status": "INVALID", "reason": "two-seed spread=0 reflects shared deterministic BC start, not PPO training reproducibility; pristine init was not actually pristine"}
+  },
+  "data_leak": {
+    "f3_dagger_train_base_seed": 20260729,
+    "f3_dagger_train_n_scenarios": 128,
+    "f3_dagger_train_seed_range_approx": [20260729, 20260856],
+    "f5_f6_heldout_base_seed": 20260801,
+    "f5_f6_heldout_n_scenarios": 32,
+    "f5_f6_heldout_seed_range": [20260801, 20260832],
+    "overlap_count": 32,
+    "overlap_fraction": 1.0,
+    "verdict": "F5/F6 held-out = validation = DAgger train subset; no untouched test"
+  },
+  "ppo_regression_after_training": {
+    "witness_heldout_macro_drop": 0.2959,
+    "seed_0_final_argmax_heldout_macro_drop": 0.2522,
+    "seed_1_final_argmax_heldout_macro_drop": 0.2075,
+    "verdict": "PPO training degrades BC warm-start"
+  },
+  "checkpoint_semantics_issue": {
+    "reported": "best_iter = 0",
+    "actual": "eval after first train_iteration, i.e. 1024 transitions + one PPO update applied",
+    "verdict": "not a pristine BC init checkpoint"
+  },
+  "env_contract_issues": [
+    "urgency observation = pending_count / tau_window with delay=0 → invertible leak of true queue count",
+    "radar deterministic from step_idx (step % 2); obs contains remaining-time → next radar service predictable",
+    "potential shaping: phi_before and phi_after both computed after env transition; not telescoping form",
+    "PPOTrainer rebuilds default EnvConfig, drops caller's full config",
+    "KL early-stop fires after epoch; does not roll back large per-minibatch excursions (max recorded KL ≈ 1.37)",
+    "energy as float32; rounding can flip mask",
+    "no per-mission event ledger identity enforced in tests"
+  ],
+  "missing_controls_and_statistics": [
+    "pristine / frozen-init control",
+    "shuffled-observation control",
+    "random / untrained actor control",
+    "time-only actor control",
+    "no-update / frozen-policy control",
+    "return/drop Spearman correlation",
+    "action-vs-causal-state mutual-dependence check",
+    "scenario-level paired LCB95",
+    "per-episode mask / energy / requested-vs-executed violation counts"
+  ],
+  "branch_note_LINE_REPORT_tip_mismatch": {
+    "prior_LINE_REPORT_branch_tip_claim": "f2ef2da",
+    "actual_fast_work_tip_commit": "01ea4283f422cd01fec5fb15037c5012543adf7a",
+    "actual_fast_work_tip_tree": "e1e502e5ac7089ee9e8a0649d46307731780e8be",
+    "explanation": "f2ef2da is the F6 SHA-backfill commit; the LINE_REPORT summary itself was added at 01ea4283. This correction branch is created from 01ea4283."
+  },
+  "forbidden_actions": [
+    "8-seed campaign",
+    "full MFR scale-out",
+    "MAPPO / two-team integration",
+    "modifying main / g3-bsta/mfr-lite-fastwork / docs/pro9000-forensic-output / historical handoff branches",
+    "renaming or re-tuning Gate thresholds post-hoc",
+    "substituting BC warm-start for scratch PPO in Gate 3",
+    "deleting or squashing failed-seed evidence",
+    "re-introducing quarantined orphan MFR archive bytes"
+  ],
+  "authorized_actions": [
+    "modify G3-BSTA-lite env / PPO / imitation / evaluation / tests / experiment scripts",
+    "create new commits on g3-bsta/mfr-lite-learning-repair",
+    "run CPU/CUDA tests",
+    "run scratch PPO, BC/residual PPO, corrected two-seed pilot",
+    "push code, text reports, small JSON / CSV / JSONL evidence to the new branch"
+  ]
+}
