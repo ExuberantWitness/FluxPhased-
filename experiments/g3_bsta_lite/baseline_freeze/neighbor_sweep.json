@@ -1,0 +1,84 @@
+{
+  "criterion": "Gate 1 criterion 3: neighbor settings LCB95(delta) > 5 pp",
+  "n_scenarios": 128,
+  "n_action_reps": 4,
+  "frozen_baselines_for_comparison": [
+    "always_off",
+    "random_feasible",
+    "budgeted_barrage",
+    "budgeted_round_robin",
+    "periodic_blink"
+  ],
+  "cells": [
+    {
+      "name": "baseline",
+      "config_overrides": {},
+      "witness_drop": 0.2680,
+      "best_baseline_drop": 0.1601,
+      "oracle_drop": 0.3313,
+      "min_lcb_vs_baselines": 0.0913,
+      "gate_pass": true
+    },
+    {
+      "name": "budget_tight",
+      "config_overrides": {"active_budget_steps": 12, "duty_budget": 0.1875},
+      "witness_drop": 0.1887,
+      "best_baseline_drop": 0.1011,
+      "oracle_drop": 0.2420,
+      "min_lcb_vs_baselines": 0.0750,
+      "gate_pass": true
+    },
+    {
+      "name": "budget_loose",
+      "config_overrides": {"active_budget_steps": 20, "duty_budget": 0.3125},
+      "witness_drop": 0.3405,
+      "best_baseline_drop": 0.2186,
+      "oracle_drop": 0.4173,
+      "min_lcb_vs_baselines": 0.1031,
+      "gate_pass": true
+    },
+    {
+      "name": "detect_hard",
+      "config_overrides": {"detect_threshold_db": 18.0},
+      "witness_drop": 0.2685,
+      "best_baseline_drop": 0.1601,
+      "oracle_drop": 0.3308,
+      "min_lcb_vs_baselines": 0.0918,
+      "gate_pass": true
+    },
+    {
+      "name": "detect_easy",
+      "config_overrides": {"detect_threshold_db": 12.0},
+      "witness_drop": 0.2680,
+      "best_baseline_drop": 0.1601,
+      "oracle_drop": 0.3313,
+      "min_lcb_vs_baselines": 0.0913,
+      "gate_pass": true
+    },
+    {
+      "name": "tau_short",
+      "config_overrides": {"mission_tau_window": 4},
+      "witness_drop": 0.3224,
+      "best_baseline_drop": 0.1884,
+      "oracle_drop": 0.4461,
+      "min_lcb_vs_baselines": 0.1152,
+      "gate_pass": true
+    },
+    {
+      "name": "tau_long",
+      "config_overrides": {"mission_tau_window": 8},
+      "witness_drop": 0.2211,
+      "best_baseline_drop": 0.1300,
+      "oracle_drop": 0.2668,
+      "min_lcb_vs_baselines": 0.0760,
+      "gate_pass": true
+    }
+  ],
+  "summary": {
+    "n_cells_passed": 7,
+    "n_cells_total": 7,
+    "min_lcb_across_cells": 0.0750,
+    "threshold_pp": 5.0,
+    "gate_pass": true
+  }
+}

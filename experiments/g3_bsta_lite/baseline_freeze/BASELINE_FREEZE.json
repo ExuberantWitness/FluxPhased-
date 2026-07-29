@@ -1,0 +1,246 @@
+{
+  "n_scenarios": 128,
+  "n_action_reps": 4,
+  "policy_summary": {
+    "always_off": {
+      "macro_mean_drop": 0.006701408012304455,
+      "n_scenarios": 128
+    },
+    "random_feasible": {
+      "macro_mean_drop": 0.013140286020643543,
+      "n_scenarios": 128
+    },
+    "budgeted_barrage": {
+      "macro_mean_drop": 0.07433782957377844,
+      "n_scenarios": 128
+    },
+    "budgeted_round_robin": {
+      "macro_mean_drop": 0.1601004074618686,
+      "n_scenarios": 128
+    },
+    "periodic_blink": {
+      "macro_mean_drop": 0.006701408012304455,
+      "n_scenarios": 128
+    },
+    "causal_reactive_or_edf": {
+      "macro_mean_drop": 0.268044038239168,
+      "n_scenarios": 128
+    },
+    "clairvoyant_oracle": {
+      "macro_mean_drop": 0.33127624460030347,
+      "n_scenarios": 128
+    }
+  },
+  "paired_deltas": {
+    "always_off": {
+      "random_feasible": {
+        "mean_delta": -0.006438878008339088,
+        "lcb95": -0.008030046762847118,
+        "n": 128
+      },
+      "budgeted_barrage": {
+        "mean_delta": -0.06763642156147398,
+        "lcb95": -0.07597972764526918,
+        "n": 128
+      },
+      "budgeted_round_robin": {
+        "mean_delta": -0.15339899944956414,
+        "lcb95": -0.1664581051206075,
+        "n": 128
+      },
+      "periodic_blink": {
+        "mean_delta": 0.0,
+        "lcb95": 0.0,
+        "n": 128
+      },
+      "causal_reactive_or_edf": {
+        "mean_delta": -0.26134263022686355,
+        "lcb95": -0.27496947629833357,
+        "n": 128
+      }
+    },
+    "random_feasible": {
+      "always_off": {
+        "mean_delta": 0.006438878008339088,
+        "lcb95": 0.004847709253831058,
+        "n": 128
+      },
+      "budgeted_barrage": {
+        "mean_delta": -0.06119754355313489,
+        "lcb95": -0.06944770390987232,
+        "n": 128
+      },
+      "budgeted_round_robin": {
+        "mean_delta": -0.14696012144122506,
+        "lcb95": -0.15980705359948613,
+        "n": 128
+      },
+      "periodic_blink": {
+        "mean_delta": 0.006438878008339088,
+        "lcb95": 0.004847709253831058,
+        "n": 128
+      },
+      "causal_reactive_or_edf": {
+        "mean_delta": -0.25490375221852446,
+        "lcb95": -0.26850775019161,
+        "n": 128
+      }
+    },
+    "budgeted_barrage": {
+      "always_off": {
+        "mean_delta": 0.06763642156147398,
+        "lcb95": 0.05929311547767878,
+        "n": 128
+      },
+      "random_feasible": {
+        "mean_delta": 0.06119754355313489,
+        "lcb95": 0.05294738319639747,
+        "n": 128
+      },
+      "budgeted_round_robin": {
+        "mean_delta": -0.08576257788809016,
+        "lcb95": -0.09574749312327327,
+        "n": 128
+      },
+      "periodic_blink": {
+        "mean_delta": 0.06763642156147398,
+        "lcb95": 0.05929311547767878,
+        "n": 128
+      },
+      "causal_reactive_or_edf": {
+        "mean_delta": -0.19370620866538957,
+        "lcb95": -0.20878137569034091,
+        "n": 128
+      }
+    },
+    "budgeted_round_robin": {
+      "always_off": {
+        "mean_delta": 0.15339899944956414,
+        "lcb95": 0.1403398937785208,
+        "n": 128
+      },
+      "random_feasible": {
+        "mean_delta": 0.14696012144122506,
+        "lcb95": 0.13411318928296398,
+        "n": 128
+      },
+      "budgeted_barrage": {
+        "mean_delta": 0.08576257788809016,
+        "lcb95": 0.07577766265290706,
+        "n": 128
+      },
+      "periodic_blink": {
+        "mean_delta": 0.15339899944956414,
+        "lcb95": 0.1403398937785208,
+        "n": 128
+      },
+      "causal_reactive_or_edf": {
+        "mean_delta": -0.1079436307772994,
+        "lcb95": -0.12456490658645697,
+        "n": 128
+      }
+    },
+    "periodic_blink": {
+      "always_off": {
+        "mean_delta": 0.0,
+        "lcb95": 0.0,
+        "n": 128
+      },
+      "random_feasible": {
+        "mean_delta": -0.006438878008339088,
+        "lcb95": -0.008030046762847118,
+        "n": 128
+      },
+      "budgeted_barrage": {
+        "mean_delta": -0.06763642156147398,
+        "lcb95": -0.07597972764526918,
+        "n": 128
+      },
+      "budgeted_round_robin": {
+        "mean_delta": -0.15339899944956414,
+        "lcb95": -0.1664581051206075,
+        "n": 128
+      },
+      "causal_reactive_or_edf": {
+        "mean_delta": -0.26134263022686355,
+        "lcb95": -0.27496947629833357,
+        "n": 128
+      }
+    },
+    "causal_reactive_or_edf": {
+      "always_off": {
+        "mean_delta": 0.26134263022686355,
+        "lcb95": 0.24771578415539353,
+        "n": 128
+      },
+      "random_feasible": {
+        "mean_delta": 0.25490375221852446,
+        "lcb95": 0.2412997542454389,
+        "n": 128
+      },
+      "budgeted_barrage": {
+        "mean_delta": 0.19370620866538957,
+        "lcb95": 0.17863104164043822,
+        "n": 128
+      },
+      "budgeted_round_robin": {
+        "mean_delta": 0.1079436307772994,
+        "lcb95": 0.09132235496814184,
+        "n": 128
+      },
+      "periodic_blink": {
+        "mean_delta": 0.26134263022686355,
+        "lcb95": 0.24771578415539353,
+        "n": 128
+      }
+    },
+    "clairvoyant_oracle": {
+      "always_off": {
+        "mean_delta": 0.324574836587999,
+        "lcb95": 0.3110616771858381,
+        "n": 128
+      },
+      "random_feasible": {
+        "mean_delta": 0.3181359585796599,
+        "lcb95": 0.30455636485372295,
+        "n": 128
+      },
+      "budgeted_barrage": {
+        "mean_delta": 0.25693841502652504,
+        "lcb95": 0.24000998439199414,
+        "n": 128
+      },
+      "budgeted_round_robin": {
+        "mean_delta": 0.17117583713843487,
+        "lcb95": 0.15195469431817588,
+        "n": 128
+      },
+      "periodic_blink": {
+        "mean_delta": 0.324574836587999,
+        "lcb95": 0.3110616771858381,
+        "n": 128
+      },
+      "causal_reactive_or_edf": {
+        "mean_delta": 0.06323220636113547,
+        "lcb95": 0.04976513722530798,
+        "n": 128
+      }
+    }
+  },
+  "oracle_headroom": {
+    "oracle_drop": 0.33127624460030347,
+    "best_non_witness_baseline": "budgeted_round_robin",
+    "best_baseline_drop": 0.1601004074618686,
+    "absolute_gap_pp": 17.117583713843487,
+    "witness_drop": 0.268044038239168,
+    "oracle_vs_witness_gap_pp": 6.323220636113547
+  },
+  "frozen_baselines": [
+    "always_off",
+    "random_feasible",
+    "budgeted_barrage",
+    "budgeted_round_robin",
+    "periodic_blink",
+    "causal_reactive_or_edf"
+  ]
+}

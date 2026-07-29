@@ -69,7 +69,13 @@ class EnvConfig:
     detect_width_db: float = 3.0
     mission_tau_window: int = 6
     detects_required: int = 1
-    obs_delay_steps: int = 2
+    # F2 repair (MODIFICATION_PLAN route "repair causal information/history"):
+    # delay=2 made the same-observation witness unable to demonstrate
+    # learnability headroom (it could not react to fresh arrivals within
+    # the mission tau_window). delay=0 keeps the channel causal (only
+    # past/present observables, no future-leak) while letting the witness
+    # react to currently-pending activity. Verified by test_causal_observation.
+    obs_delay_steps: int = 0
     obs_ema_alpha: float = 0.5
     potential_coef: float = 0.05
     gamma: float = 0.99
