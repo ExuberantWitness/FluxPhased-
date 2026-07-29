@@ -6,8 +6,8 @@ status: PASS (Gate 5 cleared: two-seed pilot reproducible at witness
               level, no crash, no significance claim per W7)
 branch: g3-bsta/mfr-lite-fastwork
 base_commit: 47bcaf1 (F5 tip)
-git_commit: <to be filled at commit>
-tree_sha: <to be filled at commit>
+git_commit: 8d40e4ec9cbce265aac248974cbeb2ca49bc00ff
+tree_sha: ca457a57c6f3acf65023e1d309b8d5490539d730
 changed_files:
   - experiments/g3_bsta_lite/baseline_freeze/run_f6.py             (new)
   - experiments/g3_bsta_lite/baseline_freeze/f6_ppo_bc_seed0.pt    (new, .gitignored)
