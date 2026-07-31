@@ -1,0 +1,14 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 101.9 GB
+S2 PPO AMENDMENT 02 (MultiDiscrete)  seed=20260730
+  entropy_coef=5e-3, anneal_frac=0.5, target_kl=0.02
+  train_seeds=64  val_seeds=64
+  out_dir=/home/ubuntu/CODE/g3-bsta-fastwork/experiments/array_face_s2/learning_repair/s2_ppo_output_amend02_seed20260730
+  iter    9  rollout_drop=0.0028  val_drop=0.0065  entropy=1.9679 (b=0.366+m=1.602)  trans=10240  elapsed=46s
+  iter   19  rollout_drop=0.0028  val_drop=0.0065  entropy=1.9911 (b=0.400+m=1.591)  trans=20480  elapsed=92s
+  iter   29  rollout_drop=0.0028  val_drop=0.0074  entropy=1.9668 (b=0.377+m=1.590)  trans=30720  elapsed=138s
+  iter   39  rollout_drop=0.0028  val_drop=0.0078  entropy=1.9275 (b=0.368+m=1.559)  trans=40960  elapsed=185s
+  iter   49  rollout_drop=0.0028  val_drop=0.0078  entropy=1.8683 (b=0.361+m=1.507)  trans=51200  elapsed=232s
+  iter   59  rollout_drop=0.0028  val_drop=0.0082  entropy=1.9146 (b=0.344+m=1.571)  trans=61440  elapsed=280s
+  iter   69  rollout_drop=0.0028  val_drop=0.0086  entropy=1.8934 (b=0.310+m=1.583)  trans=71680  elapsed=327s
