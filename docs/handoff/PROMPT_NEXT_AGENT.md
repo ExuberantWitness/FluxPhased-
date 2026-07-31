@@ -1,7 +1,7 @@
 # PROMPT — 给接手 agent 的从零复现手册
 
 > **使用方法**:在新机器的 Claude Code 会话第一条 user message,**整篇粘贴**这个文件。
-> Agent 应该按 Phase A → Phase J 顺序执行,不跳步。
+> Agent 应该按 Phase A → Phase K 顺序执行,不跳步。
 >
 > **设计原则**:agent 在新机器上**什么都没有**的状态下也能跑通。Handoff 文档通过 raw URL 下载(无需 auth),memory snapshot 在 repo 里(公开 clone 即可)。
 
@@ -17,7 +17,7 @@
 4. ⚠️ **S2 有一个物理 bug 未修**(P_jam_W 语义冲突)
 5. ✅ handoff 文档 + memory snapshot(43 个 .md)推送完毕
 
-**你的任务**:走完 Phase A → Phase J,完成 S2 修复 + 复现 + 验证 + 报告,**然后停下与用户讨论**。
+**你的任务**:走完 Phase A → Phase K,完成 S2 修复 + 复现 + 验证 + 报告 + 核查点,**然后停下与用户讨论**。
 
 ---
 
@@ -167,9 +167,15 @@ head -3 HANDOFF_20260731.md # 期望 "# 承接文档 — Array-Face 多阶段路
 
 ---
 
-# Phase B: 安装 memory(预计 5 分钟)
+# Phase B: 安装 memory(预计 5 分钟,仅 Claude Code 适用)
 
 > **目标**:把 memory snapshot 装到 Claude 的项目目录,让新会话能加载历史 lesson。
+>
+> **环境适配**:
+> - **Claude Code**(官方 CLI):memory 自动加载机制生效,本 phase 必须执行。
+> - **ZCode / 其他第三方 agent runtime**:memory 自动加载**不生效**,本 phase 可跳过;
+>   改为在 Phase F 之后**直接从 clone 出的 `docs/handoff/memory-snapshot-*/` 按需 Read**。
+>   2026-07-31 跨机器复现就走了这条路径(ZCode/GLM-5.2),证明可行。
 
 ## B.1 确定项目顶层目录
 
@@ -608,8 +614,8 @@ print(f"JNR main (broadside-broadside): {jnr_main.item():.2f} dB")
 print(f"JNR side (jammer at -60deg):    {jnr_side.item():.2f} dB")
 print(f"Spread:                          {spread:.2f} dB")
 
-assert 10.0 < jnr_main.item() < 15.0, \
-    f"主瓣 JNR {jnr_main.item():.2f} 超预期 [10, 15],物理 bug 未修干净"
+assert 65.0 < jnr_main.item() < 70.0, \
+    f"主瓣 JNR {jnr_main.item():.2f} 超预期 [65,70],物理 bug 未修干净"
 assert spread >= 15.0, \
     f"spread {spread:.2f} < 15 dB,AF 公式问题"
 print("M0 PASS")
@@ -620,11 +626,16 @@ python /tmp/m0_verify.py
 
 **期望**:
 ```
-JNR main (broadside-broadside): 12.55 dB
-JNR side (jammer at -60deg):    -7.33 dB
+JNR main (broadside-broadside): 67.48 dB
+JNR side (jammer at -60deg):    47.60 dB
 Spread:                          19.88 dB
 M0 PASS
 ```
+
+> **重要**:67.48 dB 必须与 S1 baseline(P_jam_W=50W 单天线)**等值**,这是 S1/S2 物理可比
+> 的硬保证。若你的实测偏离 [65, 70],**先走 §10.7.8(三方交叉验证)**,不要硬改代码。
+> 历史 lesson:本 handoff v1 曾把期望值写成 12.55 dB(算术错),2026-07-31 跨机器复现
+> 触发该 bug,ZCode 通过三方验证判定 handoff 错、代码对。详见 handoff §10.7.8。
 
 **失败诊断**:
 - JNR main > 20 → 还是用了 P_jam_W=10.0,检查改动是否生效
@@ -868,6 +879,119 @@ S2 复现完成,信号灯:🟢/🟡/🔴 <颜色>
 **要**:
 - ✅ 给具体选项(A/B/C/D + 推荐 + 理由)
 - ✅ 等用户回复
+
+---
+
+# Phase K: 写 REPRO_CHECKPOINT 给下一个核查 agent(预计 15 分钟)
+
+> **目标**:把本次复现的关键决策、独立验证、对 handoff 的偏离与判定依据,写成一个
+> **自包含 checkpoint 文件**,供下一个核查 agent(可能是另一个工具/机器)在 3 分钟内
+> 判断"这次复现是否可信"。
+>
+> **背景**:2026-07-31 的跨机器复现中,前一个 agent(ZCode)侦测到 handoff §10.4/§10.7.3/§10.7.6
+> 写的 JNR 期望值 12.55 dB 与代码实测 67.48 dB 严重冲突。它没有盲改代码,而是独立手算 +
+> 三方交叉验证(S1/S2-fixed/S2-buggy),最后判定"代码对、handoff 错",并写了
+> `REPRO_CHECKPOINT_20260731.md` 供主机端 agent 核查。这一做法挽救了整个复现,值得固化。
+
+## K.1 何时写
+
+- ✅ **任何 M0/micro-verify 失败但你判定是 handoff 错而不是代码错时**
+- ✅ **任何 handoff 数字与代码实测冲突时**(即便不阻塞)
+- ✅ **训练曲线与预期显著偏离时**(mean 偏离 S1 baseline > 5pp)
+- ✅ **3 seed break-out rate < 2/3**(信号灯非 GREEN)
+- ❌ 一切顺利、信号灯 GREEN、无任何偏离 → 不必写(Phase J 报告足够)
+
+## K.2 文件路径与命名
+
+```
+docs/handoff/REPRO_CHECKPOINT_<YYYYMMDD>.md
+```
+
+`YYYYMMDD` 用本次复现**完成日**(不是开始日)。
+
+## K.3 必含章节(模板)
+
+```markdown
+# S2 复现核查点 — REPRO_CHECKPOINT_<YYYYMMDD>
+
+> **用途**:供另一个 agent 核查本次 S2 复现工作是否正确。
+> 本文自包含:含背景、已完成工作、核心发现、可复现的验证命令、关键数据、文件位置。
+> **生成时间**:<YYYY-MM-DD>
+> **复现根目录**:<绝对路径>
+> **分支**:<branch> @ <短 commit hash>
+
+---
+
+## 0. 核查 TL;DR(给核查 agent 的 3 分钟结论)
+[4-5 条要点:物理修复 / 测试 / 训练状态 / 信号灯初判 / 未完成项]
+
+## 1. 背景(为什么做这件事)
+[仓库 / 分支 / 任务 / 已知 bug / 前一 phase 的 baseline]
+
+## 2. 本次复现采用的方式
+[全新 clone / 复用 worktree / env 复用还是新建 / 用户授权了什么]
+
+## 3. 已完成工作(逐 Phase)
+[表格:Phase | 内容 | 结果]
+
+## 4. 物理修复改动清单(共 X 处)
+[文件 + 行号 + 改动;附 grep 核查命令证明无残留]
+
+## 5. 核心发现(handoff 与代码的冲突,如有)
+### 5.1 现象
+[M0 实测什么 vs handoff 期望什么,差异多少]
+
+### 5.2 根因
+[独立手算表格:项 | 实际值 | handoff 写的 | 问题]
+
+### 5.3 三方交叉验证(决定性证据)
+[S1 baseline / S2-fixed / S2-buggy 三个版本的对比表]
+
+### 5.4 复现验证命令(核查 agent 可直接跑)
+[完整的 python - <<'PY' ... PY 块,不需要核查 agent 自己设计实验]
+
+## 6. Phase 9 训练进展(本文件生成时的快照)
+[每 seed:状态 / val 末 / peak / break-out iter]
+[与 S1 baseline 的对比表]
+[初步信号灯 + 待聚合说明]
+
+## 7. 文件位置索引(核查用)
+[复现根 / 本文件 / 原 handoff / 原 prompt / memory snapshot / 改过的代码 / 训练输出]
+
+## 8. 给核查 agent 的核查清单
+[6-8 条可独立验证的断言,每条附命令]
+
+### 8.1 如果核查发现我判断错了
+[给核查 agent 留的反向选项 + 验证路径,不要让下一个 agent 盲信]
+
+## 9. 可复现命令汇总
+[环境激活 / 测试 / M0 micro-verify / 单 seed PPO]
+
+## 10. 读取训练结果
+[解析 train_metrics.jsonl / val_metrics.jsonl 的命令]
+
+## 11. 未完成项
+[明确的 TODO,不要让下一个 agent 猜]
+```
+
+## K.4 关键原则
+
+1. **自包含**:核查 agent 不应需要回读你的会话历史;所有命令、数字、判定依据都在文件里。
+2. **可证伪**:每个断言都附一条核查 agent 能直接复制粘贴运行的命令。
+3. **不偏袒**:既写"我做对了什么",也写"如果我认为对的实际是错的,核查 agent 该怎么发现"。
+4. **绝对路径**:复现根、文件路径全用绝对路径(如 `/home/ubuntu/repro/array-face-s1/...`)。
+5. **commit hash + 分支**:写明白前 HEAD,核查 agent 才能 checkout 同一状态。
+6. **不写感受**:不写"我觉得复现很成功",写"seed 20260729 val=0.2101,S1 ref 0.2205,delta -1pp 落在 ±5pp 容差内 → 复现 S1 水平"。
+
+## K.5 写完之后
+
+```bash
+# 不要 commit / push(REPRO_CHECKPOINT 是给主机端核查 agent 看的,留在复现机本地)
+# 但要把它在 Phase J 的最终报告里引用:
+
+# 在给用户的报告末尾加:
+"本机核查文件:<绝对路径>(供下一个核查 agent 使用)"
+```
 
 ---
 
