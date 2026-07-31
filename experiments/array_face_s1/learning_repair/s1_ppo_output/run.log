@@ -1,0 +1,55 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 101.9 GB
+S1 PPO: 64 train seeds, 64 val seeds
+manifest_dir: /home/ubuntu/CODE/g3-bsta-fastwork/experiments/array_face_s1/manifests
+out_dir: /home/ubuntu/CODE/g3-bsta-fastwork/experiments/array_face_s1/learning_repair/s1_ppo_output
+  iter    9  rollout_drop=0.0218  val_drop=0.0186  policy_loss=-0.0009  value_loss=0.0523  kl_max_post=0.00000  entropy=0.3520  trans=10240  elapsed=41s
+  iter   19  rollout_drop=0.0138  val_drop=0.0348  policy_loss=-0.0012  value_loss=0.0248  kl_max_post=0.00000  entropy=0.2918  trans=20480  elapsed=83s
+  iter   29  rollout_drop=0.0402  val_drop=0.0638  policy_loss=-0.0008  value_loss=0.0983  kl_max_post=0.00000  entropy=0.1930  trans=30720  elapsed=124s
+  iter   39  rollout_drop=0.0674  val_drop=0.0755  policy_loss=-0.0002  value_loss=0.1068  kl_max_post=0.00000  entropy=0.1410  trans=40960  elapsed=165s
+  iter   49  rollout_drop=0.0692  val_drop=0.0854  policy_loss=-0.0003  value_loss=0.0830  kl_max_post=0.00000  entropy=0.1013  trans=51200  elapsed=206s
+  iter   59  rollout_drop=0.0678  val_drop=0.0869  policy_loss=-0.0003  value_loss=0.1244  kl_max_post=0.00000  entropy=0.0912  trans=61440  elapsed=248s
+  iter   69  rollout_drop=0.0831  val_drop=0.0867  policy_loss=-0.0000  value_loss=0.1086  kl_max_post=0.00000  entropy=0.0915  trans=71680  elapsed=289s
+  iter   79  rollout_drop=0.0702  val_drop=0.0850  policy_loss=-0.0002  value_loss=0.1135  kl_max_post=0.00000  entropy=0.1033  trans=81920  elapsed=330s
+  iter   89  rollout_drop=0.0707  val_drop=0.0864  policy_loss=-0.0016  value_loss=0.0751  kl_max_post=0.00000  entropy=0.0682  trans=92160  elapsed=371s
+  iter   99  rollout_drop=0.0815  val_drop=0.0922  policy_loss=-0.0001  value_loss=0.0999  kl_max_post=0.00000  entropy=0.0478  trans=102400  elapsed=413s
+  iter  109  rollout_drop=0.0742  val_drop=0.0882  policy_loss=0.0000  value_loss=0.0971  kl_max_post=0.00000  entropy=0.0558  trans=112640  elapsed=454s
+  iter  119  rollout_drop=0.0779  val_drop=0.0886  policy_loss=-0.0000  value_loss=0.0964  kl_max_post=0.00000  entropy=0.0641  trans=122880  elapsed=495s
+  iter  129  rollout_drop=0.0719  val_drop=0.0898  policy_loss=-0.0004  value_loss=0.0855  kl_max_post=0.00000  entropy=0.0487  trans=133120  elapsed=537s
+  iter  139  rollout_drop=0.0739  val_drop=0.0915  policy_loss=-0.0004  value_loss=0.0908  kl_max_post=0.00000  entropy=0.0449  trans=143360  elapsed=579s
+  iter  149  rollout_drop=0.0879  val_drop=0.0925  policy_loss=-0.0007  value_loss=0.0796  kl_max_post=0.00000  entropy=0.0438  trans=153600  elapsed=620s
+  iter  159  rollout_drop=0.0815  val_drop=0.0894  policy_loss=-0.0000  value_loss=0.0911  kl_max_post=0.00000  entropy=0.0489  trans=163840  elapsed=662s
+  iter  169  rollout_drop=0.0786  val_drop=0.0900  policy_loss=-0.0031  value_loss=0.0971  kl_max_post=0.00001  entropy=0.0486  trans=174080  elapsed=703s
+  iter  179  rollout_drop=0.0782  val_drop=0.0885  policy_loss=-0.0004  value_loss=0.0939  kl_max_post=0.00000  entropy=0.0464  trans=184320  elapsed=745s
+  iter  189  rollout_drop=0.0767  val_drop=0.0886  policy_loss=0.0000  value_loss=0.0838  kl_max_post=0.00000  entropy=0.0617  trans=194560  elapsed=787s
+  iter  199  rollout_drop=0.0779  val_drop=0.0924  policy_loss=-0.0004  value_loss=0.0921  kl_max_post=0.00000  entropy=0.0475  trans=204800  elapsed=829s
+  iter  209  rollout_drop=0.0638  val_drop=0.0889  policy_loss=-0.0002  value_loss=0.1119  kl_max_post=0.00000  entropy=0.0655  trans=215040  elapsed=870s
+  iter  219  rollout_drop=0.0783  val_drop=0.0898  policy_loss=-0.0002  value_loss=0.0872  kl_max_post=0.00000  entropy=0.0473  trans=225280  elapsed=912s
+  iter  229  rollout_drop=0.0637  val_drop=0.0889  policy_loss=-0.0004  value_loss=0.1132  kl_max_post=0.00000  entropy=0.0774  trans=235520  elapsed=954s
+  iter  239  rollout_drop=0.0763  val_drop=0.0893  policy_loss=-0.0003  value_loss=0.1190  kl_max_post=0.00000  entropy=0.0624  trans=245760  elapsed=995s
+  iter  249  rollout_drop=0.0765  val_drop=0.0910  policy_loss=-0.0001  value_loss=0.0906  kl_max_post=0.00000  entropy=0.0490  trans=256000  elapsed=1037s
+  iter  259  rollout_drop=0.0853  val_drop=0.0911  policy_loss=-0.0005  value_loss=0.0779  kl_max_post=0.00000  entropy=0.0445  trans=266240  elapsed=1079s
+  iter  269  rollout_drop=0.0814  val_drop=0.0900  policy_loss=-0.0004  value_loss=0.0956  kl_max_post=0.00000  entropy=0.0516  trans=276480  elapsed=1121s
+  iter  279  rollout_drop=0.0806  val_drop=0.0929  policy_loss=-0.0002  value_loss=0.0887  kl_max_post=0.00000  entropy=0.0353  trans=286720  elapsed=1163s
+  iter  289  rollout_drop=0.0673  val_drop=0.0929  policy_loss=-0.0002  value_loss=0.0771  kl_max_post=0.00000  entropy=0.0363  trans=296960  elapsed=1206s
+  iter  299  rollout_drop=0.0697  val_drop=0.0932  policy_loss=-0.0000  value_loss=0.0908  kl_max_post=0.00000  entropy=0.0290  trans=307200  elapsed=1247s
+  iter  309  rollout_drop=0.0747  val_drop=0.0928  policy_loss=0.0000  value_loss=0.0740  kl_max_post=0.00000  entropy=0.0240  trans=317440  elapsed=1289s
+  iter  319  rollout_drop=0.0780  val_drop=0.0936  policy_loss=-0.0000  value_loss=0.0760  kl_max_post=0.00000  entropy=0.0289  trans=327680  elapsed=1331s
+  iter  329  rollout_drop=0.0780  val_drop=0.0928  policy_loss=-0.0000  value_loss=0.0772  kl_max_post=0.00000  entropy=0.0222  trans=337920  elapsed=1373s
+  iter  339  rollout_drop=0.0815  val_drop=0.0925  policy_loss=-0.0004  value_loss=0.0846  kl_max_post=0.00000  entropy=0.0274  trans=348160  elapsed=1415s
+  iter  349  rollout_drop=0.0708  val_drop=0.0892  policy_loss=0.0001  value_loss=0.1030  kl_max_post=0.00000  entropy=0.0479  trans=358400  elapsed=1457s
+  iter  359  rollout_drop=0.0780  val_drop=0.0932  policy_loss=-0.0011  value_loss=0.0775  kl_max_post=0.00000  entropy=0.0249  trans=368640  elapsed=1498s
+  iter  369  rollout_drop=0.0728  val_drop=0.0937  policy_loss=-0.0008  value_loss=0.0889  kl_max_post=0.00000  entropy=0.0186  trans=378880  elapsed=1540s
+  iter  379  rollout_drop=0.0780  val_drop=0.0937  policy_loss=0.0001  value_loss=0.0769  kl_max_post=0.00000  entropy=0.0182  trans=389120  elapsed=1582s
+  iter  389  rollout_drop=0.0739  val_drop=0.0929  policy_loss=-0.0001  value_loss=0.0768  kl_max_post=0.00000  entropy=0.0135  trans=399360  elapsed=1624s
+  iter  399  rollout_drop=0.0780  val_drop=0.0929  policy_loss=0.0000  value_loss=0.0762  kl_max_post=0.00000  entropy=0.0102  trans=409600  elapsed=1666s
+  iter  409  rollout_drop=0.0676  val_drop=0.0929  policy_loss=-0.0001  value_loss=0.0700  kl_max_post=0.00000  entropy=0.0103  trans=419840  elapsed=1707s
+  iter  419  rollout_drop=0.0780  val_drop=0.0929  policy_loss=-0.0000  value_loss=0.0751  kl_max_post=0.00000  entropy=0.0109  trans=430080  elapsed=1750s
+  iter  429  rollout_drop=0.0780  val_drop=0.0933  policy_loss=0.0000  value_loss=0.0736  kl_max_post=0.00000  entropy=0.0119  trans=440320  elapsed=1791s
+  iter  439  rollout_drop=0.0780  val_drop=0.0929  policy_loss=-0.0000  value_loss=0.0739  kl_max_post=0.00000  entropy=0.0091  trans=450560  elapsed=1833s
+  iter  449  rollout_drop=0.0719  val_drop=0.0929  policy_loss=-0.0000  value_loss=0.0742  kl_max_post=0.00000  entropy=0.0064  trans=460800  elapsed=1876s
+  iter  459  rollout_drop=0.0739  val_drop=0.0929  policy_loss=-0.0000  value_loss=0.0754  kl_max_post=0.00000  entropy=0.0073  trans=471040  elapsed=1919s
+  iter  469  rollout_drop=0.0780  val_drop=0.0929  policy_loss=-0.0001  value_loss=0.0741  kl_max_post=0.00000  entropy=0.0081  trans=481280  elapsed=1963s
+  iter  479  rollout_drop=0.0780  val_drop=0.0929  policy_loss=0.0000  value_loss=0.0726  kl_max_post=0.00000  entropy=0.0068  trans=491520  elapsed=2006s
+  iter  489  rollout_drop=0.0697  val_drop=0.0929  policy_loss=0.0000  value_loss=0.0859  kl_max_post=0.00000  entropy=0.0057  trans=501760  elapsed=2049s

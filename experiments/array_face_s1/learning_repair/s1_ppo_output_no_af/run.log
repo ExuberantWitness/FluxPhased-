@@ -1,0 +1,31 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA RTX PRO 6000 Blackwell Workstation Edition
+[gpu] VRAM: 101.9 GB
+S1 CONTROL mode=no_af
+  train_seeds=64  val_seeds=64
+  obs_dim=16
+  skip_beam_obs=False  disable_af=True
+  out_dir=/home/ubuntu/CODE/g3-bsta-fastwork/experiments/array_face_s1/learning_repair/s1_ppo_output_no_af
+  iter    9  rollout_drop=0.0218  val_drop=0.0186  entropy=0.3519  trans=10240  elapsed=161s
+  iter   19  rollout_drop=0.0138  val_drop=0.0356  entropy=0.2902  trans=20480  elapsed=327s
+  iter   29  rollout_drop=0.0466  val_drop=0.0661  entropy=0.1817  trans=30720  elapsed=493s
+  iter   39  rollout_drop=0.0674  val_drop=0.0781  entropy=0.1284  trans=40960  elapsed=659s
+  iter   49  rollout_drop=0.0692  val_drop=0.0850  entropy=0.0907  trans=51200  elapsed=825s
+  iter   59  rollout_drop=0.0678  val_drop=0.0889  entropy=0.0837  trans=61440  elapsed=991s
+  iter   69  rollout_drop=0.0879  val_drop=0.0896  entropy=0.0791  trans=71680  elapsed=1157s
+  iter   79  rollout_drop=0.0702  val_drop=0.0852  entropy=0.0914  trans=81920  elapsed=1324s
+  iter   89  rollout_drop=0.0812  val_drop=0.0877  entropy=0.0582  trans=92160  elapsed=1490s
+  iter   99  rollout_drop=0.0815  val_drop=0.0940  entropy=0.0439  trans=102400  elapsed=1656s
+  iter  109  rollout_drop=0.0688  val_drop=0.0896  entropy=0.0539  trans=112640  elapsed=1823s
+  iter  119  rollout_drop=0.0774  val_drop=0.0857  entropy=0.0621  trans=122880  elapsed=1989s
+  iter  129  rollout_drop=0.0806  val_drop=0.0918  entropy=0.0457  trans=133120  elapsed=2156s
+  iter  139  rollout_drop=0.0780  val_drop=0.0915  entropy=0.0434  trans=143360  elapsed=2322s
+  iter  149  rollout_drop=0.0879  val_drop=0.0924  entropy=0.0433  trans=153600  elapsed=2489s
+  iter  159  rollout_drop=0.0815  val_drop=0.0894  entropy=0.0542  trans=163840  elapsed=2655s
+  iter  169  rollout_drop=0.0895  val_drop=0.0895  entropy=0.0500  trans=174080  elapsed=2821s
+  iter  179  rollout_drop=0.0782  val_drop=0.0889  entropy=0.0428  trans=184320  elapsed=2988s
+  iter  189  rollout_drop=0.0767  val_drop=0.0889  entropy=0.0610  trans=194560  elapsed=3155s
+  iter  199  rollout_drop=0.0809  val_drop=0.0940  entropy=0.0420  trans=204800  elapsed=3321s
+  iter  209  rollout_drop=0.0777  val_drop=0.0928  entropy=0.0501  trans=215040  elapsed=3487s
+  iter  219  rollout_drop=0.0783  val_drop=0.0927  entropy=0.0426  trans=225280  elapsed=3654s
+  iter  229  rollout_drop=0.0739  val_drop=0.0928  entropy=0.0433  trans=235520  elapsed=3820s

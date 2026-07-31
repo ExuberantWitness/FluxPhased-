@@ -1,0 +1,655 @@
+{
+  "base_seed": 21011101,
+  "entries": [
+    {
+      "arrivals_sha256": "bfe8086a9bd272b7c3f52f7cc391780129b52042c79d98af5df5a2d3811be381",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011101
+    },
+    {
+      "arrivals_sha256": "19d7124cc32ff9935f7cc8e760cc1450efe4642751824ffc86b2311eee798db4",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011102
+    },
+    {
+      "arrivals_sha256": "0280d44464a343f2efcb51a5d5a5131fcbb1e20d197d5ec54c5d713f227916dc",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011103
+    },
+    {
+      "arrivals_sha256": "a3e324fae1f90ad13268d64a496f2f37b80c2153ccd92b218f2133bfa347680b",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011104
+    },
+    {
+      "arrivals_sha256": "2646b418a1326d40a398aecb1e0e775c7e1823404b1a098b2e4319f98b72b6ed",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011105
+    },
+    {
+      "arrivals_sha256": "070e8386d95781d50f7af083114fbcf140154c1700238e0294ba5b3922ac5f92",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011106
+    },
+    {
+      "arrivals_sha256": "6cf4b7c8ff10684b3223466a0c55b946926873f766d23dc46c3502fedb0062d2",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011107
+    },
+    {
+      "arrivals_sha256": "ee1bb62a83fcacb3d1216e2aa09701a572cde5080811a2f648c1fb21c151aa0c",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011108
+    },
+    {
+      "arrivals_sha256": "12b57f021cf47e46606b763f1a2b9024281e1ee9abd94275df0fb714b2c7775c",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011109
+    },
+    {
+      "arrivals_sha256": "6c5731fc60ee75b2767228059dbc16b44e8c89b870e03b4a0e33c1af0360b6dc",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011110
+    },
+    {
+      "arrivals_sha256": "4afbcb039c1d5e95d755000917948d8e63fcafd524958174114bf8aa2f37fc4b",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011111
+    },
+    {
+      "arrivals_sha256": "970cd52937b640692fcc4a2e9e46c2c01b958bf43cbfad02c79a55325c2b7d20",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011112
+    },
+    {
+      "arrivals_sha256": "641e378c60a45fc2b5bda0e3468fb68699a61f4f093fed8d5d4df8dbd06c4dd6",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011113
+    },
+    {
+      "arrivals_sha256": "22e13c1099e79e55e1dc094af10a0fe3aa7db5f9813e022c52642c2cbb7e5112",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011114
+    },
+    {
+      "arrivals_sha256": "861a84eff14910b97f5fc60e1688ef436f3df97ecbb7acd8af298a9a9b835dc7",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011115
+    },
+    {
+      "arrivals_sha256": "593165dd856cc242a09be8828173b62279601bf4b6d8855ffc676d192fda999b",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011116
+    },
+    {
+      "arrivals_sha256": "d6fbbb79c91bb7cf24fe3c751669a68f145d82d165ff662a20af1862aac9fcba",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011117
+    },
+    {
+      "arrivals_sha256": "fb498a92a068cbf8a08791a0378c98ab682a0942570e498653030eabf98f79d5",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011118
+    },
+    {
+      "arrivals_sha256": "d39db66b4f6ccbda5954f44d6c957686e95677497b805dd2e2c5c5091cd76632",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011119
+    },
+    {
+      "arrivals_sha256": "7c7fa0c6f1f9ee592c39c450d034ae871becd28b8c4b1c070d242f0d3a866a32",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011120
+    },
+    {
+      "arrivals_sha256": "be4c280066fd5a1705b782aea241cb32bf462d4f573f101a4c988dbdf1269772",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011121
+    },
+    {
+      "arrivals_sha256": "bcf43613d9987e72683f0c623e695f852171f2a5828ecaa3aeb87ef0d8ed42f6",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011122
+    },
+    {
+      "arrivals_sha256": "1ecbea096d444d6bf004496153f805b0bf99833cffbc2a9879d2590b67a495ec",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011123
+    },
+    {
+      "arrivals_sha256": "64481d8fb2eb7f61e8e001bbae0af153474936a9c204c753e230e0478e3d51ab",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011124
+    },
+    {
+      "arrivals_sha256": "103770ab743564fbe7636c32002a992520383116811f8446913a0ac89dcc9459",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011125
+    },
+    {
+      "arrivals_sha256": "d69ccb558ebbe5c86dcd4aa57513f01b7844727dbd6992f90a9e2246248c8799",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011126
+    },
+    {
+      "arrivals_sha256": "1355686df10d1a591cc3e075aabba1ac89cb7e909e1fb66178bec11f323387ef",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011127
+    },
+    {
+      "arrivals_sha256": "ba97d6b12b1ce4e2fbdf6ac92ecb387ceee45990bd68b9a1698889583f8c9c34",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011128
+    },
+    {
+      "arrivals_sha256": "ac65efa487237a172bf319ffa3c89ff064dac38754d1fd9dffc1a78a57396b71",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011129
+    },
+    {
+      "arrivals_sha256": "9d4456831dda27e729b3e11077811e47dbaaca90e58dc678334afb77c0b1e695",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011130
+    },
+    {
+      "arrivals_sha256": "4c7a2328970c6fe5708a5b59773c21db0ee7462c39d31e2dbf26738a32b3dd88",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011131
+    },
+    {
+      "arrivals_sha256": "a7ee56e51d51db2e1ed631c5827fbc6581a88e84db95c4615c1e70bb91533f0a",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011132
+    },
+    {
+      "arrivals_sha256": "cadb406ea9fedfbc1f06bda63261932a139014f64e6aa5421a9563b1f9c14925",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011133
+    },
+    {
+      "arrivals_sha256": "dcc5c3ce1f4f420170f1d8683f93e5a4123b5bf2653b8644b3ffc2311dae4526",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011134
+    },
+    {
+      "arrivals_sha256": "86843b3e821002ffb0f84afdaebf25a3729917edbaec39f645e07defe5a41d5f",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011135
+    },
+    {
+      "arrivals_sha256": "1179c038b2e7b25f30ab21ee9cee3b5a6e4d1c645d9276b3d05446875bf82375",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011136
+    },
+    {
+      "arrivals_sha256": "7df4d71825f914d32c56585183e6675834fe55ebef6d4a63518ea44eef22db7b",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011137
+    },
+    {
+      "arrivals_sha256": "bfd644c8446422518fe5a3c8de6f3156ee94dd15db153703b61cd3664016130e",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011138
+    },
+    {
+      "arrivals_sha256": "a7270b2dbf0a058c08e49a3dbad62b89e04b9b5ecbfb6222fb4d4ce9338ae171",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011139
+    },
+    {
+      "arrivals_sha256": "5b75cce69d979e44d84ea5968a2e81c477dac52a877da094def73cd193c5fb86",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011140
+    },
+    {
+      "arrivals_sha256": "580bd843550993902d861749d430c345ca59b30158fca38d6ce5f03c9cb3c9d3",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011141
+    },
+    {
+      "arrivals_sha256": "e54f40792f3a09e499f69bb8f6b39df30be4ccf65b045ad7bfdf43ccbfd385fd",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011142
+    },
+    {
+      "arrivals_sha256": "c866cc57e0ad82b2d43e76a8e9cdab447c7ca81fefdb47bd3fd5393510a74681",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011143
+    },
+    {
+      "arrivals_sha256": "8b4224c3793f88e39287435296f230725bdc4115df87f62fa1f372cc4289442c",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011144
+    },
+    {
+      "arrivals_sha256": "8d134ab93870b0844cfc506c57fd8837daef2c6a2f7a287bd9b36a9ec4dc9334",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011145
+    },
+    {
+      "arrivals_sha256": "3cf875250dfd095673022510269324d82ecc6d75238bc5f2a8b8cfa1fac9d42f",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011146
+    },
+    {
+      "arrivals_sha256": "ff8bfcc3361ca6fd6e0bab01e16f26ebb1e04f366cd5190246090799115cc875",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011147
+    },
+    {
+      "arrivals_sha256": "870de63754e7d1b6572f96fc2d66af94c1aca41e170062227d80da43a5537255",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011148
+    },
+    {
+      "arrivals_sha256": "0e6fb6c1d0d5ef59e77d9a3cf0c30a6095bb28cd71a76261eabfeec7301b1e04",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011149
+    },
+    {
+      "arrivals_sha256": "34cdb53bae2d25cb7b7e1c18ce4ae6d6d7ec9ec3909507b0ae92ab18f40c5864",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011150
+    },
+    {
+      "arrivals_sha256": "81699cb14cba5aea68bd3930080a5db04c73a181a97ccc943fc3a8fa5e4abe71",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011151
+    },
+    {
+      "arrivals_sha256": "de586c09920c4d707bdb1024120c895c8851f59d0c55c931952d0b50f267411d",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011152
+    },
+    {
+      "arrivals_sha256": "9a493d72ddd1335048620cfd66c8890a279387698d0b77ed6ba2577203efa34c",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011153
+    },
+    {
+      "arrivals_sha256": "975c8e13c929c16fdaf56c1b84d8a0fbb60f2971a52e63fbafe37d10ac178a39",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011154
+    },
+    {
+      "arrivals_sha256": "610881943cc8f2143e882520de5e8d65b5cd7d8d8795882f85a7e491bc771c8e",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011155
+    },
+    {
+      "arrivals_sha256": "a97a6636b0809a4ab0199f8a3b435c86eb6c7d34978da105a2feaa72ed12f26f",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011156
+    },
+    {
+      "arrivals_sha256": "fdf00b3fe45ce1aa4484619ca73b20656ee58ef8e49f6f09203c6596431ac2fc",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011157
+    },
+    {
+      "arrivals_sha256": "20a8749491bd4dd8aad00619c0c8a27a49e03384f1bd3298ebe031823d05d79a",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011158
+    },
+    {
+      "arrivals_sha256": "34b714854e59afce98c373968f78b575a4079efdbb4650d796d60ad489d9494f",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011159
+    },
+    {
+      "arrivals_sha256": "f3d588390749147be3834c02c6e405b5af64486e458d22a79703bf15d5aec735",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011160
+    },
+    {
+      "arrivals_sha256": "180a9dcfe98b037f5a2d003e9ce8cfd16f4730f022110540864ffe3a52ebe462",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011161
+    },
+    {
+      "arrivals_sha256": "70a9981a61d575a7ee642b19f3bf68e52b8d10213efe412bbebf96b870611b83",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011162
+    },
+    {
+      "arrivals_sha256": "d3fbaf66fb2d0de76edee8097b48098536a6307beaa6a9dc50e2be9bde075ced",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011163
+    },
+    {
+      "arrivals_sha256": "0534fc681aec042508352d466e421c1c12c9b9138eda84ca7a01ec9253323a69",
+      "arrivals_shape": [
+        64,
+        2
+      ],
+      "baseline_snr_db": 22.0,
+      "eligible": true,
+      "seed": 21011164
+    }
+  ],
+  "generator_commit": "8f7e72d8205ee6b59fec58e09b963def0c14fe03",
+  "manifest": "ppo_train",
+  "profile": {
+    "arrival_rate_per_service": 0.15,
+    "baseline_snr_db": 22.0,
+    "device": "cpu",
+    "horizon": 64,
+    "n_services": 2
+  },
+  "size": 64
+}

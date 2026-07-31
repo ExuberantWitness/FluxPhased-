@@ -1,0 +1,113 @@
+{
+  "document": "MANIFEST_AUDIT.json",
+  "generated_by_commit": "8f7e72d8205ee6b59fec58e09b963def0c14fe03",
+  "legacy_range_check": {
+    "checkpoint_validation": {
+      "leaked": [],
+      "leaked_count": 0,
+      "legacy_ranges": [
+        [
+          20260801,
+          20260832
+        ],
+        [
+          21000101,
+          21004099
+        ]
+      ],
+      "verdict": "CLEAN"
+    },
+    "dagger_train": {
+      "leaked": [],
+      "leaked_count": 0,
+      "legacy_ranges": [
+        [
+          20260801,
+          20260832
+        ],
+        [
+          21000101,
+          21004099
+        ]
+      ],
+      "verdict": "CLEAN"
+    },
+    "locked_test": {
+      "leaked": [],
+      "leaked_count": 0,
+      "legacy_ranges": [
+        [
+          20260801,
+          20260832
+        ],
+        [
+          21000101,
+          21004099
+        ]
+      ],
+      "verdict": "CLEAN"
+    },
+    "ppo_train": {
+      "leaked": [],
+      "leaked_count": 0,
+      "legacy_ranges": [
+        [
+          20260801,
+          20260832
+        ],
+        [
+          21000101,
+          21004099
+        ]
+      ],
+      "verdict": "CLEAN"
+    }
+  },
+  "manifest_sizes": {
+    "checkpoint_validation": 64,
+    "dagger_train": 128,
+    "locked_test": 128,
+    "ppo_train": 64
+  },
+  "overall_verdict": "ALL_DISJOINT_AND_LEGACY_CLEAN",
+  "pairwise_intersections": {
+    "checkpoint_validation__locked_test": {
+      "intersection_seeds": [],
+      "intersection_size": 0,
+      "verdict": "DISJOINT"
+    },
+    "dagger_train__checkpoint_validation": {
+      "intersection_seeds": [],
+      "intersection_size": 0,
+      "verdict": "DISJOINT"
+    },
+    "dagger_train__locked_test": {
+      "intersection_seeds": [],
+      "intersection_size": 0,
+      "verdict": "DISJOINT"
+    },
+    "dagger_train__ppo_train": {
+      "intersection_seeds": [],
+      "intersection_size": 0,
+      "verdict": "DISJOINT"
+    },
+    "ppo_train__checkpoint_validation": {
+      "intersection_seeds": [],
+      "intersection_size": 0,
+      "verdict": "DISJOINT"
+    },
+    "ppo_train__locked_test": {
+      "intersection_seeds": [],
+      "intersection_size": 0,
+      "verdict": "DISJOINT"
+    }
+  },
+  "preregistration": "experiments/array_face_s1/PREREGISTRATION.md",
+  "profile": {
+    "arrival_rate_per_service": 0.15,
+    "baseline_snr_db": 22.0,
+    "device": "cpu",
+    "horizon": 64,
+    "n_services": 2
+  }
+}
