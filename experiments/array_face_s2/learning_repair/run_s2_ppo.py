@@ -61,7 +61,7 @@ def main():
     )
     env_cfg = EnvConfig(
         n_envs=16, horizon=64, n_services=2,
-        dt=1.0, P_jam_W=10.0,            # S2: 5 cells × 2.0 W
+        dt=1.0, P_jam_W=2.0,             # S2 per-cell (plan §2.2)
         active_budget_steps=16, duty_budget=0.25,
         arrival_rate_per_service=0.15, baseline_snr_db=22.0,
         mission_tau_window=6, detects_required=1,
@@ -69,7 +69,7 @@ def main():
         potential_coef=0.05, gamma=0.99,
         device=device, seed=seed,
     )
-    physics = default_debug_physics_config(P_jam_W=10.0)
+    physics = default_debug_physics_config(P_jam_W=2.0)
     radar = RadarULAConfig()
     jammer = JammerULAConfig()
 
