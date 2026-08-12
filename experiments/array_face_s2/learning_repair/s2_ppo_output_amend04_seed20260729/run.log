@@ -1,0 +1,59 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA GeForce RTX 2060
+[gpu] VRAM: 6.4 GB
+S2 PPO v2 (amend04)  seed=20260729
+  train_seeds=64  val_seeds=64
+  per_head_entropy=False  normalize_returns=False
+  log_ratio_clamp=0.0  return_norm_clip=0.0
+  out_dir=E:\DATA\vscode\FluxPhased\experiments\array_face_s2\learning_repair\s2_ppo_output_amend04_seed20260729
+  iter    9  rollout_drop=0.0060  val_drop=0.0095  entropy=1.9855 (b=0.388+m=1.598)  trans=10240  elapsed=396s
+  iter   19  rollout_drop=0.0155  val_drop=0.0149  entropy=1.9344 (b=0.347+m=1.587)  trans=20480  elapsed=829s
+  iter   29  rollout_drop=0.0368  val_drop=0.0228  entropy=1.8635 (b=0.291+m=1.573)  trans=30720  elapsed=1248s
+  iter   39  rollout_drop=0.0496  val_drop=0.0397  entropy=1.8210 (b=0.244+m=1.577)  trans=40960  elapsed=1662s
+  iter   49  rollout_drop=0.0714  val_drop=0.0463  entropy=1.7847 (b=0.205+m=1.580)  trans=51200  elapsed=2094s
+  [checkpoint] saved iter 49
+  iter   59  rollout_drop=0.0787  val_drop=0.0571  entropy=1.7241 (b=0.158+m=1.566)  trans=61440  elapsed=2499s
+  iter   69  rollout_drop=0.0887  val_drop=0.0583  entropy=1.7042 (b=0.137+m=1.568)  trans=71680  elapsed=2914s
+  iter   79  rollout_drop=0.0838  val_drop=0.0610  entropy=1.6883 (b=0.127+m=1.561)  trans=81920  elapsed=3336s
+  iter   89  rollout_drop=0.0879  val_drop=0.0626  entropy=1.6843 (b=0.114+m=1.570)  trans=92160  elapsed=3759s
+  iter   99  rollout_drop=0.0841  val_drop=0.0668  entropy=1.6352 (b=0.114+m=1.522)  trans=102400  elapsed=4193s
+  [checkpoint] saved iter 99
+  iter  109  rollout_drop=0.1002  val_drop=0.0721  entropy=1.6302 (b=0.101+m=1.529)  trans=112640  elapsed=4634s
+  iter  119  rollout_drop=0.0759  val_drop=0.0731  entropy=1.6296 (b=0.082+m=1.548)  trans=122880  elapsed=5092s
+  iter  129  rollout_drop=0.0719  val_drop=0.0730  entropy=1.6258 (b=0.074+m=1.551)  trans=133120  elapsed=5546s
+  iter  139  rollout_drop=0.0844  val_drop=0.0765  entropy=1.6147 (b=0.068+m=1.547)  trans=143360  elapsed=5976s
+  iter  149  rollout_drop=0.1029  val_drop=0.0774  entropy=1.5989 (b=0.066+m=1.533)  trans=153600  elapsed=6410s
+  [checkpoint] saved iter 149
+  iter  159  rollout_drop=0.1008  val_drop=0.0807  entropy=1.5624 (b=0.063+m=1.500)  trans=163840  elapsed=6858s
+  iter  169  rollout_drop=0.0862  val_drop=0.0821  entropy=1.5489 (b=0.069+m=1.480)  trans=174080  elapsed=7298s
+  iter  179  rollout_drop=0.0951  val_drop=0.0857  entropy=1.4820 (b=0.058+m=1.424)  trans=184320  elapsed=7725s
+  iter  189  rollout_drop=0.1008  val_drop=0.0856  entropy=1.4258 (b=0.054+m=1.372)  trans=194560  elapsed=8132s
+  iter  199  rollout_drop=0.0677  val_drop=0.0857  entropy=1.3628 (b=0.051+m=1.312)  trans=204800  elapsed=8536s
+  [checkpoint] saved iter 199
+  iter  209  rollout_drop=0.0955  val_drop=0.0865  entropy=1.3278 (b=0.049+m=1.279)  trans=215040  elapsed=8940s
+  iter  219  rollout_drop=0.0883  val_drop=0.0861  entropy=1.2615 (b=0.042+m=1.220)  trans=225280  elapsed=9353s
+  iter  229  rollout_drop=0.1096  val_drop=0.0866  entropy=1.1929 (b=0.038+m=1.155)  trans=235520  elapsed=9765s
+  iter  239  rollout_drop=0.1029  val_drop=0.0885  entropy=1.0974 (b=0.037+m=1.060)  trans=245760  elapsed=10179s
+  iter  249  rollout_drop=0.0954  val_drop=0.0879  entropy=1.1657 (b=0.037+m=1.128)  trans=256000  elapsed=10624s
+  [checkpoint] saved iter 249
+  iter  259  rollout_drop=0.1062  val_drop=0.0886  entropy=1.1113 (b=0.040+m=1.071)  trans=266240  elapsed=11054s
+  iter  269  rollout_drop=0.1022  val_drop=0.0881  entropy=1.1363 (b=0.040+m=1.096)  trans=276480  elapsed=11526s
+  iter  279  rollout_drop=0.0972  val_drop=0.0902  entropy=1.0583 (b=0.041+m=1.017)  trans=286720  elapsed=11970s
+  iter  289  rollout_drop=0.1075  val_drop=0.0909  entropy=0.9952 (b=0.046+m=0.949)  trans=296960  elapsed=12382s
+  iter  299  rollout_drop=0.1050  val_drop=0.0906  entropy=1.0561 (b=0.048+m=1.008)  trans=307200  elapsed=12795s
+  [checkpoint] saved iter 299
+  iter  309  rollout_drop=0.1002  val_drop=0.0906  entropy=1.0430 (b=0.046+m=0.997)  trans=317440  elapsed=13205s
+  iter  319  rollout_drop=0.0961  val_drop=0.0906  entropy=1.1384 (b=0.045+m=1.094)  trans=327680  elapsed=13626s
+  iter  329  rollout_drop=0.0974  val_drop=0.0913  entropy=1.1181 (b=0.042+m=1.076)  trans=337920  elapsed=14062s
+  iter  339  rollout_drop=0.0990  val_drop=0.0915  entropy=1.1088 (b=0.041+m=1.068)  trans=348160  elapsed=14504s
+  iter  349  rollout_drop=0.1003  val_drop=0.0917  entropy=0.9600 (b=0.044+m=0.916)  trans=358400  elapsed=14928s
+  [checkpoint] saved iter 349
+  iter  359  rollout_drop=0.1020  val_drop=0.0920  entropy=0.8964 (b=0.039+m=0.857)  trans=368640  elapsed=15359s
+  iter  369  rollout_drop=0.0980  val_drop=0.0947  entropy=0.6867 (b=0.046+m=0.640)  trans=378880  elapsed=15796s
+  iter  379  rollout_drop=0.1048  val_drop=0.0951  entropy=0.6668 (b=0.045+m=0.622)  trans=389120  elapsed=16237s
+  iter  389  rollout_drop=0.1148  val_drop=0.0948  entropy=0.7986 (b=0.045+m=0.754)  trans=399360  elapsed=16702s
+  iter  399  rollout_drop=0.1057  val_drop=0.0952  entropy=0.6796 (b=0.045+m=0.635)  trans=409600  elapsed=17150s
+  [checkpoint] saved iter 399
+  iter  409  rollout_drop=0.1152  val_drop=0.0960  entropy=0.6978 (b=0.058+m=0.640)  trans=419840  elapsed=17567s
+  iter  419  rollout_drop=0.1171  val_drop=0.0979  entropy=0.5220 (b=0.069+m=0.453)  trans=430080  elapsed=17987s
+  iter  429  rollout_drop=0.1045  val_drop=0.0968  entropy=0.4567 (b=0.061+m=0.396)  trans=440320  elapsed=18394s
