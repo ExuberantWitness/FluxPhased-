@@ -389,27 +389,31 @@ class S2PPOTrainerV2:
 
         B = rb.obs.shape[0] * rb.obs.shape[1]
         obs_flat = rb.obs.reshape(B, -1)
-        mask_base_flat = rb.mask_base.reshape(B, -1)
-        mask_beam_flat = rb.mask_beam.reshape(B, -1)
-        act_base_flat = rb.action_base.reshape(B)
-        act_beam_flat = rb.action_beam.reshape(B)
         logp_old_flat = rb.logp.reshape(B)
         adv_flat = adv.reshape(B)
         ret_flat = returns.reshape(B)
-        masks_flat = {"base": mask_base_flat, "beam": mask_beam_flat}
-        actions_flat = {"base": act_base_flat, "beam": act_beam_flat}
-        # Generic head flatten: if the rollout buffer carries extra heads beyond
-        # base/beam (e.g. S3's cell head, stashed as rb attributes), add them so
-        # the PPO update's joint_log_prob / joint_entropy / joint_kl see all heads.
-        for name in self.head_names:
-            if name in masks_flat:
-                continue
+        # Fully generic per-head flatten: every head's mask/action is read by
+        # name (rb.mask_<name> / rb.action_<name>). RolloutBuffer's base/beam
+        # dataclass fields serve S2/S3 (their head names match); S4's cell head
+        # (3-D) is stashed as rb.mask_cell/rb.action_cell and read here without
+        # the 2-D reshape assumption the old hardcoded path made.
+        masks_flat: dict[str, torch.Tensor] = {}
+        actions_flat: dict[str, torch.Tensor] = {}
+        for name, spec in zip(self.head_names, self.head_specs):
             mask_attr = "mask_" + name
             act_attr = "action_" + name
-            if hasattr(rb, mask_attr) and hasattr(rb, act_attr):
-                masks_flat[name] = getattr(rb, mask_attr).reshape(B, -1)
-                act_flat_tensor = getattr(rb, act_attr)
-                actions_flat[name] = act_flat_tensor.reshape(B, -1) if act_flat_tensor.dim() > 1 else act_flat_tensor.reshape(B)
+            if not (hasattr(rb, mask_attr) and hasattr(rb, act_attr)):
+                raise AttributeError(
+                    f"rollout buffer missing {mask_attr}/{act_attr} for head {name!r}"
+                )
+            masks_flat[name] = getattr(rb, mask_attr).reshape(B, -1)
+            act_flat_tensor = getattr(rb, act_attr)
+            if spec.kind == "categorical":
+                # stored [T, E] int64 -> [B]
+                actions_flat[name] = act_flat_tensor.reshape(B)
+            else:
+                # bernoulli stored [T, E, n_cells] -> [B, n_cells]
+                actions_flat[name] = act_flat_tensor.reshape(B, -1)
 
         # B1: flatten privileged buffers if present
         use_priv_flat = None
@@ -560,14 +564,17 @@ class S2PPOTrainerV2:
         metrics_agg["explained_variance"] = ev
 
         with torch.no_grad():
-            base_freq = torch.zeros(N_ACTIONS_BASE, device=self.cfg.device)
-            beam_freq = torch.zeros(N_ACTIONS_BEAM, device=self.cfg.device)
-            for a in range(N_ACTIONS_BASE):
-                base_freq[a] = (rb.action_base == a).float().mean().item()
-            for a in range(N_ACTIONS_BEAM):
-                beam_freq[a] = (rb.action_beam == a).float().mean().item()
-            metrics_agg["action_base_freq"] = base_freq.tolist()
-            metrics_agg["action_beam_freq"] = beam_freq.tolist()
+            # Generic per-head action frequency: categorical -> per-action
+            # counts; bernoulli -> per-cell on-rate. Keys: action_<name>_freq.
+            for n, spec in zip(self.head_names, self.head_specs):
+                act = getattr(rb, "action_" + n)
+                if spec.kind == "categorical":
+                    freq = [float((act == a).float().mean().item())
+                            for a in range(spec.n_actions)]
+                else:
+                    freq = [float(act[:, :, c].float().mean().item())
+                            for c in range(spec.n_actions)]
+                metrics_agg[f"action_{n}_freq"] = freq
 
         def mean(xs): return sum(xs) / len(xs) if xs else 0.0
         return {
@@ -589,8 +596,8 @@ class S2PPOTrainerV2:
             "explained_variance": metrics_agg["explained_variance"],
             "kl_rollback": rolled_back,
             "outer_kl_max": outer_kl_max,
-            "action_base_freq": metrics_agg["action_base_freq"],
-            "action_beam_freq": metrics_agg["action_beam_freq"],
+            # generic per-head action frequency (keys: action_<name>_freq)
+            **{f"action_{n}_freq": metrics_agg[f"action_{n}_freq"] for n in self.head_names},
             "log_ratio_clamped_count": metrics_agg["log_ratio_clamped_count"],
             "priv_value_loss": mean(metrics_agg["priv_value_loss_list"]),
             "distill_loss": mean(metrics_agg["distill_loss_list"]),

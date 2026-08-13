@@ -130,3 +130,13 @@ S3 PPO (cell binding)  seed=20260801  budget=63
   heads: [('base', 'categorical', 3), ('beam', 'categorical', 5), ('cell', 'bernoulli', 5)]
   out_dir=E:\DATA\vscode\FluxPhased\experiments\array_face_s3\learning_repair\s3_ppo_output_amend02_seed20260801
   RESUMED from iter 949, continuing at 950
+  iter  959  rollout_drop=0.3889  val_drop=0.4146  entropy=0.4893 (b=0.002+m=0.006+c=0.481)  trans=983040  elapsed=313s
+  iter  969  rollout_drop=0.4292  val_drop=0.4141  entropy=0.5029 (b=0.002+m=0.006+c=0.495)  trans=993280  elapsed=601s
+  iter  979  rollout_drop=0.4038  val_drop=0.4133  entropy=0.5373 (b=0.002+m=0.007+c=0.529)  trans=1003520  elapsed=923s
+  iter  989  rollout_drop=0.3924  val_drop=0.4142  entropy=0.5415 (b=0.002+m=0.007+c=0.533)  trans=1013760  elapsed=1244s
+  iter  999  rollout_drop=0.3514  val_drop=0.4143  entropy=0.5068 (b=0.002+m=0.007+c=0.498)  trans=1024000  elapsed=1540s
+  [checkpoint] saved iter 999
+
+wrote E:\DATA\vscode\FluxPhased\experiments\array_face_s3\learning_repair\s3_ppo_output_amend02_seed20260801/train_metrics.jsonl
+wrote E:\DATA\vscode\FluxPhased\experiments\array_face_s3\learning_repair\s3_ppo_output_amend02_seed20260801/val_metrics.jsonl
+this session ran 50 iters; elapsed 1540.5s

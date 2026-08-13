@@ -154,10 +154,13 @@ class MultiHeadActor(nn.Module):
         total = None
         for spec in self.head_specs:
             lp = dists[spec.name].log_prob(actions[spec.name])
-            # bernoulli returns per-cell log_prob [E, n_cells]; sum over cells
-            # so every head contributes a per-env scalar [E], matching categorical.
             if spec.kind == "bernoulli":
-                lp = lp.sum(dim=-1)
+                # torch's Bernoulli.log_prob (BCE-with-logits) returns NaN at
+                # masked cells (logit=-inf: -inf * 0 = NaN). Force masked
+                # cells to contribute exactly 0, then sum over cells so every
+                # head contributes a per-env scalar [E], matching categorical.
+                mask = masks[spec.name].bool()
+                lp = torch.where(mask, lp, torch.zeros_like(lp)).sum(dim=-1)
             total = lp if total is None else total + lp
         return total
 
@@ -174,10 +177,20 @@ class MultiHeadActor(nn.Module):
         out: dict[str, torch.Tensor] = {}
         total = None
         for spec in self.head_specs:
-            ent = dists[spec.name].entropy()
-            # bernoulli returns per-cell entropy [E, n_cells]; sum over cells
-            # so every head's entropy is a per-env scalar [E], matching categorical.
-            if spec.kind == "bernoulli":
+            if spec.kind == "categorical":
+                ent = dists[spec.name].entropy()
+            else:
+                # Bernoulli entropy computed manually: torch's
+                # Bernoulli.entropy() (BCE-with-logits) returns NaN when a
+                # cell's logit is -inf (masked off), because -inf * 0 = NaN.
+                # Masked cells contribute exactly 0 entropy (mirroring
+                # bernoulli_kl's masked-cell handling).
+                d = dists[spec.name]
+                p = d.probs.clamp(1e-12, 1.0 - 1e-12)
+                ent = -(p * torch.log(p) + (1.0 - p) * torch.log1p(-p))
+                mask = masks[spec.name].bool()
+                ent = torch.where(mask, ent, torch.zeros_like(ent))
+                # per-cell entropy [E, n_cells] -> per-env scalar [E]
                 ent = ent.sum(dim=-1)
             out[spec.name] = ent
             total = ent if total is None else total + ent
@@ -289,7 +302,11 @@ def sample_multihead(
             probs1 = d.probs.clamp(min=1e-12, max=1.0 - 1e-12)  # [E, n_cells]
             action = (u < probs1).to(torch.float32)             # [E, n_cells]
             actions[spec.name] = action
-            # log_prob for Bernoulli: per-cell [E, n_cells], summed to [E]
-            logp_total = logp_total + d.log_prob(action).sum(dim=-1)
+            # log_prob for Bernoulli: per-cell [E, n_cells]; NaN at masked
+            # cells (BCE -inf*0), so zero them before summing to [E].
+            lp_cell = d.log_prob(action)
+            mask = masks[spec.name].bool()
+            lp_cell = torch.where(mask, lp_cell, torch.zeros_like(lp_cell))
+            logp_total = logp_total + lp_cell.sum(dim=-1)
 
     return actions, logp_total
