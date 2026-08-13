@@ -40,17 +40,28 @@ def load_seeds(name: str) -> list[int]:
     return [int(e["seed"]) for e in m["entries"]]
 
 
+BUDGET_PRESETS = {
+    63: {"active_budget_steps": 63, "duty_budget": 1.0},   # S3 generous (per-cell semantics)
+    16: {"active_budget_steps": 16, "duty_budget": 0.25},  # controlled: matches S2 budget
+}
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--budget", type=int, default=63, choices=[16, 63],
+                        help="energy budget preset: 63=S3 default, 16=controlled (matches S2)")
     args = parser.parse_args()
     seed = int(args.seed)
+    budget = int(args.budget)
+    bp = BUDGET_PRESETS[budget]
 
     device = "cuda"
     train_seeds = load_seeds("ppo_train")
     validation_seeds = load_seeds("checkpoint_validation")
-    print(f"S3 PPO (cell binding)  seed={seed}")
+    print(f"S3 PPO (cell binding)  seed={seed}  budget={budget}")
+    print(f"  active_budget_steps={bp['active_budget_steps']}  duty_budget={bp['duty_budget']}")
     print(f"  train_seeds={len(train_seeds)}  val_seeds={len(validation_seeds)}")
 
     cfg = S2PPOConfigV2(
