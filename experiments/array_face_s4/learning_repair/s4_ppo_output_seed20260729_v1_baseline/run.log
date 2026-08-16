@@ -1,0 +1,7 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA GeForce RTX 2060
+[gpu] VRAM: 6.4 GB
+S4 PPO (2D UPA cell binding)  seed=20260729
+  train_seeds=64  val_seeds=64
+  heads: [('cell', 'bernoulli', 25), ('beam', 'categorical', 25)]
+  out_dir=E:\DATA\vscode\FluxPhased\experiments\array_face_s4\learning_repair\s4_ppo_output_seed20260729

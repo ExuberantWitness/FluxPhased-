@@ -45,6 +45,7 @@ class S4PPOTrainer(S2PPOTrainerV2):
         manifest_path: Path,
         out_dir: Path,
         head_specs: list,
+        beam_trunk_heads: tuple[str, ...] = (),
     ):
         from experiments.array_face_s2.learning_repair.actor_heads import MultiHeadActor
         from experiments.array_face_s2.learning_repair.trainer import (
@@ -70,9 +71,12 @@ class S4PPOTrainer(S2PPOTrainerV2):
 
         self.head_specs = tuple(head_specs)
         self.head_names = tuple(s.name for s in self.head_specs)
+        self.beam_trunk_heads = tuple(beam_trunk_heads)
 
         _t.manual_seed(cfg.seed)
-        self.actor = MultiHeadActor(OBS_DIM_S4, self.head_specs).to(cfg.device)
+        self.actor = MultiHeadActor(
+            OBS_DIM_S4, self.head_specs, beam_trunk_heads=self.beam_trunk_heads,
+        ).to(cfg.device)
         self.critic = ValueCritic(OBS_DIM_S4).to(cfg.device)
         self.actor_opt = _t.optim.Adam(self.actor.parameters(), lr=cfg.actor_lr)
         self.critic_opt = _t.optim.Adam(self.critic.parameters(), lr=cfg.critic_lr)

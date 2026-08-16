@@ -57,10 +57,18 @@ class HeadSpec:
     n_actions:  number of output logits:
                   categorical -> number of discrete actions (e.g. 3, 5)
                   bernoulli   -> number of independent cells (e.g. 5)
+    bernoulli_logit_bias:  (bernoulli only) additive bias on the initial cell
+                logits. Default 0.0 → uniform p=0.5 (S3 default). Negative
+                values bias toward sparse activation — e.g. -3.0 → p≈0.047,
+                so a 25-cell head starts at ~1 cell on per step instead of
+                ~12, preventing budget exhaustion before learning starts
+                (the S4 25-dim exploration failure). Ignored for categorical
+                heads and when 0.0 (no-op → bit-exact S2/S3).
     """
     name: str
     kind: str
     n_actions: int
+    bernoulli_logit_bias: float = 0.0
 
     def __post_init__(self):
         if self.kind not in ("categorical", "bernoulli"):
@@ -83,9 +91,18 @@ class MultiHeadActor(nn.Module):
 
     All heads share the trunk fc1/fc2 (same as S2). Heads are stored in an
     nn.ModuleDict keyed by spec.name so they appear in state_dict / parameters().
+
+    beam_trunk_heads: optional tuple of head names that get their own separate
+    trunk (same architecture as the shared trunk). This prevents the beam head
+    from being starved of gradient when it shares the trunk with a high-entropy
+    cell head (the S4 25-dim beam tracking plateau). Default () = all heads
+    share the trunk (bit-exact S2/S3 behavior).
     """
 
-    def __init__(self, obs_dim: int, head_specs: Sequence[HeadSpec], hidden: int = 128):
+    def __init__(
+        self, obs_dim: int, head_specs: Sequence[HeadSpec], hidden: int = 128,
+        beam_trunk_heads: tuple[str, ...] = (),
+    ):
         super().__init__()
         if not head_specs:
             raise ValueError("head_specs must be non-empty")
@@ -94,12 +111,31 @@ class MultiHeadActor(nn.Module):
             raise ValueError(f"head spec names must be unique, got {names}")
         self.head_specs: tuple[HeadSpec, ...] = tuple(head_specs)
         self.head_names: tuple[str, ...] = tuple(names)
+        self.beam_trunk_heads: tuple[str, ...] = tuple(beam_trunk_heads)
+        # Validate beam_trunk_heads references existing heads
+        for name in self.beam_trunk_heads:
+            if name not in self.head_names:
+                raise ValueError(f"beam_trunk_heads contains unknown head {name!r}")
 
         self.fc1 = nn.Linear(obs_dim, hidden)
         self.fc2 = nn.Linear(hidden, hidden)
+        # Separate trunks for heads in beam_trunk_heads (S4 beam anti-starvation)
+        self._separate_trunks = nn.ModuleDict({
+            name: nn.Sequential(
+                nn.Linear(obs_dim, hidden), nn.Tanh(),
+                nn.Linear(hidden, hidden), nn.Tanh(),
+            )
+            for name in self.beam_trunk_heads
+        })
         self.heads = nn.ModuleDict({
             s.name: nn.Linear(hidden, s.n_actions) for s in self.head_specs
         })
+        # Apply optional sparse-init bias for bernoulli heads (S4 anti-collapse).
+        # Default 0.0 is a no-op, so S2/S3 weight init is bit-exact unchanged.
+        for spec in self.head_specs:
+            if spec.kind == "bernoulli" and spec.bernoulli_logit_bias != 0.0:
+                with torch.no_grad():
+                    self.heads[spec.name].bias.add_(spec.bernoulli_logit_bias)
 
     def forward(self, obs: torch.Tensor) -> dict[str, torch.Tensor]:
         """Returns {head_name: logits[E, n_actions]}.
@@ -107,9 +143,16 @@ class MultiHeadActor(nn.Module):
         Logits are RAW (pre-mask). Callers apply masking via distribution().
         Bernoulli logits are interpreted as log-odds of cell=1.
         """
-        h = torch.tanh(self.fc1(obs))
-        h = torch.tanh(self.fc2(h))
-        return {name: self.heads[name](h) for name in self.head_names}
+        h_shared = torch.tanh(self.fc1(obs))
+        h_shared = torch.tanh(self.fc2(h_shared))
+        out = {}
+        for name in self.head_names:
+            if name in self.beam_trunk_heads:
+                h = self._separate_trunks[name](obs)
+            else:
+                h = h_shared
+            out[name] = self.heads[name](h)
+        return out
 
     def distribution(
         self, obs: torch.Tensor,
@@ -301,6 +344,12 @@ def sample_multihead(
             u = torch.rand(E, n, generator=generator, device=device)
             probs1 = d.probs.clamp(min=1e-12, max=1.0 - 1e-12)  # [E, n_cells]
             action = (u < probs1).to(torch.float32)             # [E, n_cells]
+            # Masked cells (logit=-inf, prob clamped to 1e-12) must be forced
+            # OFF: float32 torch.rand can return exactly 0.0 (~6e-8/draw), and
+            # 0.0 < 1e-12 would sample an illegal ON cell (ContractViolation
+            # when energy is exhausted). This bit us in the expD 3-seed run.
+            mask = masks[spec.name].bool()
+            action = torch.where(mask, action, torch.zeros_like(action))
             actions[spec.name] = action
             # log_prob for Bernoulli: per-cell [E, n_cells]; NaN at masked
             # cells (BCE -inf*0), so zero them before summing to [E].

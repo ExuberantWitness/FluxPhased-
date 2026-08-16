@@ -30,6 +30,7 @@ from env.gpu.g3_bsta_lite.metrics import (
 )
 from env.gpu.array_face_s4.array_factor import (
     UPAConfig, N_AZ, N_EL, N_BEAM_DIRS_S4, N_CELLS_S4,
+    beam_idx_to_az_el, compute_upa_af_db,
 )
 from env.gpu.array_face_s4.physics import compute_jnr_db_s4, compute_p_detect_s4
 from env.gpu.array_face_s4.observation import (
@@ -59,6 +60,8 @@ class EnvConfig:
     obs_delay_steps: int = 1
     obs_ema_alpha: float = 0.5
     potential_coef: float = 0.05
+    beam_shaping_coef: float = 0.0  # potential-based beam alignment shaping (0 = off)
+    beam_shaping_mode: str = "average"  # "average" = (TxAF+RxAF)/2, "tx_only" = TxAF only
     gamma: float = 0.99
     device: str = "cpu"
     seed: int = 0
@@ -66,6 +69,8 @@ class EnvConfig:
     def __post_init__(self):
         assert self.profile in (PROFILE_POMDP, PROFILE_MDP_SANITY), \
             f"profile must be a lite profile ({PROFILE_POMDP} or {PROFILE_MDP_SANITY}), got {self.profile}"
+        assert self.beam_shaping_mode in ("average", "tx_only"), \
+            f"beam_shaping_mode must be 'average' or 'tx_only', got {self.beam_shaping_mode!r}"
         if self.profile == PROFILE_POMDP:
             self.obs_delay_steps = max(1, int(self.obs_delay_steps))
         max_budget = max(1, int(self.duty_budget * self.horizon))
@@ -105,6 +110,7 @@ class ArrayFaceS4VecEnv:
         self.step_idx = 0
         self.prev_cell = torch.zeros((self.E, N_CELLS_S4), dtype=torch.float32, device=self.device)
         self.prev_beam = torch.zeros(self.E, dtype=torch.int64, device=self.device)
+        self._prev_radar_beam = 0  # for beam alignment shaping potential
         self.tracker = MissionTracker(
             n_envs=self.E, n_services=self.n_services, detects_required=cfg.detects_required,
         )
@@ -156,6 +162,7 @@ class ArrayFaceS4VecEnv:
         self.step_idx = 0
         self.prev_cell = torch.zeros((self.E, N_CELLS_S4), dtype=torch.float32, device=self.device)
         self.prev_beam = torch.zeros(self.E, dtype=torch.int64, device=self.device)
+        self._prev_radar_beam = 0  # for beam alignment shaping potential
         self.tracker.initialize()
         if reset_metrics:
             self.counters = MissionCounterBatch.zeros(self.E, device=str(self.device))
@@ -194,6 +201,32 @@ class ArrayFaceS4VecEnv:
         for e in range(self.E):
             phi[e] = -coef * float(self.tracker.pending_count(e))
         return phi
+
+    def _beam_alignment_potential(
+        self, jammer_beam: torch.Tensor, radar_beam: torch.Tensor,
+    ) -> torch.Tensor:
+        """Potential for beam alignment shaping (Ng et al. 1999).
+
+        mode "average": Phi(s) = coef * (TxAF(jammer_beam) + RxAF(radar_beam)) / 2
+        mode "tx_only": Phi(s) = coef * TxAF(jammer_beam)
+
+        Both AFs are peak-normalized dB (0 at broadside, negative elsewhere).
+        The jammer maximizes TxAF by pointing at broadside; the radar's RxAF
+        is determined by its sweep. "tx_only" removes the radar-sweep noise
+        term so the beam head gets a clean broadside-seeking signal.
+        """
+        coef = float(self.cfg.beam_shaping_coef)
+        if coef == 0.0:
+            return torch.zeros(self.E, dtype=torch.float32, device=self.device)
+        jammer_az, jammer_el = beam_idx_to_az_el(jammer_beam)
+        tx_af_db = compute_upa_af_db(self.jammer, beam_az_idx=jammer_az, beam_el_idx=jammer_el)
+        if self.cfg.beam_shaping_mode == "tx_only":
+            alignment_db = tx_af_db
+        else:  # "average"
+            radar_az, radar_el = beam_idx_to_az_el(radar_beam)
+            rx_af_db = compute_upa_af_db(self.radar, beam_az_idx=radar_az, beam_el_idx=radar_el)
+            alignment_db = (tx_af_db + rx_af_db) / 2.0
+        return (coef * alignment_db).to(torch.float32)
 
     # ---------- Obs ----------
     def _delayed_obs(self):
@@ -396,11 +429,20 @@ class ArrayFaceS4VecEnv:
             newly_dropped[e] = int(self.counters.n_timeout[e].item()) - n_to_before
 
         phi_after = self._potential()
+        # Beam alignment shaping (Ng et al. 1999 potential-based)
+        prev_radar_beam_t = torch.full((self.E,), self._prev_radar_beam, dtype=torch.int64, device=self.device)
+        phi_beam_before = self._beam_alignment_potential(self.prev_beam, prev_radar_beam_t)
+        radar_beam_after_idx = (self.step_idx + 1) % N_BEAM_DIRS_S4
+        radar_beam_after_t = torch.full((self.E,), radar_beam_after_idx, dtype=torch.int64, device=self.device)
+        phi_beam_after = self._beam_alignment_potential(action_beam, radar_beam_after_t)
+        self._prev_radar_beam = radar_beam_after_idx
+
         self.step_idx += 1
         self._obs_state_version += 1
         raw_reward = newly_dropped.float()
         shaping = self.cfg.gamma * phi_after - phi_before
-        reward = raw_reward + shaping
+        shaping_beam = self.cfg.gamma * phi_beam_after - phi_beam_before
+        reward = raw_reward + shaping + shaping_beam
 
         trace = UPATransitionTrace(
             observation_state_version=obs_version_before,
@@ -427,8 +469,11 @@ class ArrayFaceS4VecEnv:
             "raw_drop": newly_dropped,
             "newly_succeeded": newly_succeeded,
             "shaping": shaping,
+            "shaping_beam": shaping_beam,
             "potential_before": phi_before,
             "potential_after": phi_after,
+            "potential_beam_before": phi_beam_before,
+            "potential_beam_after": phi_beam_after,
             "p_detect": p_detect,
             "jnr_db": jnr,
             "mask_cell": mask_cell,

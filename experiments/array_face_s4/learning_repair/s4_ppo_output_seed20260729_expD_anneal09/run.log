@@ -1,0 +1,60 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA GeForce RTX 2060
+[gpu] VRAM: 6.4 GB
+S4 PPO (2D UPA cell binding)  seed=20260729
+  train_seeds=64  val_seeds=64
+  shaping_mode=average  shaping_coef=0.0  beam_trunk=False  iterations=400
+  heads: [('cell', 'bernoulli', 25), ('beam', 'categorical', 25)]
+  out_dir=E:\DATA\vscode\FluxPhased\experiments\array_face_s4\learning_repair\s4_ppo_output_seed20260729_expD_anneal09
+  iter    9  rollout_drop=0.0028  val_drop=0.0042  entropy=7.0837 (c=3.873+b=3.211)  mean_cells=1.0  trans=10240  elapsed=313s
+  iter   19  rollout_drop=0.0028  val_drop=0.0042  entropy=6.9936 (c=3.785+b=3.209)  mean_cells=1.0  trans=20480  elapsed=643s
+  iter   29  rollout_drop=0.0054  val_drop=0.0042  entropy=7.1353 (c=3.927+b=3.209)  mean_cells=1.0  trans=30720  elapsed=960s
+  iter   39  rollout_drop=0.0028  val_drop=0.0048  entropy=7.0348 (c=3.828+b=3.207)  mean_cells=1.0  trans=40960  elapsed=1277s
+  iter   49  rollout_drop=0.0028  val_drop=0.0048  entropy=7.0020 (c=3.801+b=3.201)  mean_cells=1.0  trans=51200  elapsed=1605s
+  [checkpoint] saved iter 49
+  iter   59  rollout_drop=0.0028  val_drop=0.0048  entropy=6.7297 (c=3.544+b=3.186)  mean_cells=1.0  trans=61440  elapsed=1916s
+  iter   69  rollout_drop=0.0028  val_drop=0.0048  entropy=6.7666 (c=3.587+b=3.179)  mean_cells=1.0  trans=71680  elapsed=2219s
+  iter   79  rollout_drop=0.0028  val_drop=0.0048  entropy=6.7502 (c=3.590+b=3.160)  mean_cells=1.0  trans=81920  elapsed=2506s
+  iter   89  rollout_drop=0.0057  val_drop=0.0048  entropy=6.6875 (c=3.531+b=3.156)  mean_cells=1.0  trans=92160  elapsed=2785s
+  iter   99  rollout_drop=0.0028  val_drop=0.0048  entropy=6.5402 (c=3.403+b=3.137)  mean_cells=1.0  trans=102400  elapsed=3062s
+  [checkpoint] saved iter 99
+  iter  109  rollout_drop=0.0058  val_drop=0.0048  entropy=6.3457 (c=3.231+b=3.115)  mean_cells=1.0  trans=112640  elapsed=3338s
+  iter  119  rollout_drop=0.0028  val_drop=0.0060  entropy=6.2473 (c=3.133+b=3.115)  mean_cells=1.0  trans=122880  elapsed=3615s
+  iter  129  rollout_drop=0.0092  val_drop=0.0060  entropy=6.3033 (c=3.227+b=3.076)  mean_cells=1.0  trans=133120  elapsed=3892s
+  iter  139  rollout_drop=0.0028  val_drop=0.0068  entropy=6.0559 (c=3.008+b=3.048)  mean_cells=1.0  trans=143360  elapsed=4172s
+  iter  149  rollout_drop=0.0028  val_drop=0.0082  entropy=6.1282 (c=3.074+b=3.055)  mean_cells=1.0  trans=153600  elapsed=4468s
+  [checkpoint] saved iter 149
+  iter  159  rollout_drop=0.0057  val_drop=0.0086  entropy=6.0688 (c=3.036+b=3.032)  mean_cells=1.0  trans=163840  elapsed=4762s
+  iter  169  rollout_drop=0.0028  val_drop=0.0091  entropy=5.9701 (c=2.935+b=3.035)  mean_cells=1.0  trans=174080  elapsed=5081s
+  iter  179  rollout_drop=0.0028  val_drop=0.0099  entropy=6.1778 (c=3.096+b=3.081)  mean_cells=1.0  trans=184320  elapsed=5400s
+  iter  189  rollout_drop=0.0085  val_drop=0.0102  entropy=5.9242 (c=2.859+b=3.065)  mean_cells=1.0  trans=194560  elapsed=5713s
+  iter  199  rollout_drop=0.0111  val_drop=0.0100  entropy=5.8920 (c=2.847+b=3.045)  mean_cells=1.0  trans=204800  elapsed=6030s
+  [checkpoint] saved iter 199
+  iter  209  rollout_drop=0.0054  val_drop=0.0112  entropy=5.6357 (c=2.615+b=3.020)  mean_cells=1.0  trans=215040  elapsed=6345s
+  iter  219  rollout_drop=0.0110  val_drop=0.0139  entropy=5.8428 (c=2.849+b=2.994)  mean_cells=1.0  trans=225280  elapsed=6645s
+  iter  229  rollout_drop=0.0083  val_drop=0.0156  entropy=5.6564 (c=2.690+b=2.966)  mean_cells=1.0  trans=235520  elapsed=6954s
+  iter  239  rollout_drop=0.0151  val_drop=0.0199  entropy=5.6298 (c=2.696+b=2.934)  mean_cells=1.0  trans=245760  elapsed=7245s
+  iter  249  rollout_drop=0.0302  val_drop=0.0283  entropy=5.6056 (c=2.721+b=2.884)  mean_cells=1.0  trans=256000  elapsed=7532s
+  [checkpoint] saved iter 249
+  iter  259  rollout_drop=0.0360  val_drop=0.0331  entropy=5.4924 (c=2.669+b=2.824)  mean_cells=1.0  trans=266240  elapsed=7821s
+  iter  269  rollout_drop=0.0491  val_drop=0.0428  entropy=5.3540 (c=2.626+b=2.728)  mean_cells=1.0  trans=276480  elapsed=8141s
+  iter  279  rollout_drop=0.0474  val_drop=0.0521  entropy=5.4369 (c=2.812+b=2.625)  mean_cells=1.0  trans=286720  elapsed=8458s
+  iter  289  rollout_drop=0.0820  val_drop=0.0595  entropy=5.4117 (c=2.879+b=2.533)  mean_cells=1.0  trans=296960  elapsed=8753s
+  iter  299  rollout_drop=0.0865  val_drop=0.0674  entropy=5.1760 (c=2.679+b=2.497)  mean_cells=1.0  trans=307200  elapsed=9044s
+  [checkpoint] saved iter 299
+  iter  309  rollout_drop=0.0897  val_drop=0.0756  entropy=5.2270 (c=2.815+b=2.412)  mean_cells=1.0  trans=317440  elapsed=9330s
+  iter  319  rollout_drop=0.0804  val_drop=0.0836  entropy=5.0968 (c=2.725+b=2.371)  mean_cells=1.0  trans=327680  elapsed=9654s
+  iter  329  rollout_drop=0.1140  val_drop=0.0875  entropy=5.0027 (c=2.661+b=2.342)  mean_cells=1.0  trans=337920  elapsed=9954s
+  iter  339  rollout_drop=0.0967  val_drop=0.0942  entropy=5.1564 (c=2.908+b=2.249)  mean_cells=1.0  trans=348160  elapsed=10234s
+  iter  349  rollout_drop=0.0960  val_drop=0.0983  entropy=5.0012 (c=2.777+b=2.224)  mean_cells=1.0  trans=358400  elapsed=10526s
+  [checkpoint] saved iter 349
+  iter  359  rollout_drop=0.1089  val_drop=0.0997  entropy=4.9907 (c=2.827+b=2.164)  mean_cells=1.0  trans=368640  elapsed=10843s
+  iter  369  rollout_drop=0.1298  val_drop=0.1004  entropy=4.9212 (c=2.814+b=2.107)  mean_cells=1.0  trans=378880  elapsed=11160s
+  iter  379  rollout_drop=0.1204  val_drop=0.1019  entropy=4.8996 (c=2.805+b=2.095)  mean_cells=1.0  trans=389120  elapsed=11479s
+  iter  389  rollout_drop=0.1071  val_drop=0.0955  entropy=4.9189 (c=2.841+b=2.078)  mean_cells=1.0  trans=399360  elapsed=11794s
+  iter  399  rollout_drop=0.1103  val_drop=0.0994  entropy=4.8385 (c=2.735+b=2.104)  mean_cells=1.0  trans=409600  elapsed=12106s
+  [checkpoint] saved iter 399
+
+wrote E:\DATA\vscode\FluxPhased\experiments\array_face_s4\learning_repair\s4_ppo_output_seed20260729_expD_anneal09/train_metrics.jsonl
+wrote E:\DATA\vscode\FluxPhased\experiments\array_face_s4\learning_repair\s4_ppo_output_seed20260729_expD_anneal09/val_metrics.jsonl
+this session ran 400 iters; elapsed 12105.5s

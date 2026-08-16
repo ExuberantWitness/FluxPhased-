@@ -53,22 +53,36 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--resume", action="store_true")
+    # Ablation knobs (default = v2 config: average shaping @ 0.01 + beam trunk)
+    parser.add_argument("--iterations", type=int, default=N_ITERATIONS)
+    parser.add_argument("--shaping-mode", type=str, default="average",
+                        choices=["average", "tx_only"])
+    parser.add_argument("--shaping-coef", type=float, default=0.01)
+    parser.add_argument("--no-beam-trunk", action="store_true")
+    parser.add_argument("--beam-anneal-frac", type=float, default=0.5,
+                        help="beam head entropy anneal fraction of total iters")
+    parser.add_argument("--beam-entropy-coef", type=float, default=5e-3,
+                        help="beam head entropy coefficient")
+    parser.add_argument("--outdir-tag", type=str, default="")
     args = parser.parse_args()
     seed = int(args.seed)
+    n_iterations = int(args.iterations)
 
     device = "cuda"
     train_seeds = load_seeds("ppo_train")
     validation_seeds = load_seeds("checkpoint_validation")
     print(f"S4 PPO (2D UPA cell binding)  seed={seed}")
     print(f"  train_seeds={len(train_seeds)}  val_seeds={len(validation_seeds)}")
+    print(f"  shaping_mode={args.shaping_mode}  shaping_coef={args.shaping_coef}  "
+          f"beam_trunk={not args.no_beam_trunk}  iterations={n_iterations}")
 
     cfg = S2PPOConfigV2(
-        profile=PROFILE_MDP_SANITY, iterations=N_ITERATIONS,
+        profile=PROFILE_MDP_SANITY, iterations=n_iterations,
         n_envs=16, horizon=64, actor_lr=3e-5, critic_lr=1e-3,
         target_kl=0.02,
         per_head_entropy=True,
-        entropy_coef_per_head={"cell": 2e-2, "beam": 5e-3},
-        entropy_anneal_frac_per_head={"cell": 0.7, "beam": 0.5},
+        entropy_coef_per_head={"cell": 2e-2, "beam": args.beam_entropy_coef},
+        entropy_anneal_frac_per_head={"cell": 0.7, "beam": args.beam_anneal_frac},
         seed=seed, train_seed=seed, device=device,
     )
     env_cfg = EnvConfig(
@@ -78,7 +92,10 @@ def main():
         arrival_rate_per_service=0.15, baseline_snr_db=22.0,
         mission_tau_window=6, detects_required=1,
         profile=PROFILE_MDP_SANITY, obs_delay_steps=1,
-        potential_coef=0.05, gamma=0.99,
+        potential_coef=0.05,
+        beam_shaping_coef=args.shaping_coef,       # Solution 1: beam alignment shaping
+        beam_shaping_mode=args.shaping_mode,
+        gamma=0.99,
         device=device, seed=seed,
     )
     physics = default_debug_physics_config(P_jam_W=2.0)
@@ -86,12 +103,19 @@ def main():
     jammer = UPAConfig()
 
     head_specs = [
-        HeadSpec("cell", "bernoulli", N_CELLS_S4),
+        # Sparse-init bias -3.0: sigmoid(-3)≈0.047 → ~1 cell on per step at
+        # init, so the 63-token budget lasts ~53 jamming steps instead of ~5.
+        # Without this the uniform-init policy burns 12 cells/step, exhausts
+        # the budget in ~5 steps, and gets no reward signal to learn from
+        # (the S4 25-dim exploration failure; see run.log of the first attempt).
+        HeadSpec("cell", "bernoulli", N_CELLS_S4, bernoulli_logit_bias=-3.0),
         HeadSpec("beam", "categorical", N_BEAM_DIRS_S4),
     ]
     print(f"  heads: {[(s.name, s.kind, s.n_actions) for s in head_specs]}")
 
-    out_dir = HERE / f"s4_ppo_output_seed{seed}"
+    beam_trunk_heads = () if args.no_beam_trunk else ("beam",)  # Solution 2: separate trunk
+    tag = f"_{args.outdir_tag}" if args.outdir_tag else ""
+    out_dir = HERE / f"s4_ppo_output_seed{seed}{tag}"
     out_dir.mkdir(parents=True, exist_ok=True)
     print(f"  out_dir={out_dir}")
 
@@ -102,6 +126,7 @@ def main():
         manifest_path=MANIFEST_DIR / "ppo_train.json",
         out_dir=out_dir,
         head_specs=head_specs,
+        beam_trunk_heads=beam_trunk_heads,
     )
 
     resume_from = 0
@@ -122,12 +147,12 @@ def main():
 
     t0 = time.time()
     n_done = 0
-    for it in range(resume_from, N_ITERATIONS):
+    for it in range(resume_from, n_iterations):
         m = trainer.train_iteration()
         train_log.write(json.dumps(m) + "\n")
         train_log.flush()
         n_done += 1
-        if (it + 1) % VAL_EVERY == 0 or it == N_ITERATIONS - 1:
+        if (it + 1) % VAL_EVERY == 0 or it == n_iterations - 1:
             ve = evaluate_actor_s4(
                 trainer.actor, env_cfg=env_cfg,
                 physics=physics, radar=radar, jammer=jammer,
