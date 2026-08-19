@@ -56,6 +56,10 @@ def main():
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--iterations", type=int, default=N_ITERATIONS)
+    parser.add_argument("--shared-budget", action="store_true",
+                        help="ONE common 63-token pool for both jammers "
+                             "(the commons-dilemma variant: time-division "
+                             "must EMERGE to reach the ceiling)")
     args = parser.parse_args()
     seed = int(args.seed)
     n_iterations = int(args.iterations)
@@ -88,6 +92,7 @@ def main():
         mission_tau_window=6, detects_required=1,
         profile=PROFILE_MDP_SANITY, obs_delay_steps=1,
         potential_coef=0.05, gamma=0.99,
+        shared_budget=args.shared_budget,
         device=device, seed=seed,
     )
     physics = default_debug_physics_config(P_jam_W=2.0)
@@ -100,7 +105,8 @@ def main():
     ]
     print(f"  heads: {[(s.name, s.kind, s.n_actions) for s in head_specs]}")
 
-    out_dir = HERE / f"s5_ippo_output_seed{seed}"
+    out_dir = HERE / (f"s5_shared_output_seed{seed}" if args.shared_budget
+                      else f"s5_ippo_output_seed{seed}")
     out_dir.mkdir(parents=True, exist_ok=True)
     print(f"  out_dir={out_dir}")
 

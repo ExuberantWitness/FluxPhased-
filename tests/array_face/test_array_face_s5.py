@@ -250,3 +250,64 @@ def test_s5_contract_violation_bad_shapes():
         env.step(torch.zeros(2, 25), torch.zeros(2, N_JAMMERS, dtype=torch.int64))  # missing K axis
     with pytest.raises(ContractViolation):
         env.step(torch.zeros(2, N_JAMMERS, 25), torch.zeros(2, 2, dtype=torch.float32))  # wrong dtype
+
+
+# ===================== shared-budget variant =====================
+
+def make_shared_env(n_envs=2, seed=42):
+    cfg = EnvConfig(n_envs=n_envs, horizon=64, active_budget_steps=63,
+                    profile=PROFILE_MDP_SANITY, shared_budget=True,
+                    device="cpu", seed=seed)
+    return ArrayFaceS5VecEnv(cfg, physics=PHYSICS, radar=UPAConfig(), jammer=UPAConfig())
+
+
+def test_s5_shared_pool_drains_from_both_jammers():
+    """Both jammers transmitting 1 cell drains the COMMON pool 2/step."""
+    env = make_shared_env()
+    env.reset(seed=42)
+    cell = torch.zeros(2, N_JAMMERS, 25)
+    cell[:, :, 0] = 1.0
+    beam = torch.full((2, N_JAMMERS), 12, dtype=torch.int64)
+    env.step(cell, beam)
+    assert (env.energy_tokens == 61).all()  # both columns show the shared level
+
+
+def test_s5_shared_pool_exhaustion_and_mask():
+    """Both-on burns the pool in ~31 steps; mask then blocks both jammers."""
+    env = make_shared_env()
+    env.reset(seed=42)
+    cell = torch.zeros(2, N_JAMMERS, 25)
+    cell[:, :, 0] = 1.0
+    beam = torch.full((2, N_JAMMERS), 12, dtype=torch.int64)
+    for t in range(32):
+        env.step(cell, beam)
+    assert (env.energy_tokens == 0).all()
+    mask_cell, _ = env._compute_mask()
+    assert (mask_cell == False).all()  # BOTH jammers gated by the commons
+
+
+def test_s5_shared_staggered_covers_full_horizon():
+    """Time-division (alternate steps) drains 1/step -> 63 steps of coverage."""
+    env = make_shared_env()
+    env.reset(seed=42)
+    beam = torch.full((2, N_JAMMERS), 12, dtype=torch.int64)
+    for t in range(64):
+        cell = torch.zeros(2, N_JAMMERS, 25)
+        cell[:, t % 2, 0] = 1.0  # alternate jammers
+        can = (env.energy_tokens[:, 0] >= 1).float().view(2, 1, 1)
+        env.step(cell * can, beam)
+    assert (env.energy_tokens <= 1).all()  # ~63 tokens spent over 64 steps
+
+
+def test_s5_shared_over_budget_clamp_respects_pool():
+    """Both jammers requesting 5 cells with pool=6 -> total kept <= 6."""
+    env = make_shared_env()
+    env.reset(seed=42)
+    env.energy_tokens[:] = 6
+    cell = torch.zeros(2, N_JAMMERS, 25)
+    cell[:, :, :5] = 1.0  # 5 + 5 = 10 requested, pool is 6
+    beam = torch.full((2, N_JAMMERS), 12, dtype=torch.int64)
+    _, _, _, info = env.step(cell, beam)
+    total_kept = int(info["n_active_cells"].sum(dim=-1)[0])
+    assert total_kept <= 6, f"shared pool overspent: {total_kept}"
+    assert (env.energy_tokens == 0).all()

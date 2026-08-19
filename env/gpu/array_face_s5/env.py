@@ -61,6 +61,7 @@ class EnvConfig:
     obs_ema_alpha: float = 0.5
     potential_coef: float = 0.05
     gamma: float = 0.99
+    shared_budget: bool = False  # True: ONE common token pool for both jammers
     device: str = "cpu"
     seed: int = 0
 
@@ -166,10 +167,14 @@ class ArrayFaceS5VecEnv:
     def _compute_mask(self) -> tuple[torch.Tensor, torch.Tensor]:
         """Returns (mask_cell[E,K,25], mask_beam[E,K,25]).
 
-        mask_cell[e,k] is all-False when jammer k's energy_tokens == 0,
-        else all-True (per-jammer over-budget clamp handled post-sample).
+        mask_cell[e,k] is all-False when jammer k cannot afford any cell:
+        with shared_budget, both jammers are gated by the COMMON pool; with
+        independent budgets, each by its own column.
         """
-        can_jam = self.energy_tokens >= 1  # [E, K]
+        if self.cfg.shared_budget:
+            can_jam = (self.energy_tokens[:, 0] >= 1).unsqueeze(1).expand(self.E, self.K)
+        else:
+            can_jam = self.energy_tokens >= 1  # [E, K]
         mask_cell = (can_jam.unsqueeze(-1)
                      .expand(self.E, self.K, N_ACTIONS_CELL).clone())
         mask_beam = torch.ones((self.E, self.K, N_ACTIONS_BEAM), dtype=torch.bool, device=self.device)
@@ -307,25 +312,53 @@ class ArrayFaceS5VecEnv:
         is_jam = executed_cell.sum(dim=-1) > 0  # [E, K]
 
         # per-jammer over-budget clamp: keep the top-k highest-valued cells
-        # that fit that jammer's remaining tokens (same semantics as S3/S4).
+        # that fit the remaining budget (same semantics as S3/S4).
         n_active = executed_cell.sum(dim=-1).long()  # [E, K]
-        over_budget = is_jam & (n_active > self.energy_tokens)
-        if over_budget.any():
-            envs, ks = torch.where(over_budget)
-            for e, k in zip(envs.tolist(), ks.tolist()):
-                budget = int(self.energy_tokens[e, k].item())
-                if budget <= 0:
-                    executed_cell[e, k] = 0.0
-                else:
-                    vals = executed_cell[e, k]
-                    topk_idx = vals.topk(min(budget, int((vals > 0).sum().item()))).indices
-                    mask_e = torch.zeros_like(vals)
-                    mask_e[topk_idx] = 1.0
-                    executed_cell[e, k] = vals * mask_e
+        if self.cfg.shared_budget:
+            # SEQUENTIAL commons accounting: jammers commit in k order; each
+            # is trimmed to the pool REMAINING after earlier jammers' commits
+            # (handles the jointly-over / individually-fine case exactly).
+            for e in range(E):
+                remaining = int(self.energy_tokens[e, 0].item())
+                for k in range(K):
+                    if not bool(is_jam[e, k]):
+                        continue
+                    req = int(n_active[e, k].item())
+                    if req > remaining:
+                        vals = executed_cell[e, k]
+                        keep = min(max(remaining, 0), int((vals > 0).sum().item()))
+                        if keep <= 0:
+                            executed_cell[e, k] = 0.0
+                        else:
+                            topk_idx = vals.topk(keep).indices
+                            mask_e = torch.zeros_like(vals)
+                            mask_e[topk_idx] = 1.0
+                            executed_cell[e, k] = vals * mask_e
+                    remaining -= int(executed_cell[e, k].sum().item())
+        else:
+            over_budget = is_jam & (n_active > self.energy_tokens)
+            if over_budget.any():
+                envs, ks = torch.where(over_budget)
+                for e, k in zip(envs.tolist(), ks.tolist()):
+                    budget = int(self.energy_tokens[e, k].item())
+                    if budget <= 0:
+                        executed_cell[e, k] = 0.0
+                    else:
+                        vals = executed_cell[e, k]
+                        topk_idx = vals.topk(min(budget, int((vals > 0).sum().item()))).indices
+                        mask_e = torch.zeros_like(vals)
+                        mask_e[topk_idx] = 1.0
+                        executed_cell[e, k] = vals * mask_e
         is_jam = executed_cell.sum(dim=-1) > 0  # recompute post-clamp
         n_active = executed_cell.sum(dim=-1).long()
         tokens_consumed = torch.where(is_jam, n_active, torch.zeros_like(n_active))
-        self.energy_tokens = (self.energy_tokens - tokens_consumed).clamp(min=0)
+        if self.cfg.shared_budget:
+            # ONE commons pool: total consumption by both jammers drains it;
+            # columns are kept equal so obs/mask see the shared level.
+            new_total = (self.energy_tokens[:, 0] - tokens_consumed.sum(dim=-1)).clamp(min=0)
+            self.energy_tokens = new_total.unsqueeze(1).expand(self.E, self.K).contiguous()
+        else:
+            self.energy_tokens = (self.energy_tokens - tokens_consumed).clamp(min=0)
         self.energy = self.energy_tokens.float() * self.cfg.P_jam_W * self.cfg.dt
 
         arrivals_step = self._scenarios_step_arrivals()
