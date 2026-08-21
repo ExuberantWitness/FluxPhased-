@@ -1,0 +1,41 @@
+[
+  {
+    "cell": "R0",
+    "seed": 42,
+    "spec": {
+      "meta_solver": "nash",
+      "tcdams_lambda": 0.0,
+      "use_elo_band": false
+    },
+    "ckpt_dir": "checkpoints/league_tcdams/R0_seed42",
+    "log_file": "artifacts/tcdams_ablation\\logs\\R0_seed42.log",
+    "returncode": 1,
+    "elapsed_s": 52.47631287574768
+  },
+  {
+    "cell": "R1",
+    "seed": 42,
+    "spec": {
+      "meta_solver": "tc_dams",
+      "tcdams_lambda": 0.3,
+      "use_elo_band": false
+    },
+    "ckpt_dir": "checkpoints/league_tcdams/R1_seed42",
+    "log_file": "artifacts/tcdams_ablation\\logs\\R1_seed42.log",
+    "returncode": 1,
+    "elapsed_s": 56.07282567024231
+  },
+  {
+    "cell": "R3",
+    "seed": 42,
+    "spec": {
+      "meta_solver": "tc_dams",
+      "tcdams_lambda": 0.3,
+      "use_elo_band": true
+    },
+    "ckpt_dir": "checkpoints/league_tcdams/R3_seed42",
+    "log_file": "artifacts/tcdams_ablation\\logs\\R3_seed42.log",
+    "returncode": 1,
+    "elapsed_s": 60.20955777168274
+  }
+]

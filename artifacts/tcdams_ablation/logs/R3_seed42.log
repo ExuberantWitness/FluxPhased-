@@ -1,0 +1,42 @@
+# Cell R3 seed=42 start 2026-05-18T00:39:09.634469
+# Cmd: C:\Users\zhang\.conda\envs\env_isaacsim\python.exe -m training.train --config configs/league_tcdams5.yaml --seed 42 --override league.meta_solver=tc_dams --override league.tcdams_lambda=0.3 --override league.use_elo_band=true --override league.checkpoint_dir=checkpoints/league_tcdams/R3_seed42 --phase a
+
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA GeForce RTX 2060
+[gpu] VRAM: 6.4 GB
+[config] override league.meta_solver='tc_dams'
+[config] override league.tcdams_lambda=0.3
+[config] override league.use_elo_band=True
+[config] override league.checkpoint_dir='checkpoints/league_tcdams/R3_seed42'
+FluxPhased League Training
+Config: configs/league_tcdams5.yaml
+Device: cuda
+Warp 1.7.2 initialized:
+   CUDA Toolkit 12.8, Driver 12.6
+   Devices:
+     "cpu"      : "Intel64 Family 6 Model 165 Stepping 2, GenuineIntel"
+     "cuda:0"   : "NVIDIA GeForce RTX 2060" (6 GiB, sm_75, mempool enabled)
+   Kernel cache:
+     C:\Users\zhang\AppData\Local\NVIDIA\warp\Cache\1.7.2
+Environment: E=1, R=4, N=25, P=4, bins=64
+State dim: 6583, Action dim: 553
+
+  Pre-training task: recon
+Module radar_sim.gpu.vec_array a5c9bb8 load on device 'cuda:0' took 1.37 ms  (cached)
+Module radar_sim.gpu.vec_channel fd84cea load on device 'cuda:0' took 1.11 ms  (cached)
+Traceback (most recent call last):
+  File "C:\Users\zhang\.conda\envs\env_isaacsim\lib\runpy.py", line 196, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "C:\Users\zhang\.conda\envs\env_isaacsim\lib\runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "E:\DATA\vscode\FluxPhased\training\train.py", line 186, in <module>
+    main()
+  File "E:\DATA\vscode\FluxPhased\training\train.py", line 174, in main
+    trainer.run_phase_a()
+  File "E:\DATA\vscode\FluxPhased\training\curriculum\phased_trainer.py", line 167, in run_phase_a
+    trainer.store_transition(env, result, transition, team=0)
+  File "E:\DATA\vscode\FluxPhased\training\ppo\ppo_trainer.py", line 255, in store_transition
+    self.commander_buffer.add(
+  File "E:\DATA\vscode\FluxPhased\training\ppo\buffer.py", line 49, in add
+    assert self.ptr < self.buffer_size, "Buffer overflow"
+AssertionError: Buffer overflow

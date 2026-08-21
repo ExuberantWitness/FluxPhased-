@@ -1,0 +1,40 @@
+FluxPhased IQ-Level EM Base Capability Validation
+==================================================
+fc=10GHz bw=200MHz 25x25 URA D=32.9dBi tx=77.0dBm
+
+TEST 1: Steering Weight Beam Peak Accuracy
+  az=+0: peak=0.0 err=0.0
+  az=+15: peak=15.0 err=0.0
+  az=-30: peak=-30.0 err=0.0
+  az=+45: peak=45.0 err=0.0
+  [PASS]
+
+TEST 2: 3dB Beamwidth vs Theory
+  Measured=5.40 Theory=4.06
+  [PASS]
+
+TEST 3: Two-Way Radar Equation
+  R=5km: -51.55 dBm (ref -51.55) err=0.000
+  R=10km: -63.59 dBm (ref -63.59) err=0.000
+  R=20km: -75.63 dBm (ref -75.63) err=0.000
+  R=50km: -91.55 dBm (ref -91.55) err=0.000
+  [PASS]
+
+TEST 4: One-Way Link Budget (Friis)
+  d=1km: Pr=-5.5 dBm gain_err=1.0e-15
+  d=5km: Pr=-19.5 dBm gain_err=1.3e-16
+  d=10km: Pr=-25.5 dBm gain_err=3.1e-15
+  d=20km: Pr=-31.5 dBm gain_err=3.0e-15
+  [PASS]
+
+TEST 5: Channel Delay via Matched Filter
+  Target 5.0km delay=6671 MF peak=16671 range_err=0.21m (<1.50m)
+  [PASS]
+
+TEST 6: Doppler Phase Accuracy
+  v=300 fd=20013.8Hz meas=20027.2Hz err=0.067%
+  [PASS]
+
+TEST 7: Waveform IQ Generation
+  LFM up norm=1.000000 dn norm=1.000000
+  Barker-13 PSL=-22.3 dB (theory ~-22.3)

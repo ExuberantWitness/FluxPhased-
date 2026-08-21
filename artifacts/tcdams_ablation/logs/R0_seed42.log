@@ -1,0 +1,38 @@
+# Cell R0 seed=42 start 2026-05-18T08:30:41.516790
+# Cmd: C:\Users\zhang\.conda\envs\env_isaacsim\python.exe -m training.train --config configs/league_tcdams5.yaml --seed 42 --override league.meta_solver=nash --override league.tcdams_lambda=0.0 --override league.use_elo_band=false --override league.checkpoint_dir=checkpoints/league_tcdams/R0_seed42 --phase a
+
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA GeForce RTX 2060
+[gpu] VRAM: 6.4 GB
+[config] override league.meta_solver='nash'
+[config] override league.tcdams_lambda=0.0
+[config] override league.use_elo_band=False
+[config] override league.checkpoint_dir='checkpoints/league_tcdams/R0_seed42'
+FluxPhased League Training
+Config: configs/league_tcdams5.yaml
+Device: cuda
+Warp 1.7.2 initialized:
+   CUDA Toolkit 12.8, Driver 12.6
+   Devices:
+     "cpu"      : "Intel64 Family 6 Model 165 Stepping 2, GenuineIntel"
+     "cuda:0"   : "NVIDIA GeForce RTX 2060" (6 GiB, sm_75, mempool enabled)
+   Kernel cache:
+     C:\Users\zhang\AppData\Local\NVIDIA\warp\Cache\1.7.2
+Environment: E=1, R=4, N=25, P=4, bins=64
+State dim: 6583, Action dim: 553
+
+  Pre-training task: recon
+Module radar_sim.gpu.vec_array a5c9bb8 load on device 'cuda:0' took 1.05 ms  (cached)
+Module radar_sim.gpu.vec_channel fd84cea load on device 'cuda:0' took 0.95 ms  (cached)
+    Episode 0: {'commander': {'policy_loss': -0.06946580726653337, 'value_loss': 0.0028967912774533035, 'entropy': 14.660817527770996}, 'radar': {'policy_loss': -0.0036405662085599033, 'value_loss': 0.4375615417957306, 'entropy': 322.75994262695315}}
+    Episode 5: {'commander': {'policy_loss': -0.040497706993483006, 'value_loss': 0.0027651162672555074, 'entropy': 14.660433363914489}, 'radar': {'policy_loss': -0.0024434609396848826, 'value_loss': 0.23783537703566254, 'entropy': 323.01476135253904}}
+    Episode 10: {'commander': {'policy_loss': -0.029886854923097415, 'value_loss': 0.0011469974459032528, 'entropy': 14.68462541103363}, 'radar': {'policy_loss': -0.005688459763041465, 'value_loss': 0.16616915555205197, 'entropy': 323.175528717041}}
+    Episode 15: {'commander': {'policy_loss': -0.04527377737686038, 'value_loss': 0.004246173839783296, 'entropy': 14.716001343727111}, 'radar': {'policy_loss': -0.012500914116390049, 'value_loss': 0.20534048611298203, 'entropy': 323.2732498168945}}
+    Episode 20: {'commander': {'policy_loss': -0.031140507734380662, 'value_loss': 0.00252400437311735, 'entropy': 14.732730388641357}, 'radar': {'policy_loss': -0.007032517401967198, 'value_loss': 0.2408809802494943, 'entropy': 323.43496856689455}}
+    Episode 25: {'commander': {'policy_loss': -0.03892068057321012, 'value_loss': 0.0022175932565005494, 'entropy': 14.750499725341797}, 'radar': {'policy_loss': -0.0031781096709892153, 'value_loss': 0.30160711037460713, 'entropy': 323.5668014526367}}
+    Episode 30: {'commander': {'policy_loss': -0.05136266047484241, 'value_loss': 0.0029702649626415223, 'entropy': 14.796084260940551}, 'radar': {'policy_loss': -0.002290031313896179, 'value_loss': 0.31724057979881765, 'entropy': 323.70302810668943}}
+    Episode 35: {'commander': {'policy_loss': -0.03882393243256956, 'value_loss': 0.0026052479865029455, 'entropy': 14.829244470596313}, 'radar': {'policy_loss': -0.0023487461439799517, 'value_loss': 0.33336723279207947, 'entropy': 323.84476165771486}}
+    Episode 40: {'commander': {'policy_loss': -0.03995296605862677, 'value_loss': 0.0029163665865780787, 'entropy': 14.853968715667724}, 'radar': {'policy_loss': 0.012057842954527586, 'value_loss': 0.38258159286342563, 'entropy': 323.9761535644531}}
+    Episode 45: {'commander': {'policy_loss': -0.03995226914994419, 'value_loss': 0.002721821321756579, 'entropy': 14.861928176879882}, 'radar': {'policy_loss': -0.01277749848086387, 'value_loss': 0.3781266575679183, 'entropy': 324.11286544799805}}
+    Episode 50: {'commander': {'policy_loss': -0.0322043658932671, 'value_loss': 0.0021124287130078303, 'entropy': 14.887509632110596}, 'radar': {'policy_loss': -0.006727326544933021, 'value_loss': 0.4443483166396618, 'entropy': 324.25026779174806}}
+    Episode 55: {'commander': {'policy_loss': -0.035059145785635334, 'value_loss': 0.0021402000667876562, 'entropy': 14.923746991157532}, 'radar': {'policy_loss': -0.009763878653757274, 'value_loss': 0.49429394248872993, 'entropy': 324.39153442382815}}

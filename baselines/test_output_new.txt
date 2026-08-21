@@ -1,0 +1,35 @@
+Test 9: ScenarioGenerator - generates valid configs
+  [PASS] test_random_policy
+  Range: 11093.0 m
+  SNR: -300.0 dB
+  [PASS] test_ground_truth
+  Spectrum shape: torch.Size([10, 1, 4, 25, 4, 1024])
+  [PASS] test_episode_collector
+  Detect fraction: 1.000
+  [PASS] test_perception_metrics
+  Launched: True
+  Launch step: 1
+  [PASS] test_combat_metrics
+  Episodes: 5
+  Avg length: 3.0
+  [PASS] test_game_metrics
+  Active comm frac: 1.000
+  Zero comm frac: 0.000
+  [PASS] test_comm_metrics
+  5 perception triggers
+  3 analysis triggers
+  4 game triggers
+  [PASS] test_trigger_sources
+  Random config: ['target_rcs_dbsm', 'bandwidth', 'prf']...
+  [PASS] test_scenario_generator
+  Empty CDE: 0.200
+  Kill CDE: 0.898
+  [PASS] test_cde_metric
+  Episodes used: 20
+  Metric mean: 0.5000
+  [PASS] test_accelerated_eval
+  Summary: range_acc=0.85 | kill_rate=0.3 | CDE=0.55
+  [PASS] test_evaluation_report
+  Agents after 3 steps: 6
+  [PASS] test_pz_integration
+Results: 13/13 passed, 0 failed
