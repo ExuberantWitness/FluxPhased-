@@ -19,12 +19,13 @@ from env.gpu.array_face_s7 import (
     EnvConfig, UPAConfig, N_CELLS_S7, N_BEAM_DIRS_S7, N_JAMMERS, N_RADARS,
     ArrayFaceS7VecEnv,
 )
-from experiments.array_face_s2.learning_repair.actor_heads import HeadSpec
+from experiments.array_face_s2.learning_repair.actor_heads import HeadSpec, sample_multihead
 from experiments.array_face_s2.learning_repair.trainer_v2 import S2PPOConfigV2
 from experiments.array_face_s7.learning_repair.trainer_s7 import S7SelfPlayTrainer
 
 SEED = int(sys.argv[1])
 device = sys.argv[2] if len(sys.argv) > 2 else 'cuda'  # 'cpu' avoids GPU contention
+MODE = sys.argv[3] if len(sys.argv) > 3 else 'greedy'   # 'greedy' | 'stochastic'
 out_dir = Path(f'experiments/array_face_s7/learning_repair/s7_selfplay_output_seed{SEED}')
 
 cfg = S2PPOConfigV2(
@@ -74,14 +75,24 @@ assign_cnt = torch.zeros(K, R)
 for s in val_seeds:
     env = ArrayFaceS7VecEnv(env_cfg, physics=physics, radar=UPAConfig(), jammer=UPAConfig())
     env.reset(seed=s)
+    gen = torch.Generator(device=device).manual_seed(4242 + s)
     for t in range(env_cfg.horizon):
         obs_j, obs_r = env._build_observation()
+        mask_cell, mask_beam = env._compute_masks()
         cells, beams = [], []
         for k in range(K):
-            with torch.no_grad():
-                lj = trainer.jam_actor.forward(obs_j[:, k])
-            cell = (lj["cell"] > 0).float()
-            beam_k = lj["beam"].argmax(-1)
+            if MODE == 'stochastic':
+                with torch.no_grad():
+                    a_j, _ = sample_multihead(
+                        trainer.jam_actor, obs_j[:, k],
+                        {"cell": mask_cell[:, k], "beam": mask_beam[:, k]}, gen)
+                cell = a_j["cell"].float()
+                beam_k = a_j["beam"]
+            else:
+                with torch.no_grad():
+                    lj = trainer.jam_actor.forward(obs_j[:, k])
+                cell = (lj["cell"] > 0).float()
+                beam_k = lj["beam"].argmax(-1)
             jam_ncells[k].append(cell.sum(-1).float().mean().item())
             jam_duty[k].append((cell.sum(-1) > 0).float().mean().item())
             jam_beam_hist[k][beam_k.cpu()] += 1
@@ -108,7 +119,7 @@ for s in val_seeds:
             assign_cnt += fin.sum(0).float()
 
 import statistics as st
-print("\n=== greedy behavior (16 val seeds x 64 steps) ===")
+print(f"\n=== {MODE} behavior (16 val seeds x 64 steps) ===")
 for k in range(K):
     print(f"jammer {k}: mean_cells={st.mean(jam_ncells[k]):.2f}  duty={st.mean(jam_duty[k]):.3f}")
     jb = (jam_beam_hist[k] / jam_beam_hist[k].sum()).tolist()

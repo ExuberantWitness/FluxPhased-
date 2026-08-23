@@ -5,23 +5,29 @@
 **Status: TRAINING IN PROGRESS** — seed 20260801 at iter ~900/1000; this report
 fills as the pipeline completes. Sections marked ⏳ await final checkpoints.
 
-## TL;DR (preliminary, seed 20260801 partial trajectory)
+## TL;DR (seed 20260801 final; seeds 02/03 ⏳)
 
 S7 asks: does a SECOND jammer break S6's defense-dominant equilibrium? With
 spatially separated radars (±20°) and two jammers in cross-fire (±60°), the
-early answer is **erosion, not collapse**:
+answer taking shape is **erosion into an ongoing offensive drift, not
+collapse and not stability**:
 
-- h2h (2v2) plateaus near **0.21** — 2.4× S6's 0.089, a major erosion of the
-  defense advantage, but stable (not a runaway)
-- j1_only (1 jammer vs the SAME learned radars, same env) ≈ **0.12** — the
-  radars still neutralize a single jammer as thoroughly as S6 did
-- jam_vs_sweep (2 jammers vs scripted sweep) climbs to **0.36** — the second
-  jammer's marginal raw power is ~3× the first's (0.36 vs 0.12)
-- rad_vs_idle ≈ **0.997** — radar competence is at ceiling
+- h2h (2v2) final **0.260** (plateau 0.20 ± 0.03 through q3-q4) — 2.9× S6's
+  0.089, and rising in the last 200 iters (late offensive counter-adaptation)
+- j1_only (1 jammer vs the SAME learned radars) final **0.177** — the radars
+  still blunt a single jammer, but less than S6 did (0.089 at equal budget)
+- jam_vs_sweep final **0.394** vs S6's 0.275 — the pair extracts +43% more
+  raw damage from the SAME 63-token team budget
+- the second jammer's marginal power grew all training (0.087 → 0.227) and
+  the pair ends at 2.2× a single jammer's damage
+- rad_vs_idle 0.985 — radar competence at ceiling; the erosion is offensive,
+  not defensive decay
+- the jammer pair **exhausts its energy budget** (S6's jammer rationed), and
+  plays a symmetric center-split rather than clean cross-pairing; radar 0
+  absorbs near-double suppression and the radar team answers with a stable
+  az ±30° sector division of labor
 
-Reading: the second jammer converts cross-fire geometry into real suppression
-(the marginal-damage ratio), but the radar team adapts enough to hold a stable
-— if far worse — line. Final numbers ⏳.
+Seeds 20260802/03 ⏳ (training in progress) before any of this is headline.
 
 ## Setup
 
@@ -100,14 +106,21 @@ atomic-checkpoint resume (max-iteration completion criterion). Machine-sleep
 interruptions occurred three times (iterations preserved by checkpoints;
 loss < 100 iters each). ~41 s/iter (4-view validation every 10 iters).
 
-### Seed 20260801 trajectory (validation views, 16 val seeds)
+### Seed 20260801 trajectory (validation views; final row = full protocol 64 seeds × 2 reps)
 
-| Quarter | h2h | jam_vs_sweep | j1_only | rad_vs_idle | gap (jvs−h2h) |
-|---|---|---|---|---|---|
-| 0–99 | ~0.22 | ~0.19 | ~0.15 | 0.90 | −0.03 |
-| 800–869 | ~0.20 | ~0.36 | ~0.10 | 0.997 | +0.16 |
+| Quarter | h2h | jam_vs_sweep | j1_only | rad_vs_idle | gap (jvs−h2h) | 2nd-jammer marginal (jvs−j1) |
+|---|---|---|---|---|---|---|
+| 0–199 | 0.185 | 0.215 | 0.128 | 0.927 | 0.030 | 0.087 |
+| 200–399 | 0.163 | 0.253 | 0.104 | 0.973 | 0.090 | 0.149 |
+| 400–599 | 0.191 | 0.326 | 0.115 | 0.980 | 0.135 | 0.211 |
+| 600–799 | 0.184 | 0.336 | 0.111 | 0.988 | 0.153 | 0.225 |
+| 800–999 | 0.224 | 0.357 | 0.130 | 0.990 | 0.133 | 0.227 |
+| **final (999)** | **0.260** | **0.394** | **0.177** | 0.985 | — | — |
 
-(Detailed quarter table ⏳ after all seeds complete.)
+Reading: the second jammer's marginal power grows monotonically all training
+(0.087 → 0.227, +160%) — the jammer pair's coordination compounds. In the
+last quarter the h2h creeps up (0.18 → 0.22–0.26): late offensive
+counter-adaptation, same direction as S6's late-h2h hint but 5× larger.
 
 ## Final evaluation ⏳
 
@@ -125,17 +138,42 @@ sweep_vs_idle natural floor). Merge across seeds with mean ± sd.
 | neutralization | 63.7% ± 0.7% | ⏳ | |
 | 2nd-jammer marginal | — | ⏳ | jvs / j1_only |
 
-## Behavior extraction (preview: seed 20260801, iter-849 checkpoint, greedy)
+## Behavior extraction (seed 20260801 final checkpoint)
 
-- **Radar team spontaneously divides the sky**: parameter-shared actors lock
-  beam 11 (az −30°, 52% mass) and beam 13 (az +30°, 48%), both in the mission
-  plane (el 0), svc 50/50 — left/right sector assignment matching the ±20°
-  site separation. Division of labor emerges purely from the "other radar"
-  ESM channel in the shared policy's input.
-- **Both jammers' greedy mode is idle** (0 cells, like all three S6 seeds) —
-  the equilibrium damage lives in the stochastic tail. The cross-assignment
-  matrix (who suppresses whom) is therefore only visible under the stochastic
-  policy; full extraction ⏳ after training.
+**Greedy mode:** both jammers idle (0 cells — the S6 mode-collapse invariant
+holds for the pair); radars lock beam 11 (az −30°, 52%) / beam 13 (az +30°,
+48%), el strictly in the mission plane, svc 50/50.
+
+**Stochastic mode** (the equilibrium damage carrier; 16 val seeds × 64 steps,
+sampled actions):
+
+- **The jammer team burns its full budget**: mean 0.51/0.49 cells per step at
+  ~37% duty each ≈ 32/31 tokens over the horizon — the 63-token team budget
+  is exactly exhausted. S6's single jammer idled its mode and rationed its
+  energy; the S7 pair spends everything it has.
+- **No clean cross-pairing — a center-split instead**: both jammers' beam
+  marginals are near-identical (az mass spread across all 5 sectors with the
+  mode at az 0°, the site center) — the parameter-shared policy plays a
+  symmetric mixed strategy. The asymmetric damage comes from GEOMETRY, not
+  role specialization:
+
+```
+cross-assignment (mean per-pair JNR, active steps only):
+                radar 0 (+20°)   radar 1 (−20°)
+jammer 0 (+60°):    22.2 dB          22.6 dB     ← balanced center-split
+jammer 1 (−60°):    21.9 dB          12.3 dB     ← biased toward radar 0
+```
+
+  Radar 0 eats near-full contributions from BOTH jammers (linear sum ≈
+  25 dB) while radar 1 sees one strong + one weak (≈ 23 dB). The radar
+  team's counter-adaptation: radar 0 takes the az +30° sector (near jammer
+  0's bearing), radar 1 takes az −30° — the sector split keeps each radar's
+  Rx mainlobe pointed AWAY from the nearer jammer whenever possible.
+- **Radar division of labor is robust**: az marginals 0/49/0/51/0, el 100%
+  at the mission plane, svc 50.6/49.4 — identical in greedy and stochastic
+  rollouts and at iter-849 and iter-999. The two-head ESM channel (other
+  radar's beam) is sufficient coordination substrate for spatial role
+  emergence under parameter sharing.
 
 ## Engineering notes
 

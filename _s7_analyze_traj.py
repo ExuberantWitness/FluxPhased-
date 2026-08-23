@@ -1,5 +1,5 @@
 """Parse S7 validation trajectories (run.log) into convergence statistics."""
-import re, statistics
+import re, statistics, os
 
 def parse(path):
     txt = open(path, 'rb').read()
@@ -19,7 +19,11 @@ def parse(path):
     return rows
 
 for seed in (20260801, 20260802, 20260803):
-    rows = parse(f"experiments/array_face_s7/learning_repair/s7_selfplay_output_seed{seed}/run.log")
+    log = f"experiments/array_face_s7/learning_repair/s7_selfplay_output_seed{seed}/run.log"
+    if not os.path.exists(log):
+        print(f"=== seed {seed}: not started yet")
+        continue
+    rows = parse(log)
     if not rows:
         print(f"=== seed {seed}: no data")
         continue
