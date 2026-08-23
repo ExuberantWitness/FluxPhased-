@@ -18,7 +18,13 @@ def parse(path):
                         j1=float(m.group(5)), jent=float(m.group(6)), rent=float(m.group(7)))
     return rows
 
-for seed in (20260801, 20260802, 20260803):
+SEED_DIRS = {
+    20260801: "s7_selfplay_output_seed20260801",
+    20260802: "s7_selfplay_output_seed20260802",
+    20260803: "s7_selfplay_output_seed20260803",
+    "20260801_cont": "s7_continue_output_seed20260801",
+}
+for seed, dirname in SEED_DIRS.items():
     log = f"experiments/array_face_s7/learning_repair/s7_selfplay_output_seed{seed}/run.log"
     if not os.path.exists(log):
         print(f"=== seed {seed}: not started yet")
@@ -29,7 +35,7 @@ for seed in (20260801, 20260802, 20260803):
         continue
     its = sorted(rows)
     print(f"=== seed {seed}: {len(its)} validation points, iters {its[0]}..{its[-1]}")
-    for q in range(5):
+    for q in range(10):
         lo, hi = q*200, q*200+199
         sel = [rows[i] for i in its if lo <= i <= hi]
         if not sel:

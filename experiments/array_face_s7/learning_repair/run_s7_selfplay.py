@@ -51,6 +51,13 @@ def main():
     parser.add_argument("--seed", type=int, required=True)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--iterations", type=int, default=N_ITERATIONS)
+    parser.add_argument("--out-dir", type=str, default=None,
+                        help="override output dir (default: s7_selfplay_output_seed{seed})")
+    parser.add_argument("--anneal-done", action="store_true",
+                        help="continuation runs: pin all per-head entropy coefficients at "
+                             "coef_min from the resume point on (anneal window ends exactly "
+                             "at the loaded iteration). Without this, a longer --iterations "
+                             "would re-ramp the coefficients mid-run and confound the read.")
     args = parser.parse_args()
     seed = int(args.seed)
     n_iterations = int(args.iterations)
@@ -60,13 +67,24 @@ def main():
     validation_seeds = load_seeds("checkpoint_validation")
     print(f"S7 self-play (2 jammers vs 2 radars)  seed={seed}  iters={n_iterations}")
 
+    out_dir = Path(args.out_dir) if args.out_dir else HERE / f"s7_selfplay_output_seed{seed}"
+
+    anneal_fracs = {"cell": 0.7, "beam": 0.9, "svc": 0.5}
+    if args.anneal_done:
+        probe = out_dir / "selfplay_latest.pt"
+        done_iter = int(torch.load(probe, map_location="cpu")["iteration"]) + 1
+        f = min(0.99, done_iter / float(n_iterations))
+        anneal_fracs = {"cell": f, "beam": f, "svc": f}
+        print(f"  [anneal-done] anneal window ends at iter {int(f * n_iterations)} "
+              f"(= resume {done_iter}); coefficients at coef_min throughout the continuation")
+
     cfg = S2PPOConfigV2(
         profile="array_face_s7_v1", iterations=n_iterations,
         n_envs=16, horizon=64, actor_lr=3e-5, critic_lr=1e-3,
         target_kl=0.02,
         per_head_entropy=True,
         entropy_coef_per_head={"cell": 2e-2, "beam": 5e-3, "svc": 1e-2},
-        entropy_anneal_frac_per_head={"cell": 0.7, "beam": 0.9, "svc": 0.5},
+        entropy_anneal_frac_per_head=anneal_fracs,
         use_privileged_critic=True,   # central critic (CTDE) — required in S7
         privileged_value_coef=0.5,
         distill_coef=0.1,
@@ -93,7 +111,6 @@ def main():
         HeadSpec("svc", "categorical", 2),
     ]
 
-    out_dir = HERE / f"s7_selfplay_output_seed{seed}"
     out_dir.mkdir(parents=True, exist_ok=True)
     print(f"  out_dir={out_dir}")
 
