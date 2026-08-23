@@ -24,7 +24,7 @@ from experiments.array_face_s2.learning_repair.trainer_v2 import S2PPOConfigV2
 from experiments.array_face_s7.learning_repair.trainer_s7 import S7SelfPlayTrainer
 
 SEED = int(sys.argv[1])
-device = 'cuda'
+device = sys.argv[2] if len(sys.argv) > 2 else 'cuda'  # 'cpu' avoids GPU contention
 out_dir = Path(f'experiments/array_face_s7/learning_repair/s7_selfplay_output_seed{SEED}')
 
 cfg = S2PPOConfigV2(
