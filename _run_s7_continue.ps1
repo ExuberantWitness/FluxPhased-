@@ -6,10 +6,15 @@
 # coefficients at coef_min (--anneal-done) so the only variable is MORE
 # TRAINING, not a re-anneal.
 #
-# Ordering on the single GPU: main 3-seed chain -> final-eval chain ->
-# this continuation. Grace fallback: if evals don't finish within 5h of the
-# chain, start anyway (evals can be re-run later; the checkpoint files they
-# read are already frozen).
+# Default: START IMMEDIATELY (user reordered the queue 2026-08-24: stop seed
+# 20260802, run the continuation first). Pass -WaitForChain for the original
+# behavior (queue behind the 3-seed chain + final-eval chain with a 5h grace).
+#
+# After the continuation: relaunch the 3-seed chain detached so the GPU never
+# idles (seed 20260801 skips via max-iter>=999; 20260802 resumes from its last
+# checkpoint; 20260803 runs fresh).
+param([switch]$WaitForChain)
+
 $env:PYTHONPATH = "E:\DATA\vscode\FluxPhased"
 $env:PYTHONUNBUFFERED = "1"
 $pyexe = "C:\Users\zhang\.conda\envs\fluxphased\python.exe"
@@ -27,17 +32,18 @@ function Get-MaxIter([string]$path) {
   return -1
 }
 
-# 1. wait for the main 3-seed chain
-while (-not (Select-String -Path $chainlog -Pattern "ALL SEEDS DONE" -Quiet)) { Start-Sleep -Seconds 300 }
-Add-Content $contlog "[$(Get-Date -Format 'yyyy/MM/dd HH:mm:ss')] main chain done; waiting for final evals"
+if ($WaitForChain) {
+  while (-not (Select-String -Path $chainlog -Pattern "ALL SEEDS DONE" -Quiet)) { Start-Sleep -Seconds 300 }
+  Add-Content $contlog "[$(Get-Date -Format 'yyyy/MM/dd HH:mm:ss')] main chain done; waiting for final evals"
+  $deadline = (Get-Date).AddHours(5)
+  while (-not (Select-String -Path $chainlog -Pattern "ALL EVALS DONE" -Quiet) -and ((Get-Date) -lt $deadline)) { Start-Sleep -Seconds 300 }
+  Add-Content $contlog "[$(Get-Date -Format 'yyyy/MM/dd HH:mm:ss')] evals done or grace expired; starting continuation"
+} else {
+  Add-Content $contlog "[$(Get-Date -Format 'yyyy/MM/dd HH:mm:ss')] immediate start (queue reordered by user)"
+}
 
-# 2. wait for the final-eval chain, max 5h grace
-$deadline = (Get-Date).AddHours(5)
-while (-not (Select-String -Path $chainlog -Pattern "ALL EVALS DONE" -Quiet) -and ((Get-Date) -lt $deadline)) { Start-Sleep -Seconds 300 }
-Add-Content $contlog "[$(Get-Date -Format 'yyyy/MM/dd HH:mm:ss')] evals done or grace expired; starting continuation"
-
-# 3. seed the continuation dir with the iter-999 checkpoint (out_dir differs
-#    from the original so the 1000-iter final eval / checkpoint stay frozen)
+# Seed the continuation dir with the iter-999 checkpoint (out_dir differs
+# from the original so the 1000-iter final eval / checkpoint stay frozen)
 if (-not (Test-Path $out)) { New-Item -ItemType Directory -Path $out | Out-Null }
 if (-not (Test-Path "$out\selfplay_latest.pt")) { Copy-Item $src "$out\selfplay_latest.pt" }
 
@@ -49,3 +55,7 @@ for ($r = 1; $r -le 30; $r++) {
   Start-Sleep -Seconds 30
 }
 Add-Content $contlog "[$(Get-Date -Format 'yyyy/MM/dd HH:mm:ss')] CONTINUATION DONE"
+
+# GPU back to the multi-seed chain (02 resumes from checkpoint, 03 fresh)
+Start-Process powershell -ArgumentList '-ExecutionPolicy','Bypass','-File','E:\DATA\vscode\FluxPhased\_run_s7_seeds.ps1' -WindowStyle Hidden
+Add-Content $contlog "[$(Get-Date -Format 'yyyy/MM/dd HH:mm:ss')] seeds chain relaunched (02 resume, 03 fresh)"
