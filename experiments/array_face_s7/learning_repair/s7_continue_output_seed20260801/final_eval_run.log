@@ -1,0 +1,11 @@
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA GeForce RTX 2060
+[gpu] VRAM: 6.4 GB
+E:\DATA\vscode\FluxPhased\.\experiments\array_face_s7\learning_repair\trainer_s7.py:320: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  ckpt = torch.load(path, map_location=self.cfg.device)
+checkpoint loaded (stored session iter=1999)
+aseed=4242: {'h2h_drop': 0.3297196722123772, 'h2h_success': 0.670280335471034, 'jam_vs_sweep_drop': 0.5006540194153786, 'rad_vs_idle_success': 0.977353478781879, 'j1_only_drop': 0.24700707552256063, 'elapsed_s': 521.9}
+aseed=777: {'h2h_drop': 0.32822906505316496, 'h2h_success': 0.6717709433287382, 'jam_vs_sweep_drop': 0.5028706816956401, 'rad_vs_idle_success': 0.9806302338838577, 'j1_only_drop': 0.2573860515258275, 'elapsed_s': 521.7}
+aseed=31337: {'h2h_drop': 0.32652084971778095, 'h2h_success': 0.6734791547060013, 'jam_vs_sweep_drop': 0.5094916126690805, 'rad_vs_idle_success': 0.9806731157004833, 'j1_only_drop': 0.255269173765555, 'elapsed_s': 524.0}
+sweep_vs_idle natural floor drop = 0.1187
+wrote experiments\array_face_s7\learning_repair\s7_continue_output_seed20260801\final_eval.json

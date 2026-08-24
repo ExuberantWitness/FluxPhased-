@@ -171,21 +171,38 @@ different objective (robustness across opponent classes). The cheapest
 robustness knob — periodic singleton-opponent mixing — is a natural follow-up
 if that objective matters.
 
-## Final evaluation ⏳
+## Final evaluation
 
 Protocol: 64 validation seeds × 3 action seeds × reps=1, five views (h2h,
 jam_vs_sweep, rad_only, **j1_only** — the S7-specific 1v2 control — and the
 sweep_vs_idle natural floor). Merge across seeds with mean ± sd.
 
-### Headline table ⏳
+### Converged continuation (seed 20260801 @ 2000 iters) — the authoritative 2v2 numbers
 
-| Metric | S6 (1v2, snr=12) | S7 (2v2) | reading |
-|---|---|---|---|
-| h2h drop | 0.0888 ± 0.0053 | ⏳ | defense dominance eroded? |
-| jam_vs_sweep | 0.2751 ± 0.0110 | ⏳ | |
-| j1_only drop | — | ⏳ | same-env 1v2 control |
-| neutralization | 63.7% ± 0.7% | ⏳ | |
-| 2nd-jammer marginal | — | ⏳ | jvs / j1_only |
+| View | mean ± sd over action seeds |
+|---|---|
+| h2h (2v2) | **0.3282 ± 0.0016** |
+| jam_vs_sweep | **0.5043 ± 0.0046** |
+| j1_only (1v2 in-env control) | 0.2532 ± 0.0055 |
+| rad_vs_idle drop | 0.0204 ± 0.0019 |
+| sweep_vs_idle floor | 0.1187 |
+
+Floor-adjusted neutralization = 1 − (h2h − rad_idle) / (jvs − floor)
+= 1 − 0.308/0.386 = **20.2%** — versus S6's **63.7%**.
+
+**The containment ratio collapses from ~64% to ~20%.** In S6 the learned
+radars absorbed nearly two-thirds of the jammer's marginal power; in the
+converged 2v2 game they absorb one-fifth. Defense dominance as measured by
+S6 is broken by the second jammer — not into instability (the equilibrium is
+a stable plateau), but into a game where the offense's adapted suppression
+is mostly unrecoverable by the defense.
+
+### 1000-iter checkpoints (seeds 20260802/03 ⏳; seed 01 for reference)
+
+Seed 20260801 at its 1000-iter budget: h2h 0.2600, jam_vs_sweep 0.3941,
+j1_only 0.1770, rad_vs_idle 0.9847 — i.e., the protocol-level 1000-iter
+numbers understate the converged equilibrium by ~26% on h2h (the
+continuation control quantifies exactly this gap).
 
 ## Behavior extraction (seed 20260801 final checkpoint)
 
