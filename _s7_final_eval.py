@@ -31,10 +31,13 @@ from experiments.array_face_s7.learning_repair.trainer_s7 import (
 p = argparse.ArgumentParser()
 p.add_argument("--seed", type=int, required=True)
 p.add_argument("--device", default="cuda")
+p.add_argument("--out-dir", default=None,
+               help="override checkpoint dir (default: s7_selfplay_output_seed{seed})")
 args = p.parse_args()
 SEED = args.seed
 device = args.device
-out_dir = Path(f'experiments/array_face_s7/learning_repair/s7_selfplay_output_seed{SEED}')
+out_dir = Path(args.out_dir) if args.out_dir else \
+    Path(f'experiments/array_face_s7/learning_repair/s7_selfplay_output_seed{SEED}')
 
 cfg = S2PPOConfigV2(
     profile="array_face_s7_v1", iterations=1,
