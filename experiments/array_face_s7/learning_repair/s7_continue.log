@@ -1,0 +1,8 @@
+[2026/08/24 06:57:59] immediate start (queue reordered by user)
+[2026/08/24 06:57:59] RETRY 1 continue (max iter -1/1999)
+[2026/08/24 16:29:04] immediate start (queue reordered by user)
+[2026/08/24 16:29:04] RETRY 1 continue (max iter 1179/1999)
+[2026/08/24 19:25:25] immediate start (queue reordered by user)
+[2026/08/24 19:25:25] RETRY 1 continue (max iter 1259/1999)
+[2026/08/25 04:45:58] CONTINUATION DONE
+[2026/08/25 04:45:58] seeds chain relaunched (02 resume, 03 fresh)

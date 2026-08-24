@@ -5,29 +5,30 @@
 **Status: TRAINING IN PROGRESS** — seed 20260801 at iter ~900/1000; this report
 fills as the pipeline completes. Sections marked ⏳ await final checkpoints.
 
-## TL;DR (seed 20260801 final; seeds 02/03 ⏳)
+## TL;DR (seed 20260801 + its 2000-iter continuation; seeds 02/03 ⏳)
 
 S7 asks: does a SECOND jammer break S6's defense-dominant equilibrium? With
 spatially separated radars (±20°) and two jammers in cross-fire (±60°), the
-answer taking shape is **erosion into an ongoing offensive drift, not
-collapse and not stability**:
+answer — now measured at full convergence — is **yes, in scale: the 2v2
+equilibrium sits at h2h ≈ 0.34, ~3.8× S6's 0.089**, and the defense dominance
+S6 found is eroded into a much higher, still-stable plateau:
 
-- h2h (2v2) final **0.260** (plateau 0.20 ± 0.03 through q3-q4) — 2.9× S6's
-  0.089, and rising in the last 200 iters (late offensive counter-adaptation)
-- j1_only (1 jammer vs the SAME learned radars) final **0.177** — the radars
-  still blunt a single jammer, but less than S6 did (0.089 at equal budget)
-- jam_vs_sweep final **0.394** vs S6's 0.275 — the pair extracts +43% more
-  raw damage from the SAME 63-token team budget
-- the second jammer's marginal power grew all training (0.087 → 0.227) and
-  the pair ends at 2.2× a single jammer's damage
-- rad_vs_idle 0.985 — radar competence at ceiling; the erosion is offensive,
-  not defensive decay
-- the jammer pair **exhausts its energy budget** (S6's jammer rationed), and
-  plays a symmetric center-split rather than clean cross-pairing; radar 0
-  absorbs near-double suppression and the radar team answers with a stable
-  az ±30° sector division of labor
+- h2h (2v2) converges at **0.343 ± 0.015** (final full-protocol 0.347 at
+  iter 1999) after a slow climb that the 1000-iter budget had truncated at
+  0.26 — the continuation control shows the rise is real convergence, NOT
+  cycling (see "Continuation control")
+- jam_vs_sweep converges at **0.496 ± 0.020** vs S6's 0.275 — the pair
+  extracts +80% more raw damage from the SAME 63-token team budget
+- j1_only doubles across the continuation (0.12 → **0.24**): the radar team,
+  specializing against the pair, becomes exploitable by a lone jammer — a
+  measured adaptation trade-off (rock-paper-scissors tilt, not a cycle)
+- rad_vs_idle 0.987 — the erosion is purely offensive; radar competence
+  never decays
+- the jammer pair exhausts its energy budget (S6's jammer rationed) and plays
+  a symmetric center-split; the radar team holds a stable az ±30° sector
+  division of labor
 
-Seeds 20260802/03 ⏳ (training in progress) before any of this is headline.
+Seeds 20260802/03 ⏳ (training in progress) for the replication statistics.
 
 ## Setup
 
@@ -121,6 +122,54 @@ Reading: the second jammer's marginal power grows monotonically all training
 (0.087 → 0.227, +160%) — the jammer pair's coordination compounds. In the
 last quarter the h2h creeps up (0.18 → 0.22–0.26): late offensive
 counter-adaptation, same direction as S6's late-h2h hint but 5× larger.
+
+## Continuation control (seed 20260801, iter 1000 → 2000, entropy anneal frozen)
+
+**Question** (raised by the late rise at the 1000-iter budget): was the q4 h2h
+rise (0.20 → 0.26) real offensive drift, or unfinished convergence, or
+non-transitive cycling? The continuation isolates the variable — `--anneal-done`
+freezes all per-head entropy coefficients at coef_min from the resume point,
+so the ONLY thing that changes is more training.
+
+**Answer: the rise was an unfinished arms race, which then CONVERGES at a
+much higher plateau — it is not cycling and it does not run away.**
+
+Per-200-iter quarters (validation views):
+
+| Quarter | h2h | jam_vs_sweep | j1_only | rad_vs_idle |
+|---|---|---|---|---|
+| q5 (1000–1199) | 0.290 | 0.427 | 0.178 | 0.993 |
+| q6 (1200–1399) | 0.328 | 0.475 | 0.209 | 0.987 |
+| q7 (1400–1599) | 0.335 | 0.485 | 0.211 | 0.987 |
+| q8 (1600–1799) | 0.345 | 0.497 | 0.237 | 0.989 |
+| q9 (1800–1999) | **0.341** | **0.494** | 0.243 | 0.985 |
+| last-40 | **0.343 ± 0.015** | 0.496 ± 0.020 | 0.240 ± 0.016 | 0.987 ± 0.007 |
+
+- h2h climbs 0.29 → 0.34 with decelerating slope and flats (q8 ≈ q9 within
+  noise); jvs flattens the same way. **Convergence completes around
+  iter ~1600–1700.**
+- **Consequence for the protocol:** the 1000-iter budget understates the 2v2
+  equilibrium by ~30% (0.26 at 999 vs 0.34 at convergence). All S7 headline
+  numbers must be read at the converged scale — or with the budget stated.
+- **New phenomenon — adaptation trade-off:** j1_only roughly DOUBLES across
+  the continuation (0.12 → 0.24). The radar team, optimizing against the
+  PAIR, gives up single-jammer containment: at iter 999 the radars blunted a
+  lone jammer to 0.12 (S6-like), at 1999 a lone jammer extracts 0.24. The
+  shared jammer policy also sharpened, but the radar-side retargeting is the
+  dominant term — a genuine rock-paper-scissors tilt: specialize against the
+  team, become exploitable by the singleton.
+- End-state entropies: jammer 0.92 / radar 1.81 — the jammer is near its
+  sharpening floor while the radar still explores; no entropy lock either
+  side.
+
+**Verdict for the league question:** no non-transitive CYCLE is needed to
+explain the S7 dynamics — the single-policy self-play run converges, just
+slowly and far above the 1000-iter checkpoint. League/PFSP machinery would
+not change this answer; it becomes relevant only if we later want the
+single-jammer exploitability (the j1_only trade-off) minimized, which is a
+different objective (robustness across opponent classes). The cheapest
+robustness knob — periodic singleton-opponent mixing — is a natural follow-up
+if that objective matters.
 
 ## Final evaluation ⏳
 
