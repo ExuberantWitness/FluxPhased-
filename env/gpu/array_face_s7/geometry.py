@@ -48,7 +48,14 @@ def jammer_directions(device) -> tuple[torch.Tensor, torch.Tensor]:
 
 
 def pair_bearings(device) -> tuple[torch.Tensor, torch.Tensor]:
-    """Per-(jammer k, radar r) relative bearing [K, R] in radians.
+    """Per-(jammer k, radar r) relative bearing [K, R] in radians (default geometry)."""
+    return pair_bearings_for(JAMMER_AZ_DEG, RADAR_AZ_DEG, device)
+
+
+def pair_bearings_for(
+    jammer_az_deg, radar_az_deg, device,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """pair_bearings with explicit site azimuths — the ablation hook.
 
     The angular frame is centered on the radar site. The bearing of radar r
     as seen from jammer k is radar_az[r] − jammer_az[k]. By |AF| even
@@ -56,8 +63,10 @@ def pair_bearings(device) -> tuple[torch.Tensor, torch.Tensor]:
     toward radar r and radar r's Rx gain toward jammer k (S6 physics.py
     makes the identical argument for the single-jammer case).
     """
-    az_k, el_k = jammer_directions(device)
-    az_r, el_r = radar_directions(device)
+    az_k = torch.tensor([math.radians(a) for a in jammer_az_deg], device=device)
+    el_k = torch.zeros_like(az_k)
+    az_r = torch.tensor([math.radians(a) for a in radar_az_deg], device=device)
+    el_r = torch.zeros_like(az_r)
     rel_az = az_r.unsqueeze(0) - az_k.unsqueeze(1)   # [K, R]
     rel_el = el_r.unsqueeze(0) - el_k.unsqueeze(1)   # [K, R]
     return rel_az, rel_el

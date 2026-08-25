@@ -54,6 +54,10 @@ class EnvConfig:
     detects_required: int = 1
     potential_coef: float = 0.05
     gamma: float = 0.99
+    # ablation hook: override site azimuths (degrees). None -> geometry.py
+    # defaults (jammers ±60°, radars ±20°). el is always 0.
+    jammer_az_deg: tuple | None = None
+    radar_az_deg: tuple | None = None
     device: str = "cpu"
     seed: int = 0
 
@@ -89,7 +93,7 @@ class ArrayFaceS7VecEnv:
         self.K = N_JAMMERS
         self.R = N_RADARS
         self.n_services = cfg.n_services
-        self._pair_az, self._pair_el = pair_bearings(str(self.device))  # [K, R]
+        self._pair_az, self._pair_el = self._resolve_pair_bearings()
 
         self._scenarios: list[Scenario] | None = None
         self._az_table: torch.Tensor | None = None  # [H, n_services] mission bearings
@@ -103,6 +107,16 @@ class ArrayFaceS7VecEnv:
         self._detector_gen = torch.Generator(device=str(self.device))
         self._action_gen = torch.Generator(device=str(self.device))
         self.event_ledger: dict = {}
+
+    def _resolve_pair_bearings(self):
+        """Pair bearings from EnvConfig overrides, else the geometry defaults."""
+        from env.gpu.array_face_s7.geometry import pair_bearings, pair_bearings_for, \
+            JAMMER_AZ_DEG, RADAR_AZ_DEG
+        jaz = tuple(self.cfg.jammer_az_deg) if self.cfg.jammer_az_deg else JAMMER_AZ_DEG
+        raz = tuple(self.cfg.radar_az_deg) if self.cfg.radar_az_deg else RADAR_AZ_DEG
+        if jaz == JAMMER_AZ_DEG and raz == RADAR_AZ_DEG:
+            return pair_bearings(str(self.device))
+        return pair_bearings_for(jaz, raz, str(self.device))
 
     def _init_state(self):
         E, K, R = self.E, self.K, self.R

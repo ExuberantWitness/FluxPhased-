@@ -58,6 +58,11 @@ def main():
                              "coef_min from the resume point on (anneal window ends exactly "
                              "at the loaded iteration). Without this, a longer --iterations "
                              "would re-ramp the coefficients mid-run and confound the read.")
+    parser.add_argument("--jammer-az", type=str, default=None,
+                        help="ablation: comma-separated jammer site azimuths (deg), "
+                             "e.g. '+60,+60' for co-located jammers")
+    parser.add_argument("--radar-az", type=str, default=None,
+                        help="ablation: comma-separated radar site azimuths (deg)")
     args = parser.parse_args()
     seed = int(args.seed)
     n_iterations = int(args.iterations)
@@ -98,6 +103,8 @@ def main():
         arrival_rate_per_service=0.15,
         mission_tau_window=6, detects_required=1,
         potential_coef=0.05, gamma=0.99,
+        jammer_az_deg=tuple(float(x) for x in args.jammer_az.split(",")) if args.jammer_az else None,
+        radar_az_deg=tuple(float(x) for x in args.radar_az.split(",")) if args.radar_az else None,
         device=device, seed=seed,
     )
     physics = default_debug_physics_config(P_jam_W=0.1)  # S6b-validated regime
