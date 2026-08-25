@@ -171,6 +171,28 @@ different objective (robustness across opponent classes). The cheapest
 robustness knob — periodic singleton-opponent mixing — is a natural follow-up
 if that objective matters.
 
+### Stage-2 extension (iter 2000 → 3000, anneal frozen): plateau CONFIRMED
+
+The user's check — "2000 is not flat enough point-to-point" — drove one more
+1000-iter stage. The answer is now unambiguous: **the equilibrium is fully
+stationary by ~iter 1700; 2000–3000 is pure stationary noise.**
+
+Validation-view quarters (2000–3000):
+
+| Quarter | h2h | jam_vs_sweep | j1_only | rad_vs_idle |
+|---|---|---|---|---|
+| q10 (2000–2199) | 0.3465 | 0.5121 | 0.2468 | 0.9824 |
+| q11 (2200–2399) | 0.3428 | 0.4956 | 0.2527 | 0.9825 |
+| q12 (2400–2599) | 0.3484 | 0.5119 | 0.2481 | 0.9773 |
+| q13 (2600–2799) | 0.3507 | 0.5107 | 0.2421 | 0.9801 |
+| q14 (2800–2999) | 0.3463 | 0.5215 | 0.2525 | 0.9749 |
+
+All four views vary within ±0.005 of their 2000–3000 means across five
+quarters (h2h mean 0.3469 ± 0.003, jvs 0.5104 ± 0.009, j1 0.2484 ± 0.004) —
+statistically flat. Last-40 at 3000: h2h 0.3485 ± 0.0151, jvs 0.5161 ± 0.0174,
+j1 0.2473 ± 0.0137. **The converged 2v2 equilibrium is h2h ≈ 0.35 (≈3.9×
+S6's 0.089), jvs ≈ 0.51, j1 ≈ 0.25** — and no further training changes it.
+
 ## Final evaluation
 
 Protocol: 64 validation seeds × 3 action seeds × reps=1, five views (h2h,

@@ -28,8 +28,9 @@ base = "experiments/array_face_s7/learning_repair"
 # ---- panel 1: seed 01 full curve 9..1999 (original + continuation) ----
 x0, h2h0, jvs0, rvi0, j10 = parse(f"{base}/s7_selfplay_output_seed20260801/run.log")
 x1, h2h1, jvs1, rvi1, j11 = parse(f"{base}/s7_continue_output_seed20260801/run.log")
-x = np.concatenate([x0, x1]); h2h = np.concatenate([h2h0, h2h1]); jvs = np.concatenate([jvs0, jvs1])
-rvi = np.concatenate([rvi0, rvi1]); j1 = np.concatenate([j10, j11])
+x2, h2h2, jvs2, rvi2, j12 = parse(f"{base}/s7_continue2_output_seed20260801/run.log")
+x = np.concatenate([x0, x1, x2]); h2h = np.concatenate([h2h0, h2h1, h2h2]); jvs = np.concatenate([jvs0, jvs1, jvs2])
+rvi = np.concatenate([rvi0, rvi1, rvi2]); j1 = np.concatenate([j10, j11, j12])
 
 fig, axes = plt.subplots(1, 2, figsize=(16, 5.2))
 ax = axes[0]
@@ -45,7 +46,7 @@ ax.axhline(0.2751, color="blue", ls=":", lw=1); ax.text(5, 0.29, "S6 jvs 0.275",
 # converged plateau band
 ax.axhspan(0.343-0.015, 0.343+0.015, color="grey", alpha=0.15)
 ax.text(1600, 0.373, "converged plateau 0.343±0.015", fontsize=8, color="grey")
-ax.set_title("S7 seed 20260801 — full 2000-iter trajectory (4 views)", fontsize=10)
+ax.set_title("S7 seed 20260801 — full 3000-iter trajectory (4 views)", fontsize=10)
 ax.set_xlabel("iteration"); ax.set_ylabel("mission drop ratio")
 ax.set_ylim(-0.02, 0.56); ax.grid(alpha=0.3)
 ax.legend(loc="upper left", fontsize=7.5)

@@ -23,6 +23,7 @@ SEED_DIRS = {
     20260802: "s7_selfplay_output_seed20260802",
     20260803: "s7_selfplay_output_seed20260803",
     "20260801_cont": "s7_continue_output_seed20260801",
+    "20260801_cont2": "s7_continue2_output_seed20260801",
 }
 for seed, dirname in SEED_DIRS.items():
     log = f"experiments/array_face_s7/learning_repair/{dirname}/run.log"
