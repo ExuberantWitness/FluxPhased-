@@ -199,25 +199,32 @@ Protocol: 64 validation seeds × 3 action seeds × reps=1, five views (h2h,
 jam_vs_sweep, rad_only, **j1_only** — the S7-specific 1v2 control — and the
 sweep_vs_idle natural floor). Merge across seeds with mean ± sd.
 
-### Converged continuation (seed 20260801 @ 2000 iters) — the authoritative 2v2 numbers
+### Converged continuation (seed 20260801 @ 3000 iters) — the authoritative 2v2 numbers
+
+Full-protocol final eval (64 validation seeds × 3 action seeds) on the
+3000-iter checkpoint (the plateau is dead flat 2000–3000, so this is the
+equilibrium):
 
 | View | mean ± sd over action seeds |
 |---|---|
-| h2h (2v2) | **0.3282 ± 0.0016** |
-| jam_vs_sweep | **0.5043 ± 0.0046** |
-| j1_only (1v2 in-env control) | 0.2532 ± 0.0055 |
-| rad_vs_idle drop | 0.0204 ± 0.0019 |
+| h2h (2v2) | **0.3390 ± 0.0050** |
+| jam_vs_sweep | **0.5406 ± 0.0057** |
+| j1_only (1v2 in-env control) | 0.2632 ± 0.0055 |
+| rad_vs_idle drop | 0.0194 ± 0.0045 |
 | sweep_vs_idle floor | 0.1187 |
 
 Floor-adjusted neutralization = 1 − (h2h − rad_idle) / (jvs − floor)
-= 1 − 0.308/0.386 = **20.2%** — versus S6's **63.7%**.
+= 1 − 0.3196 / 0.4219 = **24.2%** — versus S6's **63.7%**.
 
-**The containment ratio collapses from ~64% to ~20%.** In S6 the learned
-radars absorbed nearly two-thirds of the jammer's marginal power; in the
-converged 2v2 game they absorb one-fifth. Defense dominance as measured by
-S6 is broken by the second jammer — not into instability (the equilibrium is
-a stable plateau), but into a game where the offense's adapted suppression
-is mostly unrecoverable by the defense.
+(The 2000-iter checkpoint gives the same picture: h2h 0.3282, jvs 0.5043,
+neutralization 20.2%. Call the converged range **20–24%** vs 64%.)
+
+**The containment ratio collapses to roughly one-third of S6's.** In S6 the
+learned radars absorbed nearly two-thirds of the jammer's marginal power; in
+the converged 2v2 game they absorb a fifth to a quarter. Defense dominance
+as measured by S6 is broken by the second jammer — not into instability (the
+equilibrium is a stable plateau), but into a game where the offense's
+adapted suppression is mostly unrecoverable by the defense.
 
 ### 1000-iter checkpoints (seeds 20260802/03 ⏳; seed 01 for reference)
 
