@@ -1,0 +1,41 @@
+{
+  "stage": "A_static_cache",
+  "comparison": "paper_baseline_tag_s7-paper-baseline-20260826_vs_perf_branch",
+  "cases": [
+    {
+      "E": 2,
+      "H": 64,
+      "before_mean_s": 1.329937119999886,
+      "after_mean_s": 0.8180232800001249,
+      "before_median_s": 1.2650479000003543,
+      "after_median_s": 0.798563500000455,
+      "speedup_mean_x": 1.6257937304665497,
+      "speedup_median_x": 1.5841544222840558,
+      "per_env_step_ms_before": 10.390133749999109,
+      "per_env_step_ms_after": 6.390806875000976
+    },
+    {
+      "E": 16,
+      "H": 64,
+      "before_mean_s": 2.055098500000289,
+      "after_mean_s": 1.227910733333071,
+      "before_median_s": 2.204583200000343,
+      "after_median_s": 1.2109304999994492,
+      "speedup_mean_x": 1.6736546429738253,
+      "speedup_median_x": 1.8205695537451123,
+      "per_env_step_ms_before": 2.006932128906532,
+      "per_env_step_ms_after": 1.1991315755205771
+    }
+  ],
+  "numeric_gate": {
+    "target_gain_table_max_abs": 0.0,
+    "target_gain_table_torch_equal": true,
+    "s7_tests": "18 passed"
+  },
+  "notes": [
+    "Rollout-only timing: no validation, checkpoint, disk logging, or PPO update.",
+    "Before implementation loaded from bf13807^ in an isolated temporary package.",
+    "After implementation is the current perf branch with cached beam angles, service tables, and target-gain table.",
+    "The original s7_speed_benchmark.json is the first-round baseline; this file records the stage-A rerun separately."
+  ]
+}

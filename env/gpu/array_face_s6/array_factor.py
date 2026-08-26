@@ -42,6 +42,22 @@ def az_el_to_uv(az_rad: torch.Tensor, el_rad: torch.Tensor) -> tuple[torch.Tenso
     return torch.sin(az_rad) * torch.cos(el_rad), torch.sin(el_rad)
 
 
+def _beam_direction_tables(cfg: UPAConfig, *, device) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return cached beam angle tables for one immutable config/device pair."""
+    key = (str(device), tuple(cfg.beam_az_deg), tuple(cfg.beam_el_deg))
+    cache = getattr(_beam_direction_tables, "_cache", {})
+    if key not in cache:
+        az_table = torch.tensor(
+            [torch.deg2rad(torch.tensor(float(a))).item() for a in cfg.beam_az_deg],
+            device=device, dtype=torch.float32)
+        el_table = torch.tensor(
+            [torch.deg2rad(torch.tensor(float(e))).item() for e in cfg.beam_el_deg],
+            device=device, dtype=torch.float32)
+        cache[key] = (az_table, el_table)
+        _beam_direction_tables._cache = cache
+    return cache[key]
+
+
 def compute_upa_af_db_toward(
     cfg: UPAConfig,
     *,
@@ -57,14 +73,7 @@ def compute_upa_af_db_toward(
     exactly (even-symmetric AF) — the S6↔S4 consistency gate.
     """
     device = beam_az_idx.device
-    az_table = torch.tensor(
-        [torch.deg2rad(torch.tensor(float(a))).item() for a in cfg.beam_az_deg],
-        device=device, dtype=torch.float32,
-    )
-    el_table = torch.tensor(
-        [torch.deg2rad(torch.tensor(float(e))).item() for e in cfg.beam_el_deg],
-        device=device, dtype=torch.float32,
-    )
+    az_table, el_table = _beam_direction_tables(cfg, device=device)
     az_b = az_table.gather(0, beam_az_idx.long())
     el_b = el_table.gather(0, beam_el_idx.long())
     u_b, v_b = az_el_to_uv(az_b, el_b)

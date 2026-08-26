@@ -31,6 +31,7 @@ from env.gpu.array_face_s7.geometry import pair_bearings
 from env.gpu.array_face_s7.tracker import S7MissionTracker
 from env.gpu.array_face_s7.physics import (
     compute_jnr_db_s7, compute_p_detect_s7, compute_snr_eff_db_s6, target_gain_db,
+    target_gain_table,
 )
 from env.gpu.array_face_s7.observation import (
     build_observation_jammer, build_observation_radar,
@@ -100,6 +101,9 @@ class ArrayFaceS7VecEnv:
             (self.E, N_BEAM_DIRS_S7), dtype=torch.bool, device=self.device)
         self._radar_mask_svc = torch.ones(
             (self.E, 2), dtype=torch.bool, device=self.device)
+        self._target_gain = target_gain_table(self.radar, device=self.device)
+        self._p_cell_dbm = 10.0 * torch.log10(
+            torch.tensor(float(self.physics.P_jam_W) * 1000.0, device=self.device))
 
         self._scenarios: list[Scenario] | None = None
         self._az_table: torch.Tensor | None = None  # [H, n_services] mission bearings
@@ -322,14 +326,11 @@ class ArrayFaceS7VecEnv:
         )  # jnr [E, R], jnr_per [E, K, R]
         snr_eff = compute_snr_eff_db_s6(
             self.physics, baseline_snr_db=self.cfg.baseline_snr_db, jnr_db=jnr)  # [E, R]
-        # per-radar target gains toward ALL az bearings (missions live on the
-        # az grid at el=0): tg[e, r, a] couples the radar's pointing to BOTH
-        # detection gain (here) and jamming exposure (inside JNR above)
-        tg = torch.stack([
-            target_gain_db(self.radar, beam_az_idx=radar_beam % 5,
-                           beam_el_idx=radar_beam // 5,
-                           mission_az_idx=torch.full_like(radar_beam, a))
-            for a in range(N_AZ)], dim=-1)  # [E, R, N_AZ]
+        # The mission azimuths are the fixed 5-point grid. Gather the cached
+        # [beam_az, beam_el, mission_az] table instead of launching 5 AF calls.
+        tg = self._target_gain[
+            (radar_beam % 5).long(), (radar_beam // 5).long()
+        ]  # [E, R, N_AZ]
         thr = float(self.physics.detect_threshold_db)
         width = float(self.physics.detect_width_db)
 
