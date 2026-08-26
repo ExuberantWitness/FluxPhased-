@@ -66,3 +66,25 @@ Add-Content $ablog "[$(Get-Date -Format 'yyyy/MM/dd HH:mm:ss')] ABLATION TRAIN D
 & $pyexe -u _s7_final_eval.py --seed $seed --device cpu --out-dir $out >> "$out\final_eval_run.log" 2>&1
 Add-Content $ablog "[$(Get-Date -Format 'yyyy/MM/dd HH:mm:ss')] ABLATION EVAL DONE"
 Add-Content $ablog "[$(Get-Date -Format 'yyyy/MM/dd HH:mm:ss')] ALL ABLATION DONE"
+
+# 3. Multi-seed convergence replication: seeds 02/03 continued 1000 -> 3000.
+#    Same protocol as seed 01's stage-2 (anneal pinned at the 1000 resume
+#    point via --anneal-done; --iterations 3000 covers 1000..3000 in one
+#    driver run). Fresh dirs keep the 1000-iter checkpoints frozen for the
+#    replication table.
+foreach ($cs in @(@(20260802, "s7_seed02_cont_output_seed20260802"), @(20260803, "s7_seed03_cont_output_seed20260803"))) {
+  $cseed = $cs[0]; $cout = "$base\$($cs[1])"
+  $csrc = "$base\s7_selfplay_output_seed$cseed\selfplay_latest.pt"
+  if (-not (Test-Path $cout)) { New-Item -ItemType Directory -Path $cout | Out-Null }
+  if (-not (Test-Path "$cout\selfplay_latest.pt")) { Copy-Item $csrc "$cout\selfplay_latest.pt" }
+  for ($r = 1; $r -le 30; $r++) {
+    $have = Get-MaxIter "$cout\train_metrics.jsonl"
+    if ($have -ge 2999) { break }
+    Add-Content $ablog "[$(Get-Date -Format 'yyyy/MM/dd HH:mm:ss')] CONT seed $cseed (max iter $have/2999)"
+    & $pyexe -u experiments\array_face_s7\learning_repair\run_s7_selfplay.py --seed $cseed --resume --iterations 3000 --anneal-done --out-dir $cout >> "$cout\run.log" 2>&1
+    Start-Sleep -Seconds 30
+  }
+  & $pyexe -u _s7_final_eval.py --seed $cseed --device cpu --out-dir $cout >> "$cout\final_eval_run.log" 2>&1
+  Add-Content $ablog "[$(Get-Date -Format 'yyyy/MM/dd HH:mm:ss')] CONT DONE seed $cseed (3000 iters + eval)"
+}
+Add-Content $ablog "[$(Get-Date -Format 'yyyy/MM/dd HH:mm:ss')] ALL POST-CHAIN DONE"
