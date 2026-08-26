@@ -23,7 +23,7 @@ foreach ($seed in @(20260801, 20260802, 20260803)) {
     $have = Get-MaxIter "$out\train_metrics.jsonl"
     if ($have -ge 999) { break }
     Add-Content $chainlog "[$(Get-Date -Format 'yyyy/MM/dd HH:mm:ss')] RETRY $r seed $seed (max iter $have/999)"
-    & $pyexe -u experiments\array_face_s7\learning_repair\run_s7_selfplay.py --seed $seed --resume >> "$out\run.log" 2>&1
+    & $pyexe -u experiments\array_face_s7\learning_repair\run_s7_selfplay.py --seed $seed --resume --val-every 50 >> "$out\run.log" 2>&1
     Start-Sleep -Seconds 30
   }
   Add-Content $chainlog "[$(Get-Date -Format 'yyyy/MM/dd HH:mm:ss')] DONE seed $seed"

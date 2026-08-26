@@ -162,10 +162,18 @@ class S7SelfPlayTrainer(S2PPOTrainerV2):
         priv_r_buf = torch.zeros(T, Br, PRIVILEGED_DIM_RADAR, device=device)
         priv_val_r = torch.zeros(T, Br, device=device)
 
+        # Carry the post-step observation forward. Env.step() already builds
+        # this exact next state, so rebuilding it at the next loop head is
+        # pure overhead.
+        obs_j, obs_r = self.env._build_observation()
         for t in range(T):
-            obs_j, obs_r = self.env._build_observation()   # [E,K,67], [E,R,60]
+            # The initial observation is carried forward from the previous
+            # env.step() below; this avoids rebuilding the full public state
+            # once per timestep.
             mask_cell, mask_beam = self.env._compute_masks()  # [E,K,25] x2
-            priv_j, priv_r = self.env.privileged()         # [E,134], [E,120]
+            # privileged() is exactly a reshape of these public observations;
+            # reuse them instead of triggering a second tracker/one-hot pass.
+            priv_j, priv_r = obs_j.reshape(E, -1), obs_r.reshape(E, -1)
             with torch.no_grad():
                 pv_j = self.jam_priv_critic(priv_j)        # [E]
                 pv_r = self.rad_priv_critic(priv_r)        # [E]
@@ -193,8 +201,8 @@ class S7SelfPlayTrainer(S2PPOTrainerV2):
             step_radars = {}
             for r in range(R):
                 obs_rk = obs_r[:, r]
-                masks_r = {"beam": torch.ones(E, 25, dtype=torch.bool, device=device),
-                           "svc": torch.ones(E, 2, dtype=torch.bool, device=device)}
+                masks_r = {"beam": self.env._radar_mask_beam,
+                           "svc": self.env._radar_mask_svc}
                 with torch.no_grad():
                     actions_r, lp_rk = sample_multihead(
                         self.rad_actor, obs_rk, masks_r, self._radar_gen)
@@ -215,14 +223,14 @@ class S7SelfPlayTrainer(S2PPOTrainerV2):
             j_beam = torch.stack([step_jammers[k]["beam"] for k in range(K)], dim=1)  # [E,K]
             r_beam = torch.stack([step_radars[r]["beam"] for r in range(R)], dim=1)   # [E,R]
             r_svc = torch.stack([step_radars[r]["svc"] for r in range(R)], dim=1)     # [E,R]
-            (oj2, or2), (rj, rr), done, info = self.env.step(
+            (obs_j, obs_r), (rj, rr), done, info = self.env.step(
                 j_cell, j_beam, r_beam, r_svc)
             rew_j[t] = rj.repeat(K)  # team reward, shared by both jammers
             rew_r[t] = rr.repeat(R)  # team reward, shared by both radars
 
         with torch.no_grad():
-            obs_j, obs_r = self.env._build_observation()
-            priv_j, priv_r = self.env.privileged()
+            # Use the final post-step observation already returned by step().
+            priv_j, priv_r = obs_j.reshape(E, -1), obs_r.reshape(E, -1)
             last_vj = torch.cat([self.jam_critic(obs_j[:, k]) for k in range(K)])
             last_vr = torch.cat([self.rad_critic(obs_r[:, r]) for r in range(R)])
             last_pvj = self.jam_priv_critic(priv_j).repeat(K)
@@ -361,12 +369,17 @@ def evaluate_s7(
                 marginal disruptive power at equal per-jammer leverage)
     """
     from env.gpu.array_face_s7 import ArrayFaceS7VecEnv
+    from dataclasses import replace
+
+    # The evaluator reports lane 0 only. Use one lane instead of simulating
+    # fifteen discarded copies; scenario generation for lane 0 is unchanged.
+    eval_env_cfg = replace(env_cfg, n_envs=1)
 
     def run(seed: int, mode: str) -> tuple[float, float]:
-        env = ArrayFaceS7VecEnv(env_cfg, physics=physics, radar=radar, jammer=jammer)
+        env = ArrayFaceS7VecEnv(eval_env_cfg, physics=physics, radar=radar, jammer=jammer)
         env.reset(seed=seed)
         gen = torch.Generator(device=device).manual_seed(action_seed + seed)
-        E, K, R = env_cfg.n_envs, N_JAMMERS, N_RADARS
+        E, K, R = eval_env_cfg.n_envs, N_JAMMERS, N_RADARS
         for t in range(env_cfg.horizon):
             obs_j, obs_r = env._build_observation()
             mask_cell, mask_beam = env._compute_masks()
@@ -391,8 +404,8 @@ def evaluate_s7(
                 rb_ = torch.zeros(E, R, dtype=torch.int64, device=device)
                 rs_ = torch.zeros(E, R, dtype=torch.int64, device=device)
                 for r in range(R):
-                    masks = {"beam": torch.ones(E, 25, dtype=torch.bool, device=device),
-                             "svc": torch.ones(E, 2, dtype=torch.bool, device=device)}
+                    masks = {"beam": env._radar_mask_beam,
+                             "svc": env._radar_mask_svc}
                     with torch.no_grad():
                         a_r, _ = sample_multihead(rad_actor, obs_r[:, r], masks, gen)
                     rb_[:, r] = a_r["beam"]

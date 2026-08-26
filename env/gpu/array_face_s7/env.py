@@ -94,6 +94,12 @@ class ArrayFaceS7VecEnv:
         self.R = N_RADARS
         self.n_services = cfg.n_services
         self._pair_az, self._pair_el = self._resolve_pair_bearings()
+        self._energy_denoms = torch.tensor(
+            self.cfg.E0_per, dtype=torch.float32, device=self.device).clamp(min=1e-6)
+        self._radar_mask_beam = torch.ones(
+            (self.E, N_BEAM_DIRS_S7), dtype=torch.bool, device=self.device)
+        self._radar_mask_svc = torch.ones(
+            (self.E, 2), dtype=torch.bool, device=self.device)
 
         self._scenarios: list[Scenario] | None = None
         self._az_table: torch.Tensor | None = None  # [H, n_services] mission bearings
@@ -198,8 +204,7 @@ class ArrayFaceS7VecEnv:
 
         j_az = self.prev_beam % 5   # [E, K]
         j_el = self.prev_beam // 5  # [E, K]
-        energy_ratio = (self.energy / torch.tensor(self.cfg.E0_per, device=self.device)
-                        .unsqueeze(0).clamp(min=1e-6)).clamp(0.0, 1.0)  # [E, K]
+        energy_ratio = (self.energy / self._energy_denoms.unsqueeze(0)).clamp(0.0, 1.0)  # [E, K]
         active = (self.prev_cell.sum(dim=-1) > 0).float()  # [E, K]
 
         obs_j_list = []

@@ -63,9 +63,12 @@ def main():
                              "e.g. '+60,+60' for co-located jammers")
     parser.add_argument("--radar-az", type=str, default=None,
                         help="ablation: comma-separated radar site azimuths (deg)")
+    parser.add_argument("--val-every", type=int, default=VAL_EVERY,
+                        help="intermediate validation cadence; final validation always runs")
     args = parser.parse_args()
     seed = int(args.seed)
     n_iterations = int(args.iterations)
+    val_every = max(1, int(args.val_every))
 
     device = "cuda"
     train_seeds = load_seeds("ppo_train")
@@ -144,7 +147,7 @@ def main():
         m = trainer.train_iteration()
         train_log.write(json.dumps(m) + "\n")
         train_log.flush()
-        if (it + 1) % VAL_EVERY == 0 or it == n_iterations - 1:
+        if (it + 1) % val_every == 0 or it == n_iterations - 1:
             is_final = (it == n_iterations - 1)
             views = evaluate_s7(
                 trainer.jam_actor, trainer.rad_actor,

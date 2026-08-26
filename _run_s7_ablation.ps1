@@ -50,12 +50,12 @@ for ($r = 1; $r -le 40; $r++) {
     # Stage A: fresh 1000 iters, normal anneal (identical schedule to the
     # cross-fire reference's first 1000)
     Add-Content $ablog "[$(Get-Date -Format 'yyyy/MM/dd HH:mm:ss')] RETRY $r ablation stage-A (max iter $have/999)"
-    & $pyexe -u experiments\array_face_s7\learning_repair\run_s7_selfplay.py --seed $seed --resume --iterations 1000 --jammer-az "+60,+60" --out-dir $out >> "$out\run.log" 2>&1
+    & $pyexe -u experiments\array_face_s7\learning_repair\run_s7_selfplay.py --seed $seed --resume --iterations 1000 --val-every 50 --jammer-az "+60,+60" --out-dir $out >> "$out\run.log" 2>&1
   } else {
     # Stage B: 1000 -> 2000 with frozen anneal (mirrors the cross-fire
     # continuation protocol exactly - the ONLY difference is the geometry)
     Add-Content $ablog "[$(Get-Date -Format 'yyyy/MM/dd HH:mm:ss')] RETRY $r ablation stage-B (max iter $have/1999)"
-    & $pyexe -u experiments\array_face_s7\learning_repair\run_s7_selfplay.py --seed $seed --resume --iterations 2000 --anneal-done --jammer-az "+60,+60" --out-dir $out >> "$out\run.log" 2>&1
+    & $pyexe -u experiments\array_face_s7\learning_repair\run_s7_selfplay.py --seed $seed --resume --iterations 2000 --anneal-done --val-every 50 --jammer-az "+60,+60" --out-dir $out >> "$out\run.log" 2>&1
   }
   Start-Sleep -Seconds 30
 }
@@ -81,7 +81,7 @@ foreach ($cs in @(@(20260802, "s7_seed02_cont_output_seed20260802"), @(20260803,
     $have = Get-MaxIter "$cout\train_metrics.jsonl"
     if ($have -ge 2999) { break }
     Add-Content $ablog "[$(Get-Date -Format 'yyyy/MM/dd HH:mm:ss')] CONT seed $cseed (max iter $have/2999)"
-    & $pyexe -u experiments\array_face_s7\learning_repair\run_s7_selfplay.py --seed $cseed --resume --iterations 3000 --anneal-done --out-dir $cout >> "$cout\run.log" 2>&1
+    & $pyexe -u experiments\array_face_s7\learning_repair\run_s7_selfplay.py --seed $cseed --resume --iterations 3000 --anneal-done --val-every 50 --out-dir $cout >> "$cout\run.log" 2>&1
     Start-Sleep -Seconds 30
   }
   & $pyexe -u _s7_final_eval.py --seed $cseed --device cpu --out-dir $cout >> "$cout\final_eval_run.log" 2>&1
