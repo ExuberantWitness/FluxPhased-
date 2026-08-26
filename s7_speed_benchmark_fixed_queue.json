@@ -1,0 +1,19 @@
+{
+  "stage": "D1_fixed_queue_reference",
+  "semantic_gate": {
+    "differential_trace": "PASS",
+    "steps": 64,
+    "E": 3,
+    "compared": ["observations", "rewards", "info", "queue_fifo", "counters", "ledger"],
+    "ledger_residual_list": 0,
+    "ledger_residual_fixed": 0,
+    "s7_tests": "18 passed"
+  },
+  "speed": {
+    "E2_H64": {"list_mean_s": 0.47777798, "fixed_mean_s": 0.49166888, "speedup_mean_x": 0.97174745, "speedup_median_x": 0.93535054},
+    "E16_H64": {"list_mean_s": 0.72171570, "fixed_mean_s": 2.36604516, "speedup_mean_x": 0.30503040, "speedup_median_x": 0.30258931}
+  },
+  "decision": "do_not_enable_fixed_backend",
+  "reason": "The detector still consumes the compatibility FIFO pending view; materializing GPU slots into Python lists costs more than the aggregate reduction saves, especially at E=16.",
+  "next": "A true GPU mission queue must migrate detector traversal and credit assignment together; D2 batched detector is deferred until that rewrite has a differential trace."
+}

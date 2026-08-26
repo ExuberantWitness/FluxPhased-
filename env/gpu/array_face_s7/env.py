@@ -59,6 +59,8 @@ class EnvConfig:
     # defaults (jammers ±60°, radars ±20°). el is always 0.
     jammer_az_deg: tuple | None = None
     radar_az_deg: tuple | None = None
+    mission_backend: str = "list"   # "list" reference or "fixed" tensor queue
+    mission_capacity: int | None = None
     device: str = "cpu"
     seed: int = 0
 
@@ -70,6 +72,13 @@ class EnvConfig:
             raise ValueError("always-on jamming is infeasible")
         # Split the TEAM budget across the two jammers (k=0 gets the odd token).
         base, extra = divmod(int(self.active_budget_steps), N_JAMMERS)
+        if self.mission_backend not in ("list", "fixed"):
+            raise ValueError(f"mission_backend must be 'list' or 'fixed', got {self.mission_backend!r}")
+        if self.mission_capacity is None:
+            self.mission_capacity = self.n_services * min(
+                self.horizon, max(1, self.mission_tau_window + 1))
+        if self.mission_capacity < 1:
+            raise ValueError("mission_capacity must be positive")
         self.E0_tokens_per = tuple(base + (1 if k < extra else 0) for k in range(N_JAMMERS))
         self.E0_per = tuple(float(t) * float(self.P_jam_W) * float(self.dt)
                             for t in self.E0_tokens_per)
@@ -108,8 +117,15 @@ class ArrayFaceS7VecEnv:
         self._scenarios: list[Scenario] | None = None
         self._az_table: torch.Tensor | None = None  # [H, n_services] mission bearings
         self._init_state()
-        self.tracker = S7MissionTracker(
-            n_envs=self.E, n_services=self.n_services, detects_required=cfg.detects_required,
+        tracker_cls = S7MissionTracker
+        if cfg.mission_backend == "fixed":
+            from env.gpu.array_face_s7.fixed_tracker import FixedS7MissionTracker
+            tracker_cls = FixedS7MissionTracker
+        self.tracker = tracker_cls(
+            n_envs=self.E, n_services=self.n_services,
+            detects_required=cfg.detects_required,
+            **({"capacity": cfg.mission_capacity, "device": str(self.device)}
+               if cfg.mission_backend == "fixed" else {}),
         )
         self.counters = MissionCounterBatch.zeros(self.E, device=str(self.device))
 
@@ -189,6 +205,8 @@ class ArrayFaceS7VecEnv:
 
     # ---------- Obs ----------
     def _pending_per_service_batched(self) -> torch.Tensor:
+        if self.cfg.mission_backend == "fixed":
+            return self.tracker.pending_count_per_service_batched()
         out = torch.zeros((self.E, self.n_services), dtype=torch.int64, device=self.device)
         for e in range(self.E):
             out[e] = self.tracker.pending_count_per_service(e).to(self.device)
@@ -198,9 +216,10 @@ class ArrayFaceS7VecEnv:
         """Returns (obs_j [E,K,67], obs_r [E,R,60])."""
         E, K, R = self.E, self.K, self.R
         pending = self._pending_per_service_batched()
-        az_map = torch.stack(
-            [self.tracker.pending_az_map(e, device=self.device) for e in range(self.E)],
-            dim=0)  # [E, n_services, N_AZ]
+        az_map = (self.tracker.pending_az_map_batched(device=self.device)
+                  if self.cfg.mission_backend == "fixed" else torch.stack(
+                      [self.tracker.pending_az_map(e, device=self.device) for e in range(self.E)],
+                      dim=0))  # [E, n_services, N_AZ]
         any_jam = (self.prev_cell.sum(dim=-1) > 0).any(dim=-1)  # [E]
         conf_mean = torch.where(
             any_jam, self.intercept_confidence.mean(dim=-1),
@@ -398,6 +417,8 @@ class ArrayFaceS7VecEnv:
             torch.full((E,), done, dtype=torch.bool, device=self.device), info
 
     def _potential(self) -> torch.Tensor:
+        if self.cfg.mission_backend == "fixed":
+            return -float(self.cfg.potential_coef) * self.tracker.active.sum(dim=-1).float()
         phi = torch.zeros(self.E, dtype=torch.float32, device=self.device)
         coef = float(self.cfg.potential_coef)
         for e in range(self.E):
