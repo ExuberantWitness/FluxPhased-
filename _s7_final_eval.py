@@ -17,6 +17,7 @@ import sys, json, time, argparse
 sys.path.insert(0, '.')
 import torch
 from pathlib import Path
+from dataclasses import replace
 from env.gpu.g3_bsta_lite.physics import default_debug_physics_config
 from env.gpu.array_face_s7 import (
     EnvConfig, UPAConfig, N_CELLS_S7, N_BEAM_DIRS_S7, N_JAMMERS, N_RADARS,
@@ -79,10 +80,11 @@ print(f"checkpoint loaded (stored session iter={stored})", flush=True)
 def sweep_vs_idle(seed_subset):
     """Fully-scripted reference: sweep radars vs both jammers idle (floor)."""
     drops = []
+    floor_cfg = replace(env_cfg, n_envs=1)
     for sd in seed_subset:
-        env = ArrayFaceS7VecEnv(env_cfg, physics=physics, radar=UPAConfig(), jammer=UPAConfig())
+        env = ArrayFaceS7VecEnv(floor_cfg, physics=physics, radar=UPAConfig(), jammer=UPAConfig())
         env.reset(seed=sd)
-        E = env_cfg.n_envs
+        E = floor_cfg.n_envs
         for t in range(env_cfg.horizon):
             b = t % 25
             rb_ = torch.full((E, N_RADARS), b, dtype=torch.int64, device=device)
