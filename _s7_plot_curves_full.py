@@ -29,17 +29,29 @@ base = "experiments/array_face_s7/learning_repair"
 x0, h2h0, jvs0, rvi0, j10 = parse(f"{base}/s7_selfplay_output_seed20260801/run.log")
 x1, h2h1, jvs1, rvi1, j11 = parse(f"{base}/s7_continue_output_seed20260801/run.log")
 x2, h2h2, jvs2, rvi2, j12 = parse(f"{base}/s7_continue2_output_seed20260801/run.log")
-x = np.concatenate([x0, x1, x2]); h2h = np.concatenate([h2h0, h2h1, h2h2]); jvs = np.concatenate([jvs0, jvs1, jvs2])
-rvi = np.concatenate([rvi0, rvi1, rvi2]); j1 = np.concatenate([j10, j11, j12])
+
+# ---- helper: plot one metric as 3 connected segments (original/cont1/cont2) ----
+def seg_plot(ax, xss, yss, color, label, lw=1.6, alpha=1.0):
+    for xs, ys in zip(xss, yss):
+        ax.plot(xs, ys, color=color, lw=lw, alpha=alpha)
+    # legend entry once
+    ax.plot([], [], color=color, lw=lw, label=label)
+
+h2h_segs = [(x0, h2h0), (x1, h2h1), (x2, h2h2)]
+jvs_segs = [(x0, jvs0), (x1, jvs1), (x2, jvs2)]
+j1_segs  = [(x0, j10), (x1, j11), (x2, j12)]
+rvi_segs = [(x0, rvi0), (x1, rvi1), (x2, rvi2)]
 
 fig, axes = plt.subplots(1, 2, figsize=(16, 5.2))
 ax = axes[0]
-ax.plot(x, h2h, label="h2h (2 learned jammers vs 2 learned radars)", lw=1.6, color="#d62728")
-ax.plot(x, jvs, label="jam_vs_sweep (raw pair firepower)", lw=1.6, color="#1f77b4")
-ax.plot(x, j1, label="j1_only (1 jammer vs learned radars)", lw=1.4, color="#9467bd")
-ax.plot(x, rvi, label="rad_vs_idle drop (radar competence)", lw=1.4, color="#2ca02c")
+seg_plot(ax, *zip(*h2h_segs), "#d62728", "h2h (2 learned jammers vs 2 learned radars)")
+seg_plot(ax, *zip(*jvs_segs), "#1f77b4", "jam_vs_sweep (raw pair firepower)")
+seg_plot(ax, *zip(*j1_segs), "#9467bd", "j1_only (1 jammer vs learned radars)", lw=1.4)
+seg_plot(ax, *zip(*rvi_segs), "#2ca02c", "rad_vs_idle drop (radar competence)", lw=1.4)
 ax.axvline(1000, color="grey", ls="--", lw=1)
-ax.text(1010, 0.50, "continuation\n(anneal frozen)", fontsize=8, color="grey")
+ax.axvline(2000, color="grey", ls="--", lw=1)
+ax.text(1010, 0.52, "continuation\n(anneal frozen)", fontsize=8, color="grey")
+ax.text(2010, 0.52, "stage-2\n(anneal frozen)", fontsize=8, color="grey")
 # S6 snr=12 reference levels
 ax.axhline(0.0888, color="red", ls=":", lw=1); ax.text(5, 0.10, "S6 h2h 0.089", fontsize=8, color="red")
 ax.axhline(0.2751, color="blue", ls=":", lw=1); ax.text(5, 0.29, "S6 jvs 0.275", fontsize=8, color="blue")
