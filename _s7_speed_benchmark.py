@@ -17,23 +17,40 @@ import torch
 
 ROOT = Path(__file__).resolve().parent
 BENCH = ROOT / "_bench_s7_before"
+BENCH_S6 = ROOT / "_bench_s6_before"
 SRC = ROOT / "env/gpu/array_face_s7"
-if BENCH.exists():
-    shutil.rmtree(BENCH)
+SRC_S6 = ROOT / "env/gpu/array_face_s6"
+BASE_COMMIT = "d6fe7d9"  # direct parent of Stage A (paper baseline)
+for d in (BENCH, BENCH_S6):
+    if d.exists():
+        shutil.rmtree(d)
 shutil.copytree(SRC, BENCH)
-for p in BENCH.glob("*.py"):
-    s = p.read_text(encoding="utf-8")
-    s = s.replace("env.gpu.array_face_s7", "_bench_s7_before")
-    p.write_text(s, encoding="utf-8")
-# Baseline env/trainer from the parent of the optimization commit.
+shutil.copytree(SRC_S6, BENCH_S6)
+for d in (BENCH, BENCH_S6):
+    for p in d.glob("*.py"):
+        s = p.read_text(encoding="utf-8")
+        s = s.replace("env.gpu.array_face_s7", "_bench_s7_before")
+        s = s.replace("env.gpu.array_face_s6", "_bench_s6_before")
+        p.write_text(s, encoding="utf-8")
+
+# Replace every relevant baseline module with the exact source at BASE_COMMIT.
+# The S7 trainer imports S7, which imports S6 generalized AF/physics; both
+# packages must be pinned or the before path would silently use Stage-A code.
 import subprocess
-subprocess.run(["git", "show", "bf13807^:env/gpu/array_face_s7/env.py"],
-               check=True, stdout=(BENCH / "env.py").open("wb"))
-subprocess.run(["git", "show", "bf13807^:experiments/array_face_s7/learning_repair/trainer_s7.py"],
-               check=True, stdout=(BENCH / "trainer_s7.py").open("wb"))
-for p in (BENCH / "env.py", BENCH / "trainer_s7.py"):
-    s = p.read_text(encoding="utf-8").replace("env.gpu.array_face_s7", "_bench_s7_before")
-    p.write_text(s, encoding="utf-8")
+for rel, dest in (
+    ("env/gpu/array_face_s7/env.py", BENCH / "env.py"),
+    ("env/gpu/array_face_s7/physics.py", BENCH / "physics.py"),
+    ("env/gpu/array_face_s7/array_factor.py", BENCH / "array_factor.py"),
+    ("experiments/array_face_s7/learning_repair/trainer_s7.py", BENCH / "trainer_s7.py"),
+    ("env/gpu/array_face_s6/array_factor.py", BENCH_S6 / "array_factor.py"),
+    ("env/gpu/array_face_s6/physics.py", BENCH_S6 / "physics.py"),
+):
+    with dest.open("wb") as f:
+        subprocess.run(["git", "show", f"{BASE_COMMIT}:{rel}"], check=True, stdout=f)
+    s = dest.read_text(encoding="utf-8")
+    s = s.replace("env.gpu.array_face_s7", "_bench_s7_before")
+    s = s.replace("env.gpu.array_face_s6", "_bench_s6_before")
+    dest.write_text(s, encoding="utf-8")
 
 from env.gpu.g3_bsta_lite.physics import default_debug_physics_config
 from env.gpu.array_face_s7 import EnvConfig as AfterEnvConfig, UPAConfig, N_CELLS_S7, N_BEAM_DIRS_S7
@@ -123,3 +140,4 @@ if __name__ == "__main__":
     (ROOT / "s7_speed_benchmark.json").write_text(json.dumps(all_out, indent=2), encoding="utf-8")
     print("wrote s7_speed_benchmark.json", flush=True)
     shutil.rmtree(BENCH, ignore_errors=True)
+    shutil.rmtree(BENCH_S6, ignore_errors=True)

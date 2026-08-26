@@ -1,0 +1,41 @@
+{
+  "stage": "A_static_cache",
+  "comparison": "paper_baseline_d6fe7d9_vs_stage_A_0102799",
+  "cases": [
+    {
+      "E": 2,
+      "H": 64,
+      "before_mean_s": 1.1602696200003266,
+      "after_mean_s": 0.8607774400003109,
+      "before_median_s": 1.1849276000011741,
+      "after_median_s": 0.8765643000006094,
+      "speedup_mean_x": 1.347932190230157,
+      "speedup_median_x": 1.3517862865283818,
+      "per_env_step_ms_before": 9.064606406252551,
+      "per_env_step_ms_after": 6.724823750002429
+    },
+    {
+      "E": 16,
+      "H": 64,
+      "before_mean_s": 1.756580666666802,
+      "after_mean_s": 1.1718366666670288,
+      "before_median_s": 1.7372911000002205,
+      "after_median_s": 1.1716703000001871,
+      "speedup_mean_x": 1.4989978694410704,
+      "speedup_median_x": 1.482747407696468,
+      "per_env_step_ms_before": 1.7154108072917988,
+      "per_env_step_ms_after": 1.1443717447920203
+    }
+  ],
+  "numeric_gate": {
+    "target_gain_table_max_abs": 0.0,
+    "target_gain_table_torch_equal": true,
+    "s7_tests": "18 passed"
+  },
+  "notes": [
+    "Rollout-only timing: no validation, checkpoint, disk logging, or PPO update.",
+    "Before implementation loads S7 env, S7 physics, S7 array factor, S6 physics, and S6 array factor from exact commit d6fe7d9 in an isolated temporary package.",
+    "After implementation is Stage A commit 0102799.",
+    "This corrected rerun supersedes the earlier contaminated Stage-A numbers in s7_speed_benchmark_stageA.json; the earlier file is retained as historical audit output."
+  ]
+}
