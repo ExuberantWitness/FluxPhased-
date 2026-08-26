@@ -41,6 +41,54 @@ from experiments.array_face_s2.learning_repair.trainer import (
 )
 
 
+def _sample_multihead_from_logits(
+    actor: MultiHeadActor,
+    logits: dict[str, torch.Tensor],
+    masks: dict[str, torch.Tensor],
+    generator: torch.Generator,
+) -> tuple[dict[str, torch.Tensor], torch.Tensor]:
+    """Sample one agent from precomputed logits without changing RNG order.
+
+    This mirrors actor_heads.sample_multihead exactly, but accepts one row
+    slice from a batched shared-actor forward. The caller invokes it in agent
+    order, so the generator still consumes cell/beam (or beam/svc) uniforms
+    in the original per-agent sequence.
+    """
+    batch = next(iter(logits.values())).shape[0]
+    device = next(iter(logits.values())).device
+    actions: dict[str, torch.Tensor] = {}
+    logp_total = torch.zeros(batch, device=device)
+    for spec in actor.head_specs:
+        mask = masks[spec.name].bool()
+        masked = logits[spec.name].masked_fill(~mask, float("-inf"))
+        if spec.kind == "categorical":
+            dist = torch.distributions.Categorical(logits=masked)
+            u = torch.rand(batch, generator=generator, device=device)
+            probs = dist.probs.clamp(min=1e-12)
+            cdf = torch.cumsum(probs, dim=-1)
+            action = (u.unsqueeze(-1) < cdf).float().argmax(dim=-1).long()
+            actions[spec.name] = action
+            logp_total = logp_total + dist.log_prob(action)
+        else:
+            dist = torch.distributions.Bernoulli(logits=masked)
+            u = torch.rand(batch, spec.n_actions, generator=generator, device=device)
+            probs1 = dist.probs.clamp(min=1e-12, max=1.0 - 1e-12)
+            action = (u < probs1).to(torch.float32)
+            action = torch.where(mask, action, torch.zeros_like(action))
+            actions[spec.name] = action
+            lp = dist.log_prob(action)
+            lp = torch.where(mask, lp, torch.zeros_like(lp)).sum(dim=-1)
+            logp_total = logp_total + lp
+    return actions, logp_total
+
+
+def _agent_major_flat(obs: torch.Tensor) -> torch.Tensor:
+    """Flatten [E, A, D] into [A*E, D] matching k/r-major buffers."""
+    if obs.dim() != 3:
+        raise ValueError(f"expected [E,A,D] observations, got {tuple(obs.shape)}")
+    return obs.permute(1, 0, 2).reshape(obs.shape[0] * obs.shape[1], obs.shape[2])
+
+
 class S7SelfPlayTrainer(S2PPOTrainerV2):
     """Two-team MAPPO trainer: jammer-team PPO vs radar-team PPO, shared env."""
 
@@ -179,14 +227,20 @@ class S7SelfPlayTrainer(S2PPOTrainerV2):
                 pv_r = self.rad_priv_critic(priv_r)        # [E]
 
             step_jammers = {}
+            jam_obs_flat = _agent_major_flat(obs_j)
+            with torch.no_grad():
+                jam_logits_flat = self.jam_actor.forward(jam_obs_flat)
+                jam_values_flat = self.jam_critic(jam_obs_flat)
             for k in range(K):
+                sl_flat = slice(k * E, (k + 1) * E)
                 obs_k = obs_j[:, k]
                 masks_k = {"cell": mask_cell[:, k], "beam": mask_beam[:, k]}
+                logits_k = {name: value[sl_flat] for name, value in jam_logits_flat.items()}
                 with torch.no_grad():
-                    actions_k, lp_k = sample_multihead(
-                        self.jam_actor, obs_k, masks_k, self._action_gen)
-                    vk = self.jam_critic(obs_k)
-                sl = slice(k * E, (k + 1) * E)
+                    actions_k, lp_k = _sample_multihead_from_logits(
+                        self.jam_actor, logits_k, masks_k, self._action_gen)
+                    vk = jam_values_flat[sl_flat]
+                sl = sl_flat
                 obsj_buf[t, sl] = obs_k
                 mask_cell_buf[t, sl] = masks_k["cell"]
                 mask_beam_buf[t, sl] = masks_k["beam"]
@@ -199,15 +253,21 @@ class S7SelfPlayTrainer(S2PPOTrainerV2):
                 step_jammers[k] = actions_k
 
             step_radars = {}
+            rad_obs_flat = _agent_major_flat(obs_r)
+            with torch.no_grad():
+                rad_logits_flat = self.rad_actor.forward(rad_obs_flat)
+                rad_values_flat = self.rad_critic(rad_obs_flat)
             for r in range(R):
                 obs_rk = obs_r[:, r]
                 masks_r = {"beam": self.env._radar_mask_beam,
                            "svc": self.env._radar_mask_svc}
+                sl_flat = slice(r * E, (r + 1) * E)
+                logits_r = {name: value[sl_flat] for name, value in rad_logits_flat.items()}
                 with torch.no_grad():
-                    actions_r, lp_rk = sample_multihead(
-                        self.rad_actor, obs_rk, masks_r, self._radar_gen)
-                    vr = self.rad_critic(obs_rk)
-                sl = slice(r * E, (r + 1) * E)
+                    actions_r, lp_rk = _sample_multihead_from_logits(
+                        self.rad_actor, logits_r, masks_r, self._radar_gen)
+                    vr = rad_values_flat[sl_flat]
+                sl = sl_flat
                 obsr_buf[t, sl] = obs_rk
                 mask_rbeam_buf[t, sl] = masks_r["beam"]
                 mask_rsvc_buf[t, sl] = masks_r["svc"]

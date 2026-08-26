@@ -1,0 +1,39 @@
+{
+  "stage": "B_batched_shared_inference",
+  "comparison": "paper_baseline_d6fe7d9_vs_stage_A_plus_B",
+  "cases": [
+    {
+      "E": 2,
+      "H": 64,
+      "before_mean_s": 1.2772588800002267,
+      "after_mean_s": 0.8737372200001119,
+      "before_median_s": 1.2291457999999693,
+      "after_median_s": 0.886342899999363,
+      "speedup_mean_x": 1.4618341198742377,
+      "speedup_median_x": 1.3867610379694504,
+      "per_env_step_ms_before": 9.978585000001772,
+      "per_env_step_ms_after": 6.826072031250874
+    },
+    {
+      "E": 16,
+      "H": 64,
+      "before_mean_s": 1.4042622666668951,
+      "after_mean_s": 1.1451601666661493,
+      "before_median_s": 1.4310941999992792,
+      "after_median_s": 1.1547548999988066,
+      "speedup_mean_x": 1.2262583938411493,
+      "speedup_median_x": 1.2393055877058916,
+      "per_env_step_ms_before": 1.3713498697918898,
+      "per_env_step_ms_after": 1.1183204752599114
+    }
+  ],
+  "slot_rng_gate": {
+    "agent_major_mapping": "PASS",
+    "generator_state_equal": true,
+    "actions_equal_cpu_fixture": true,
+    "max_logit_abs_diff": 2.384185791015625e-7,
+    "max_logp_abs_diff": 4.76837158203125e-7,
+    "note": "Batch forward preserves agent/head RNG consumption; small BLAS floating-point differences are tolerated."
+  },
+  "s7_tests": "18 passed"
+}
