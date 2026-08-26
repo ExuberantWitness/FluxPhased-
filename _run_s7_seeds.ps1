@@ -8,6 +8,12 @@ $pyexe = "C:\Users\zhang\.conda\envs\fluxphased\python.exe"
 Set-Location "E:\DATA\vscode\FluxPhased"
 $base = "E:\DATA\vscode\FluxPhased\experiments\array_face_s7\learning_repair"
 $chainlog = "$base\s7_chain.log"
+$mutex = New-Object System.Threading.Mutex($false, "Global\FluxPhasedS7SeedChain")
+if (-not $mutex.WaitOne(0)) {
+  Add-Content $chainlog "[$(Get-Date -Format 'yyyy/MM/dd HH:mm:ss')] DUPLICATE CHAIN EXIT"
+  exit 0
+}
+try {
 
 function Get-MaxIter([string]$path) {
   if (-not (Test-Path $path)) { return -1 }
@@ -29,3 +35,7 @@ foreach ($seed in @(20260801, 20260802, 20260803)) {
   Add-Content $chainlog "[$(Get-Date -Format 'yyyy/MM/dd HH:mm:ss')] DONE seed $seed"
 }
 Add-Content $chainlog "[$(Get-Date -Format 'yyyy/MM/dd HH:mm:ss')] ALL SEEDS DONE"
+} finally {
+  $mutex.ReleaseMutex() | Out-Null
+  $mutex.Dispose()
+}
