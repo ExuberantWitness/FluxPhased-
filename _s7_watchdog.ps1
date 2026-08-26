@@ -13,8 +13,8 @@ function Log([string]$m) {
 
 if ($py) { exit 0 }  # training is alive; nothing to do
 
-$mainDone = Select-String -Path "$base\s7_chain.log" -Pattern "ALL SEEDS DONE" -Quiet -ErrorAction SilentlyContinue
-$postDone = Select-String -Path "$base\s7_ablation.log" -Pattern "ALL POST-CHAIN DONE" -Quiet -ErrorAction SilentlyContinue
+$mainDone = (Test-Path "$base\s7_chain.log") -and (Select-String -Path "$base\s7_chain.log" -Pattern "ALL SEEDS DONE" -Quiet)
+$postDone = (Test-Path "$base\s7_ablation.log") -and (Select-String -Path "$base\s7_ablation.log" -Pattern "ALL POST-CHAIN DONE" -Quiet)
 
 if ($postDone) { exit 0 }  # everything finished
 
