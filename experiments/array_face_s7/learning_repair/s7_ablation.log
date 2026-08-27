@@ -1,0 +1,11 @@
+[2026/08/26 23:13:49] main chain done; starting co-located ablation
+[2026/08/26 23:13:49] RETRY 1 ablation stage-A (max iter -1/999)
+[2026/08/27 02:44:11] RETRY 2 ablation stage-B (max iter 999/1999)
+[2026/08/27 05:28:21] ABLATION TRAIN DONE
+[2026/08/27 05:38:37] ABLATION EVAL DONE
+[2026/08/27 05:38:37] ALL ABLATION DONE
+[2026/08/27 05:38:37] CONT seed 20260802 (max iter -1/2999)
+[2026/08/27 11:01:44] CONT DONE seed 20260802 (3000 iters + eval)
+[2026/08/27 11:01:44] CONT seed 20260803 (max iter -1/2999)
+[2026/08/27 16:28:11] CONT DONE seed 20260803 (3000 iters + eval)
+[2026/08/27 16:28:11] ALL POST-CHAIN DONE

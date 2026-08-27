@@ -34,6 +34,10 @@ p.add_argument("--seed", type=int, required=True)
 p.add_argument("--device", default="cuda")
 p.add_argument("--out-dir", default=None,
                help="override checkpoint dir (default: s7_selfplay_output_seed{seed})")
+p.add_argument("--jammer-az", type=str, default=None,
+               help="comma-separated jammer site azimuths in degrees")
+p.add_argument("--radar-az", type=str, default=None,
+               help="comma-separated radar site azimuths in degrees")
 args = p.parse_args()
 SEED = args.seed
 device = args.device
@@ -55,6 +59,8 @@ env_cfg = EnvConfig(
     arrival_rate_per_service=0.15,
     mission_tau_window=6, detects_required=1,
     potential_coef=0.05, gamma=0.99,
+    jammer_az_deg=tuple(float(x) for x in args.jammer_az.split(",")) if args.jammer_az else None,
+    radar_az_deg=tuple(float(x) for x in args.radar_az.split(",")) if args.radar_az else None,
     device=device, seed=SEED,
 )
 physics = default_debug_physics_config(P_jam_W=0.1)

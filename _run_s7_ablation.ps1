@@ -63,7 +63,7 @@ Add-Content $ablog "[$(Get-Date -Format 'yyyy/MM/dd HH:mm:ss')] ABLATION TRAIN D
 
 # 2. full-protocol final eval (CPU: the GPU may already be free, but CPU keeps
 #    the ablation self-contained and lets any follow-up use the GPU)
-& $pyexe -u _s7_final_eval.py --seed $seed --device cpu --out-dir $out >> "$out\final_eval_run.log" 2>&1
+& $pyexe -u _s7_final_eval.py --seed $seed --device cpu --jammer-az "+60,+60" --out-dir $out >> "$out\final_eval_run.log" 2>&1
 Add-Content $ablog "[$(Get-Date -Format 'yyyy/MM/dd HH:mm:ss')] ABLATION EVAL DONE"
 Add-Content $ablog "[$(Get-Date -Format 'yyyy/MM/dd HH:mm:ss')] ALL ABLATION DONE"
 
