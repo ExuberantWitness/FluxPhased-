@@ -65,6 +65,9 @@ def main():
                         help="ablation: comma-separated radar site azimuths (deg)")
     parser.add_argument("--val-every", type=int, default=VAL_EVERY,
                         help="intermediate validation cadence; final validation always runs")
+    parser.add_argument("--singleton-mix", type=float, default=0.0,
+                        help="R5 opponent mixing: fraction of training iterations on which "
+                             "the radars face the singleton (jammer 1 idle); e.g. 0.25/0.5/0.75")
     args = parser.parse_args()
     seed = int(args.seed)
     n_iterations = int(args.iterations)
@@ -131,6 +134,7 @@ def main():
         manifest_path=MANIFEST_DIR / "ppo_train.json",
         out_dir=out_dir,
         jammer_specs=jammer_specs, radar_specs=radar_specs,
+        singleton_mix_frac=args.singleton_mix,
     )
 
     resume_from = 0

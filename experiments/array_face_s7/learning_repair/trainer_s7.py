@@ -57,6 +57,7 @@ class S7SelfPlayTrainer(S2PPOTrainerV2):
         out_dir: Path,
         jammer_specs: list,
         radar_specs: list,
+        singleton_mix_frac: float = 0.0,
     ):
         self.cfg = cfg
         self.env_cfg = env_cfg
@@ -67,6 +68,19 @@ class S7SelfPlayTrainer(S2PPOTrainerV2):
         self.manifest_path = Path(manifest_path)
         self.out_dir = Path(out_dir)
         self.out_dir.mkdir(parents=True, exist_ok=True)
+        # R5 opponent-class mixing: fraction of TRAINING iterations on which
+        # the radars face the singleton (jammer 1 forced idle) instead of the
+        # pair. Deterministic cycling keeps the schedule reproducible. On
+        # singleton iterations the jammer side's own update is SKIPPED (its
+        # rollout no longer matches its policy), so the jammer team learns
+        # purely from pair-vs-radar self-play while the radar team is
+        # league-trained across opponent classes — the minimal league form.
+        from fractions import Fraction
+        frac = Fraction(singleton_mix_frac).limit_denominator(8)
+        if frac < 0 or frac > 1:
+            raise ValueError(f"singleton_mix_frac must be in [0,1], got {singleton_mix_frac}")
+        self.singleton_mix_frac = float(singleton_mix_frac)
+        self._mix_num, self._mix_den = frac.numerator, frac.denominator
 
         self.jammer_specs = tuple(jammer_specs)
         self.radar_specs = tuple(radar_specs)
@@ -131,7 +145,7 @@ class S7SelfPlayTrainer(S2PPOTrainerV2):
         self._snapshot_actor_state()
 
     # ---------- rollout ----------
-    def collect_rollout(self):
+    def collect_rollout(self, singleton_opponent: bool = False):
         T = self.env_cfg.horizon
         E = self.env_cfg.n_envs
         K, R = N_JAMMERS, N_RADARS
@@ -219,6 +233,15 @@ class S7SelfPlayTrainer(S2PPOTrainerV2):
                 priv_val_r[t, sl] = pv_r
                 step_radars[r] = actions_r
 
+            if singleton_opponent:
+                # League member = the singleton: zero jammer 1's executed cells
+                # in both the buffer and the env-bound action (idle is always
+                # legal). The jammer update is skipped this iteration, so the
+                # stale sampled logp for jammer 1 is never consumed.
+                act_cell_buf[t, E:] = 0.0
+                logp_j[t, E:] = 0.0
+                step_jammers[1]["cell"] = torch.zeros_like(step_jammers[1]["cell"])
+
             j_cell = torch.stack([step_jammers[k]["cell"] for k in range(K)], dim=1)  # [E,K,25]
             j_beam = torch.stack([step_jammers[k]["beam"] for k in range(K)], dim=1)  # [E,K]
             r_beam = torch.stack([step_radars[r]["beam"] for r in range(R)], dim=1)   # [E,R]
@@ -273,10 +296,16 @@ class S7SelfPlayTrainer(S2PPOTrainerV2):
         else:
             self.iteration += 1
         self._assign_scenarios_and_reset()
-        rb = self.collect_rollout()
+        use_singleton = (self._mix_den > 0
+                         and self._mix_num > 0
+                         and (self.iteration % self._mix_den) < self._mix_num)
+        rb = self.collect_rollout(singleton_opponent=use_singleton)
 
         self._swap_to_jammer()
-        metrics_j = self.update(self._rb_j)
+        if use_singleton:
+            metrics_j = {}  # jammer trains only on pair-vs-radar iterations
+        else:
+            metrics_j = self.update(self._rb_j)
         self._swap_to_radar()
         metrics_r = self.update(self._rb_r)
         self._swap_to_jammer()
