@@ -2,13 +2,13 @@
 
 **Status:** SUCCESS
 **PDF:** `paper/main.pdf`
-**Pages:** 9 total (IEEE journal format; references included)
-**Undefined citations:** 0 after the final BibTeX pass (28 active entries)
+**Pages:** 10 total (IEEE journal format; references included; within the TAES free-page limit)
+**Undefined citations:** 0 after the final BibTeX pass (34 active entries)
 **Undefined cross-references:** 0
-**Overfull hboxes:** 0 in final compile log (one 26pt equation overfull introduced by the revision was fixed by splitting the array-factor equation across two lines)
+**Overfull hboxes:** 0 in final compile log (fixed during the TAES pass: split array-factor equation; shortened drop-ratio subscripts; compacted link-budget, spaces, and hyperparameter tables; removed internal directory names from the protocol text)
 **Fonts:** all embedded
-**Figures:** 6 vector PDF figures; 3 tables (main comparison, scripted baselines, R5)
-**Numeric integrity gate:** `_check_paper_integrity.py` PASS — every quoted number re-derived from `paper/figures/results_table.py`; on-disk `RESULTS_TABLE.json` matches a fresh computation; citation keys and bib entries are bijectively closed (28/28).
+**Figures:** 6 vector PDF figures; 4 tables (link budget, action/observation spaces, main comparison, scripted baselines, R5, hyperparameters)
+**Numeric integrity gate:** `_check_paper_integrity.py` PASS — every quoted number re-derived from `paper/figures/results_table.py` (including the EDF oracle baseline); citation keys and bib entries are bijectively closed (34/34).
 
 ## Build
 

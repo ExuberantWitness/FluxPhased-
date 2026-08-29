@@ -140,6 +140,7 @@ def _baselines() -> dict:
         d = json.loads(path.read_text())
         views = {}
         for mode in ('random_radar_vs_jam', 'greedy_radar_vs_jam',
+                     'edf_radar_vs_jam',
                      'random_jam_vs_rad', 'stare_jam_vs_rad'):
             xs = [d[f'aseed_{a}'][mode] for a in ACTION_SEEDS]
             views[mode] = statistics.mean(xs)

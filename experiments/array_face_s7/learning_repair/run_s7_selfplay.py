@@ -68,6 +68,9 @@ def main():
     parser.add_argument("--singleton-mix", type=float, default=0.0,
                         help="R5 opponent mixing: fraction of training iterations on which "
                              "the radars face the singleton (jammer 1 idle); e.g. 0.25/0.5/0.75")
+    parser.add_argument("--baseline-snr-db", type=float, default=None,
+                        help="regime sweep: override EnvConfig baseline SNR (default 12 dB); "
+                             "run the contestability sweep for the new regime before training")
     args = parser.parse_args()
     seed = int(args.seed)
     n_iterations = int(args.iterations)
@@ -111,6 +114,7 @@ def main():
         potential_coef=0.05, gamma=0.99,
         jammer_az_deg=tuple(float(x) for x in args.jammer_az.split(",")) if args.jammer_az else None,
         radar_az_deg=tuple(float(x) for x in args.radar_az.split(",")) if args.radar_az else None,
+        baseline_snr_db=args.baseline_snr_db if args.baseline_snr_db is not None else 12.0,
         device=device, seed=seed,
     )
     physics = default_debug_physics_config(P_jam_W=0.1)  # S6b-validated regime

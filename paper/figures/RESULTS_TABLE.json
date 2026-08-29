@@ -215,18 +215,21 @@
    "s7_continue2_output_seed20260801": {
     "random_radar_vs_jam": 0.5079787715027729,
     "greedy_radar_vs_jam": 0.08889601938426495,
+    "edf_radar_vs_jam": 0.2997303897476134,
     "random_jam_vs_rad": 0.09082574172255893,
     "stare_jam_vs_rad": 0.238214282609988
    },
    "s7_seed02_cont_output_seed20260802": {
     "random_radar_vs_jam": 0.5037204280961305,
     "greedy_radar_vs_jam": 0.08889601938426495,
+    "edf_radar_vs_jam": 0.29201338733158383,
     "random_jam_vs_rad": 0.08821682104219992,
     "stare_jam_vs_rad": 0.23348422237904742
    },
    "s7_seed03_cont_output_seed20260803": {
     "random_radar_vs_jam": 0.5139044862395773,
     "greedy_radar_vs_jam": 0.08889601938426495,
+    "edf_radar_vs_jam": 0.2964089633896947,
     "random_jam_vs_rad": 0.09741868398850784,
     "stare_jam_vs_rad": 0.2405000311943392
    }
@@ -239,6 +242,10 @@
    "greedy_radar_vs_jam": {
     "mean": 0.08889601938426495,
     "sd": 0.0
+   },
+   "edf_radar_vs_jam": {
+    "mean": 0.29605091348963064,
+    "sd": 0.003870940631223046
    },
    "random_jam_vs_rad": {
     "mean": 0.09215374891775556,

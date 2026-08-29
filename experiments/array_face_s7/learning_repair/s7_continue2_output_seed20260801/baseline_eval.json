@@ -4,20 +4,23 @@
     "greedy_radar_vs_jam": 0.08889601938426495,
     "random_jam_vs_rad": 0.09617365984013304,
     "stare_jam_vs_rad": 0.22685713495593518,
-    "elapsed_s": 982.3
+    "elapsed_s": 982.3,
+    "edf_radar_vs_jam": 0.29648469819221646
   },
   "aseed_777": {
     "random_radar_vs_jam": 0.5154428207315505,
     "greedy_radar_vs_jam": 0.08889601938426495,
     "random_jam_vs_rad": 0.08159742719726637,
     "stare_jam_vs_rad": 0.24320662475656718,
-    "elapsed_s": 996.7
+    "elapsed_s": 996.7,
+    "edf_radar_vs_jam": 0.3075844260165468
   },
   "aseed_31337": {
     "random_radar_vs_jam": 0.49599517695605755,
     "greedy_radar_vs_jam": 0.08889601938426495,
     "random_jam_vs_rad": 0.0947061381302774,
     "stare_jam_vs_rad": 0.24457908811746165,
-    "elapsed_s": 1015.1
+    "elapsed_s": 1015.1,
+    "edf_radar_vs_jam": 0.295122045034077
   }
 }

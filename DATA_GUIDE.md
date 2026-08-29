@@ -170,9 +170,23 @@ paths = [
     规则:所有图(fig3/4/6)从 `results_table` 导入;`RESULTS_TABLE.json` 是导出的权威快照;
     `_check_paper_integrity.py` 会把正文每个数字与权威表逐一比对,**改数据后必须先跑
     `python paper/figures/results_table.py` 再改正文,否则门会红**。
-12. **`baseline_eval.json`(各 S7 输出目录)**:评估型脚本基线(random/greedy radar、
-    random/stare jammer,64 验证种子 × 3 动作种子),由 `_s7_baseline_eval.py` 生成,
-    不含训练;与 `final_eval.json` 协议对齐可直接同表比较。
+12. **`baseline_eval.json`(各 S7 输出目录)**:评估型脚本基线(random/greedy/EDF radar、
+    random/stare jammer,64 验证种子 × 3 动作种子),由 `_s7_baseline_eval.py` 与
+    `_s7_edf_eval.py` 生成,不含训练;与 `final_eval.json` 协议对齐可直接同表比较。
+    EDF 是 oracle 启发式(特权读取 deadline,观测中无该信息)。
+13. **TAES 训练链 `_run_taes_chain.ps1`**(2026-08-29 起,日志 `taes_chain.log`,
+    完成标记 `ALL TAES RUNS DONE`):按优先级补齐审稿人要求——
+    IPPO 算法对照 ×3 种子(`s7_ippo_output_seed2026090{1,2,3}`,2000 iter 两段式,
+    trainer `trainer_s7_ippo.py`,driver `_run_s7_ippo.py`,终评 `_s7_ippo_final_eval.py`)、
+    S6 第三个有效种子(`s6_selfplay_output_seed20260732`,1000 iter)、
+    共址消融种子 2/3(`s7_ablation_output_seed2026081{2,3}`,2000 iter,终评必须带
+    `--jammer-az "+60,+60"`)、SNR 体制扫描 9/15 dB(`s7_snr{9,15}db_output_seed2026091{1,2}`,
+    2000 iter,driver 与终评都带 `--baseline-snr-db`;预训练剖面见
+    `snr_contestability_profiles.json`,注意该剖面用单波束示意配置,与预注册的
+    12 dB cross-fire 剖面不可直接对比)。链自愈:重试循环按 max-iteration 续训,
+    输出目录由脚本创建(2026-08-29 曾因目录缺失静默烧完重试,已修复)。
+    IPPO checkpoint 是 per-agent state dict(`algo: ippo` 标记),与 MAPPO 的
+    `selfplay_latest.pt` 不兼容,评估必须用 `_s7_ippo_final_eval.py`。
 
 ---
 

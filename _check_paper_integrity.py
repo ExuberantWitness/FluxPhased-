@@ -115,6 +115,8 @@ if 'baselines' in TABLE:
                                         b['random_radar_vs_jam']['sd']))
     expect('baseline greedy radar', pm(b['greedy_radar_vs_jam']['mean'],
                                        b['greedy_radar_vs_jam']['sd']))
+    expect('baseline edf radar', pm(b['edf_radar_vs_jam']['mean'],
+                                    b['edf_radar_vs_jam']['sd']))
     expect('baseline random jammer', pm(b['random_jam_vs_rad']['mean'],
                                         b['random_jam_vs_rad']['sd']))
     expect('baseline stare jammer', pm(b['stare_jam_vs_rad']['mean'],

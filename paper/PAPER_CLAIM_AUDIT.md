@@ -20,6 +20,7 @@
 | S7 neutralization | same three S7 files, explicit eta formula | Match: 23.0% +/- 1.1% |
 | Mechanism control | corrected `s7_ablation_output_seed20260811/final_eval.json` | Match: h2h 0.2927 +/- 0.0119, jvs 0.4947 +/- 0.0026, eta 28.4%; scope limited to separated S7 radar geometry |
 | R5 dose response | `s7_continue_output_seed20260801` and three `s7_r5_mix*` files | Match: j1/jvs 0.502 -> 0.440 -> 0.277 -> 0.262; eta 20.2 -> 23.5 -> 26.1 -> 24.6 |
+| Scripted baselines | `baseline_eval.json` for the three converged S7 checkpoints (incl. EDF view) | Match: random radar 0.5085+/-0.0051, greedy stare 0.0889+/-0.0000, EDF oracle 0.2961+/-0.0039, random jammer 0.0922+/-0.0047, stare jammer 0.2374+/-0.0036; greedy invariant across all three trained jammer teams and all action seeds |
 
 ## Corrections applied
 

@@ -1,6 +1,31 @@
 \section{Experimental Protocol}
 \subsection{Training and checkpoints}
-We use 64 fixed training scenarios and a separate 64-scenario validation manifest. Each environment rollout has 16 parallel environments and a 64-step horizon. The S7 main experiments use three random seeds (20260801, 20260802, and 20260803). Each seed trains for 1000 iterations with the normal per-head entropy schedule and continues to 3000 iterations with entropy coefficients frozen at their minimum. The continuation isolates additional optimization from a second exploration schedule. The three converged checkpoints are stored in \texttt{s7\_continue2\_output\_seed20260801}, \texttt{s7\_seed02\_cont\_output\_seed20260802}, and \texttt{s7\_seed03\_cont\_output\_seed20260803}.
+We use 64 fixed training scenarios and a separate 64-scenario validation manifest. Each environment rollout has 16 parallel environments and a 64-step horizon. The S7 main experiments use three random seeds (20260801, 20260802, and 20260803). Each seed trains for 1000 iterations with the normal per-head entropy schedule and continues to 3000 iterations with entropy coefficients frozen at their minimum. The continuation isolates additional optimization from a second exploration schedule. Table~\ref{tab:hyper} lists the shared training configuration.
+
+\begin{table}[t]
+\caption{Training hyperparameters (both teams, both stages).}
+\label{tab:hyper}
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{ll}
+\toprule
+Parameter & Value \\
+\midrule
+Environments $\times$ horizon & $16\times64$ \\
+Actor / critic LR & $3\times10^{-5}$ / $10^{-3}$ \\
+Discount $\gamma$ / GAE $\lambda$ & 0.99 / 0.95 \\
+PPO clip / grad clip & 0.2 / 0.5 \\
+Epochs / minibatch & 4 / 256 \\
+Target KL (rollback) & 0.02 \\
+Entropy coef.\ (cell, beam, svc) & $2{\times}10^{-2}$, $5{\times}10^{-3}$, $10^{-2}$ \\
+Entropy anneal frac.\ (c,b,s) & 0.7, 0.9, 0.5 \\
+Priv.\ value / distill coef. & 0.5 / 0.1 \\
+Value loss coef. & 0.5 \\
+Iterations (stage 1 / 2) & 1000 / 2000 (frozen) \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 The primary S6 comparison uses the two valid 12-dB training seeds 20260730 and 20260731. An earlier S6 seed, 20260729, was trained accidentally with a 22-dB override; we exclude it from the primary comparison and retain it only as a documented regime check. The valid two-seed S6 aggregate is used wherever an S6 uncertainty is reported.
 
@@ -14,7 +39,7 @@ R5-lite trains one seed for each singleton exposure fraction $q\in\{0.25,0.50,0.
 For S7, the final evaluation runs four views over all 64 validation scenarios with one repetition for each of three action seeds. The S6 implementation supplies h2h, jvs, rad-idle, and the natural floor but does not supply the S7-specific j1-only control. We report the mean and standard deviation across action seeds for each training seed. Aggregate S7 values report the mean and standard deviation across the three training seeds. The natural floor is computed using scripted radar sweeps against idle jammers under the same environment regime. We retain all raw JSONL logs and final evaluation JSON files in the repository artifact tree.
 
 \subsection{Evaluation-only scripted baselines}
-Each converged checkpoint is additionally evaluated against four scripted baselines that require no training. The random radar samples beam and service uniformly from the legal sets; the greedy mission-stare radar points each head at the pending service--azimuth cell with the most missions, read from the radar observation; the random jammer activates one uniformly random legal cell and beam per step while energy remains; the stare jammer holds the horizon-plane beam closest to its paired radar-site bearing with one active cell until the budget is spent. Stare beam indices are computed from the site geometry rather than tuned. These views use the same 64 validation scenarios and three action seeds, so they are directly comparable with the learned views. They anchor both teams against non-learning behavior and expose whether the self-play policies are specialized to their training opponents.
+Each converged checkpoint is additionally evaluated against five scripted baselines that require no training. The random radar samples beam and service uniformly from the legal sets; the greedy mission-stare radar points each head at the pending service--azimuth cell with the most missions, read from the radar observation; the earliest-deadline-first (EDF) radar points each head at the pending mission with the earliest deadline---unlike the others this is an oracle heuristic, because deadline state is not part of the radar observation; the random jammer activates one uniformly random legal cell and beam per step while energy remains; the stare jammer holds the horizon-plane beam closest to its paired radar-site bearing with one active cell until the budget is spent. Stare beam indices are computed from the site geometry rather than tuned. These views use the same 64 validation scenarios and three action seeds, so they are directly comparable with the learned views. They anchor both teams against non-learning behavior and expose whether the self-play policies are specialized to their training opponents.
 
 \subsection{Implementation checks}
 The S7 environment and physics tests contain 18 contract and physics gates. They cover action shapes, energy accounting, exact service--bearing credit, generalized array-factor consistency, two-source JNR summation, detection monotonicity, observation channels, ledger identity, and pre-training contestability. Atomic checkpoints and a max-iteration resume criterion protect long runs from interrupted sessions. These engineering checks are separate from the scientific result and are reported to make the training trajectory reproducible.
