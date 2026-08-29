@@ -58,6 +58,7 @@ class S7SelfPlayTrainer(S2PPOTrainerV2):
         jammer_specs: list,
         radar_specs: list,
         singleton_mix_frac: float = 0.0,
+        radar_scripted: str | None = None,
     ):
         self.cfg = cfg
         self.env_cfg = env_cfg
@@ -67,6 +68,14 @@ class S7SelfPlayTrainer(S2PPOTrainerV2):
         self.train_seeds = list(train_seeds)
         self.manifest_path = Path(manifest_path)
         self.out_dir = Path(out_dir)
+        # Counter-adaptation control: 'greedy' pins BOTH radar heads to the
+        # hottest pending (svc, az) cell each step (the scripted baseline that
+        # exploits the self-play jammer team). Only the jammer team learns;
+        # the radar update is skipped. Used to test whether jammers co-trained
+        # against a stare learn to punish it.
+        if radar_scripted not in (None, "greedy"):
+            raise ValueError(f"radar_scripted must be None or 'greedy', got {radar_scripted!r}")
+        self.radar_scripted = radar_scripted
         self.out_dir.mkdir(parents=True, exist_ok=True)
         # R5 opponent-class mixing: fraction of TRAINING iterations on which
         # the radars face the singleton (jammer 1 forced idle) instead of the
@@ -215,12 +224,28 @@ class S7SelfPlayTrainer(S2PPOTrainerV2):
             step_radars = {}
             for r in range(R):
                 obs_rk = obs_r[:, r]
-                masks_r = {"beam": self.env._radar_mask_beam,
-                           "svc": self.env._radar_mask_svc}
-                with torch.no_grad():
-                    actions_r, lp_rk = sample_multihead(
-                        self.rad_actor, obs_rk, masks_r, self._radar_gen)
-                    vr = self.rad_critic(obs_rk)
+                if self.radar_scripted == "greedy":
+                    # hottest pending (svc, az) from the radar observation;
+                    # beam = azimuth + 10 (horizon-plane row), as in the
+                    # evaluation-only greedy baseline
+                    masks_r = {"beam": self.env._radar_mask_beam,
+                               "svc": self.env._radar_mask_svc}
+                    pm = obs_rk[0, 1:11].reshape(2, 5)
+                    svc_idx = int(pm.sum(dim=1).argmax())
+                    az_idx = int(pm[svc_idx].argmax())
+                    actions_r = {"beam": torch.full((E,), az_idx + 10,
+                                                    dtype=torch.int64, device=device),
+                                 "svc": torch.full((E,), svc_idx,
+                                                   dtype=torch.int64, device=device)}
+                    lp_rk = torch.zeros(E, device=device)
+                    vr = torch.zeros(E, device=device)
+                else:
+                    masks_r = {"beam": self.env._radar_mask_beam,
+                               "svc": self.env._radar_mask_svc}
+                    with torch.no_grad():
+                        actions_r, lp_rk = sample_multihead(
+                            self.rad_actor, obs_rk, masks_r, self._radar_gen)
+                        vr = self.rad_critic(obs_rk)
                 sl = slice(r * E, (r + 1) * E)
                 obsr_buf[t, sl] = obs_rk
                 mask_rbeam_buf[t, sl] = masks_r["beam"]
@@ -306,8 +331,11 @@ class S7SelfPlayTrainer(S2PPOTrainerV2):
             metrics_j = {}  # jammer trains only on pair-vs-radar iterations
         else:
             metrics_j = self.update(self._rb_j)
-        self._swap_to_radar()
-        metrics_r = self.update(self._rb_r)
+        if self.radar_scripted:
+            metrics_r = {}  # scripted radar side: nothing to update
+        else:
+            self._swap_to_radar()
+            metrics_r = self.update(self._rb_r)
         self._swap_to_jammer()
 
         self.update_count += 1

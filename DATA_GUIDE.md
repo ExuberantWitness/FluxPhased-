@@ -187,6 +187,13 @@ paths = [
     输出目录由脚本创建(2026-08-29 曾因目录缺失静默烧完重试,已修复)。
     IPPO checkpoint 是 per-agent state dict(`algo: ippo` 标记),与 MAPPO 的
     `selfplay_latest.pt` 不兼容,评估必须用 `_s7_ippo_final_eval.py`。
+14. **greedy 反适应后继链 `_run_greedy_counter_chain.ps1`**(2026-08-29 起,
+    日志 `greedycounter_chain.log`,等 `ALL TAES RUNS DONE` 后串行启动):
+    种子 20260921,`s7_greedycounter_output_seed20260921`。干扰队学习、雷达侧
+    固定 greedy 盯视(trainer `radar_scripted='greedy'`,雷达 update 跳过,
+    radar_entropy 恒 0 属预期)。验证行只记 `greedy_vs_jam_drop`——对照基线
+    0.0889(自博弈干扰队无法惩罚 greedy)。判读:若显著 > 0.0889 说明惩罚是
+    可学的、自博弈未覆盖;若仍 ≈0.089 说明当前链路预算下物理上不可惩罚。
 
 ---
 
