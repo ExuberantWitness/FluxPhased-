@@ -1,0 +1,92 @@
+\section{Results}
+\subsection{Self-play converges to stable task-level equilibria}
+The first question is whether mission-level self-play produces a reproducible endpoint rather than a transient training phase. Figure~\ref{fig:training} shows the full three-stage trajectory for S7 seed 20260801.
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/fig2_training_curves.pdf}
+\caption{Three-stage S7 trajectory for seed 20260801. Dashed lines mark the 1000- and 2000-iteration continuation boundaries; the final region is stationary across the four evaluation views.}
+\label{fig:training}
+\end{figure} After the entropy schedule was frozen, the five 200-iteration windows from 2000 to 3000 had h2h means 0.3465, 0.3428, 0.3484, 0.3507, and 0.3463. The corresponding jam-vs-sweep means were 0.5121, 0.4956, 0.5119, 0.5107, and 0.5215. This continuation therefore rules out both an early stopping artifact and a persistent drift. The last 40 validation points at 3000 give h2h $0.3485\pm0.0151$ and jam-vs-sweep $0.5161\pm0.0174$.
+
+The same endpoint appears across three converged S7 seeds. Full-protocol evaluation gives h2h drops of 0.3390, 0.3212, and 0.3496, with an across-seed mean of $0.3366\pm0.0143$. The idle-radar drop is $0.0194\pm0.0008$ in S7, compared with $0.0275\pm0.0110$ across the two valid S6 seeds; both values remain low. The convergence result is descriptive: it establishes a stable attractor for this benchmark and training protocol, not a proof of global Nash equilibrium.
+
+\subsection{Doubling the attacker reduces defense containment by two-thirds}
+The main comparison is summarized in Table~\ref{tab:main} and Figure~\ref{fig:neutralization}.
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/fig3_neutralization.pdf}
+\caption{Floor-adjusted neutralization for the S6 and S7 games. The dots show the three converged S7 training seeds; error bars are standard deviations across training seeds (S6 uses the two valid 12-dB seeds).}
+\label{fig:neutralization}
+\end{figure} In S6, the valid two-seed 12-dB h2h drop is $0.0888\pm0.0053$, jam-vs-sweep is $0.2751\pm0.0110$, and floor-adjusted neutralization is $63.7\%\pm1.0\%$. In converged S7, these values become $0.3366\pm0.0143$, $0.5294\pm0.0215$, and $23.0\%\pm1.1\%$, respectively.
+
+The neutralization change is not a consequence of a corresponding radar collapse. Learned radars facing idle jammers retain a low drop of $0.0194\pm0.0008$ in S7, compared with $0.0275\pm0.0110$ across the two valid S6 seeds. Instead, two jammers increase the marginal disruption that survives radar adaptation. The jammer team's raw disruption against scripted sweeps rises by 92\% relative to S6, while the fraction of that disruption removed by learned radars falls by approximately two-thirds. Because the comparison controls total jammer activation but also changes radar-site geometry, this is a benchmark-level scaling result rather than a fully isolated attacker-count intervention.
+
+\begin{table}[t]
+\caption{Converged S6--S7 comparison. Drop is the mission-loss ratio; $\eta$ is floor-adjusted defense neutralization.}
+\label{tab:main}
+\centering
+\small
+\begin{tabular}{lcc}
+\toprule
+Metric & S6: 1v2 & S7: 2v2 \\
+\midrule
+h2h drop & $0.0888\pm0.0053$ & $0.3366\pm0.0143$ \\
+jam-vs-sweep drop & $0.2751\pm0.0110$ & $0.5294\pm0.0215$ \\
+rad-vs-idle drop & $0.0275\pm0.0110$ & $0.0194\pm0.0008$ \\
+$\eta$ & $63.7\%\pm1.0\%$ & $23.0\%\pm1.1\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Attacker count is primary; cross-fire geometry is secondary}
+The co-located-jammer control tests whether the S7 result requires two spatially separated jammers. It places both jammer sites at $+60^\circ$ while retaining the two radar sites at $\pm20^\circ$, the same physics, budget, two-stage training, and final evaluation. The corrected control yields h2h $0.2927\pm0.0119$, jam-vs-sweep $0.4947\pm0.0026$, and neutralization $28.4\%$.
+
+Thus, the matched S7 geometry control shows that two jammers account for most of the containment loss within the separated-radar setting: containment is $28.4\%$ for co-located jammers and $24.2\%$ for cross-fire. The S6-to-S7 comparison additionally changes radar-site geometry, so the full count effect is a benchmark-level attribution rather than a perfectly isolated causal contrast. The cross-fire comparison itself is controlled for radar placement, budget, training protocol, and evaluation. The pre-specified contestability profiles and the matched control are shown in Figure~\ref{fig:benchmark}; the converged mechanism decomposition is shown in Figure~\ref{fig:ablation}.
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.96\textwidth]{figures/fig4_mechanism_ablation.pdf}
+\caption{Mechanism decomposition under matched task, budget, and training protocols. Two co-located jammers reproduce most of the containment loss, while cross-fire geometry adds a secondary penalty.}
+\label{fig:ablation}
+\end{figure*}
+
+\subsection{Pair-trained defenses trade singleton robustness for pairwise defense}
+The fourth view evaluates one learned jammer against radars trained in the 2v2 game. Across the three converged S7 seeds, the singleton drop is 0.2632, 0.2387, and 0.1238, with mean $0.2086\pm0.0745$. This variation is larger than the h2h variation, but all three seeds expose the same opponent-class boundary: a defense optimized against a pair is not uniformly robust to a singleton.
+
+The seed-01 continuation makes the trade-off visible over time. As the pair-trained equilibrium develops, j1-only rises from approximately 0.12 near the 1000-iteration checkpoint to approximately 0.24 at 2000 and remains near 0.25 at 3000, while h2h settles near 0.34. Radar competence against idle jammers remains low and stable. The result is therefore an adaptation trade-off, not evidence that the radar actor or critic stopped learning.
+
+The learned behavior is interpretable and is summarized in Figure~\ref{fig:behavior}.
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.96\textwidth]{figures/fig5_behavior.pdf}
+\caption{Equilibrium behavior at the converged S7 checkpoint. Radar heads divide the mission plane between two azimuth sectors, while the jammer team uses a symmetric mixed beam policy. The heat map reports active-only pairwise JNR contributions in dB.}
+\label{fig:behavior}
+\end{figure*}
+
+\subsection{Opponent-class mixing reduces singleton leverage}
+The full dose-response is shown in Figure~\ref{fig:r5} and Table~\ref{tab:r5}.
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/fig6_r5_dose_response.pdf}
+\caption{R5-lite opponent-class mixing. Singleton relative leverage $d_{j1}/d_{jvs}$ falls with singleton exposure, while floor-adjusted neutralization peaks near 50\%. Absolute drops are confounded by skipped jammer updates.}
+\label{fig:r5}
+\end{figure}
+\begin{table}[t]
+\caption{R5-lite opponent-class mixture. Absolute drops are descriptive because singleton iterations skip the jammer update; ratio metrics are the primary comparison.}
+\label{tab:r5}
+\centering
+\small
+\begin{tabular}{lccccc}
+\toprule
+$q$ & h2h & jvs & j1-only & j1/jvs & $\eta$ \\
+\midrule
+0 & .3282 & .5043 & .2532 & .502 & 20.2\% \\
+.25 & .2470 & .4015 & .1767 & .440 & 23.5\% \\
+.50 & .1962 & .3580 & .0992 & .277 & 26.1\% \\
+.75 & .1939 & .3476 & .0911 & .262 & 24.6\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Singleton relative leverage $d_{\mathrm{j1}}/d_{\mathrm{jvs}}$ falls monotonically from 0.502 to 0.262 and saturates between 50\% and 75\% exposure. The containment ratio $\eta$ increases from 20.2\% to 26.1\% at 50\% exposure before leveling at 24.6\%. The h2h-to-jvs ratio is $0.651$ at $q=0$, falls to $0.548$ at $q=0.50$, and is $0.558$ at $q=0.75$. It therefore improves through the 50\% condition and changes little thereafter; the ratio-level data do not show a pairwise-versus-singleton trade-off in this intervention.
+
+R5-lite has an important design boundary. On singleton iterations, jammer 1 is forced idle and its update is skipped; consequently the jammer team receives fewer gradient updates as $q$ increases, and absolute jvs drops from 0.5043 to 0.3476. The dose-response does not identify a causal improvement in absolute radar performance. It does support a narrower intervention claim: under this minimal mixture and fixed training budget, exposing the radar team to a singleton opponent reduces the singleton's relative leverage, with diminishing returns after 50\% exposure. A gradient-aligned multi-seed experiment is needed before calling the result universal.

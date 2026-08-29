@@ -1,0 +1,17 @@
+\section{Experimental Protocol}
+\subsection{Training and checkpoints}
+We use 64 fixed training scenarios and a separate 64-scenario validation manifest. Each environment rollout has 16 parallel environments and a 64-step horizon. The S7 main experiments use three random seeds (20260801, 20260802, and 20260803). Each seed trains for 1000 iterations with the normal per-head entropy schedule and continues to 3000 iterations with entropy coefficients frozen at their minimum. The continuation isolates additional optimization from a second exploration schedule. The three converged checkpoints are stored in \texttt{s7\_continue2\_output\_seed20260801}, \texttt{s7\_seed02\_cont\_output\_seed20260802}, and \texttt{s7\_seed03\_cont\_output\_seed20260803}.
+
+The primary S6 comparison uses the two valid 12-dB training seeds 20260730 and 20260731. An earlier S6 seed, 20260729, was trained accidentally with a 22-dB override; we exclude it from the primary comparison and retain it only as a documented regime check. The valid two-seed S6 aggregate is used wherever an S6 uncertainty is reported.
+
+\subsection{Mechanism ablation}
+The co-located-jammer control uses seed 20260811, the same 1000+1000 two-stage protocol, the same 63-token team budget, radar sites at $+20^\circ$ and $-20^\circ$, and both jammer sites at $+60^\circ$. Its corrected evaluation passes the explicit \texttt{+60,+60} geometry to the evaluator. The first evaluation generated with the default cross-fire geometry is retained as an audit file and is not used in any reported result.
+
+\subsection{Opponent-class mixture}
+R5-lite trains one seed for each singleton exposure fraction $q\in\{0.25,0.50,0.75\}$, for 2000 iterations under the same two-stage protocol. On a fraction $q$ of iterations, jammer 1 is forced idle and the radar team updates against the singleton opponent; the jammer-team update is skipped on those iterations. This is a minimal opponent-class mixture rather than a full population league. The reference $q=0$ is the S7 seed-01 2000-iteration checkpoint. Because jammer updates are skipped on singleton iterations, the absolute jammer strength changes with $q$. We therefore treat $j1/jvs$, $h2h/jvs$, and $\eta$ as the primary cross-condition readouts and present absolute drops as descriptive context.
+
+\subsection{Statistical reporting}
+For S7, the final evaluation runs four views over all 64 validation scenarios with one repetition for each of three action seeds. The S6 implementation supplies h2h, jvs, rad-idle, and the natural floor but does not supply the S7-specific j1-only control. We report the mean and standard deviation across action seeds for each training seed. Aggregate S7 values report the mean and standard deviation across the three training seeds. The natural floor is computed using scripted radar sweeps against idle jammers under the same environment regime. We retain all raw JSONL logs and final evaluation JSON files in the repository artifact tree.
+
+\subsection{Implementation checks}
+The S7 environment and physics tests contain 18 contract and physics gates. They cover action shapes, energy accounting, exact service--bearing credit, generalized array-factor consistency, two-source JNR summation, detection monotonicity, observation channels, ledger identity, and pre-training contestability. Atomic checkpoints and a max-iteration resume criterion protect long runs from interrupted sessions. These engineering checks are separate from the scientific result and are reported to make the training trajectory reproducible.

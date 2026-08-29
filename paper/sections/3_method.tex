@@ -1,0 +1,52 @@
+\section{Benchmark and Method}
+\subsection{Task-level mission model}
+At each time step, each service can receive an arrival. An admitted mission is represented by
+\begin{equation}
+ m=(s,a,t_{\mathrm{arr}},t_{\mathrm{dl}},n_{\mathrm{det}}),
+\end{equation}
+where $s$ is the service, $a\in\{0,\ldots,4\}$ is its azimuth sector, and the deadline is at most six steps after arrival. A mission succeeds when the radar team obtains one detection with the exact $(s,a)$ identity before the deadline. The tracker credits the oldest incomplete mission with the matching service and bearing; detections at the deadline are processed before finalization. The mission drop ratio is
+\begin{equation}
+ \dropRatio=\frac{N_{\mathrm{timeout}}+N_{\mathrm{admission\ reject}}+N_{\mathrm{horizon\ failure}}}{N_{\mathrm{eligible}}}.
+\end{equation}
+A larger value means that the jammer team denied more missions. We retain completed-but-not-yet-finalized missions in the queue, which makes the deadline accounting explicit and auditable.
+
+\subsection{Bearing-aware link physics}
+Each agent selects a beam from a $5\times5$ azimuth--elevation grid. A jammer selects a Bernoulli mask over 25 array cells and a categorical beam. For a steering direction $(u_b,v_b)$ and target $(u_t,v_t)$, the normalized planar-array response is separable:
+\begin{equation}
+ G_{\mathrm{AF}}(b,t)=10\log_{10}\left(\frac{A_{5}(u_t-u_b)^2}{5^2}\right)+10\log_{10}\left(\frac{A_{5}(v_t-v_b)^2}{5^2}\right),
+\end{equation}
+where $A_5$ is the finite-array response evaluated with the same float32 implementation for all experiments. For jammer $k$ and radar $r$, the received JNR includes jammer cell aggregation, transmit and receive array gains at their pair bearing, service-dependent path loss and receiver gain, and polarization loss. Independent jammers are combined as incoherent power:
+\begin{equation}
+ \jnr_r=10\log_{10}\sum_k10^{\jnr_{kr}/10}.
+\end{equation}
+The effective SNR is
+\begin{equation}
+ \snr_{\mathrm{eff},r}=10\log_{10}\left(\frac{10^{\snr_0/10}}{1+10^{\jnr_r/10}}\right)+G_{\mathrm{coh}},
+\end{equation}
+with the idle case defined by $\jnr_r=-\infty$. A mission at azimuth $a$ is detected with
+\begin{equation}
+ p_{r}(s,a)=\sigma\left(\frac{\snr_{\mathrm{eff},r}+G_{\mathrm{target}}(b_r,a)-\tau}{w}\right),
+\end{equation}
+where $\tau=15$ dB and $w=3$ dB. This couples radar pointing to both useful detection gain and exposure to interference.
+
+\subsection{S6 and S7 games}
+S6 uses one jammer against two co-located learned radar heads. S7 uses two parameter-shared jammers at azimuths $+60^\circ$ and $-60^\circ$ and two radar heads at $+20^\circ$ and $-20^\circ$. Both stages use the validated $\snr_0=12$ dB regime and $P_{\mathrm{jam}}=0.1$ W per active cell. The S7 team receives a total 63-token budget, split 32/31 between jammers; the S6-to-S7 comparison therefore changes attacker count and radar-site geometry while holding total S7 jammer activation fixed.
+
+Each side uses a parameter-shared multi-head actor. Radar agents choose beam and service; jammer agents choose cell mask and beam. A centralized privileged critic receives the concatenated public observations of its team during training, while the deployable actor receives only its local observation and last-action ESM channels. PPO uses generalized advantage estimation, clipped likelihood ratios, per-head entropy schedules, and separate actor, local critic, and privileged-critic optimizers \cite{yu2022surprising,schulman2017proximal}. Rollouts flatten agent slots in agent-major order so the shared team reward is duplicated without mixing trajectories.
+
+\subsection{Evaluation and containment}
+We evaluate four views for S7: head-to-head (h2h), learned jammers against scripted sweep radars (jvs), learned radars against idle jammers (rad-idle), and one learned jammer against the pair-trained radars (j1-only). The S6 baseline defines h2h, jvs, rad-idle, and the natural floor; it does not contain the S7-specific j1-only control. The scripted sweep against idle jammers supplies the natural floor $d_{\mathrm{floor}}$. Let $d_{\mathrm{h2h}}$, $d_{\mathrm{jvs}}$, and $d_{\mathrm{idle}}$ denote the corresponding drop ratios.
+\begin{equation}
+ \eta=1-\frac{d_{\mathrm{h2h}}-d_{\mathrm{idle}}}{d_{\mathrm{jvs}}-d_{\mathrm{floor}}}.
+\end{equation}
+This metric measures the fraction of the jammer's marginal disruption that learning radars remove; it avoids crediting the radar for losses caused by its own scheduling floor. Final evaluations use 64 fixed validation scenarios and three independent action seeds (4242, 777, and 31337).
+
+\subsection{Pre-training contestability gate}
+Before training, we enumerate beam responses for each mission azimuth. The gate requires at least three of five azimuths to have best-response detection probability in $(0.05,0.95)$, a minimum above 0.02, and a maximum above 0.8. The S7 cross-fire profile is $(0.837,0.912,0.989,0.993,0.855)$; all five sectors remain reachable and three remain contestable. The co-located-jammer control profile is $(0.921,0.823,0.989,0.996,0.991)$, which predicts a more defense-favorable game before any policy update.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.96\textwidth]{figures/fig1_benchmark_anatomy.pdf}
+\caption{Benchmark anatomy and pre-training contestability. FluxPhased couples a deadline-constrained mission queue to bearing-aware jammer--radar link physics. The lower panel reports the best-response detection profiles used to gate the cross-fire and co-located configurations before training.}
+\label{fig:benchmark}
+\end{figure*}

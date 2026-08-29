@@ -1,0 +1,9 @@
+paper/main.tex
+paper/math_commands.tex
+paper/sections/0_abstract.tex
+paper/sections/1_introduction.tex
+paper/sections/2_related_work.tex
+paper/sections/3_method.tex
+paper/sections/4_protocol.tex
+paper/sections/5_results.tex
+paper/sections/6_discussion.tex

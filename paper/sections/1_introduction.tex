@@ -1,0 +1,18 @@
+\section{Introduction}
+Electronic-support and electronic-attack systems interact through a resource-constrained loop: an interferer chooses where and when to spend energy, while a multifunction radar chooses which service and bearing to observe before each mission deadline. A high instantaneous JNR can be operationally irrelevant if the radar detects the corresponding target in another dwell, whereas a modest interference pulse can matter when it arrives at the only vulnerable point in a deadline window. The operational outcome is therefore mission completion, not a single link-budget scalar.
+
+This distinction exposes a gap between two established lines of work. Radar--jammer learning studies formulate waveform, frequency, or power decisions as sequential games. Multifunction-radar scheduling studies optimize scan and track allocation under time or power constraints. These lines of work leave open a system-level question: how does the balance of an adaptive game change when the number of coordinated attackers increases while the defender's mission workload and total interference budget remain fixed?
+
+We answer this question with a controlled S6-to-S7 progression in FluxPhased. S6 contains one learned jammer and two learned radar heads. S7 contains two parameter-shared jammer agents and two parameter-shared radar agents. The S7 team receives a 63-cell activation budget, split 32/31 between jammers. This controls total jammer activation while the radar-site geometry changes from S6 to S7; the matched co-located-jammer control isolates the additional cross-fire component within the S7 geometry.
+
+The main result is a change in containment, not a corresponding failure of learning. Across three S7 seeds trained to 3000 iterations, head-to-head mission drop is $0.3366\pm0.0143$, compared with $0.0888\pm0.0053$ in the valid two-seed 12-dB S6 baseline. The floor-adjusted fraction of marginal jammer disruption removed by learned radars falls from $63.7\%\pm1.0\%$ to $23.0\%\pm1.1\%$. The radar floor against idle jammers remains low ($0.0194\pm0.0008$ in S7 versus $0.0275\pm0.0110$ in valid S6), and the S7 trajectory is stationary from approximately iteration 1700 through 3000. Thus, the second attacker changes the stable equilibrium's scale while preserving low idle-jammer loss and training stability.
+
+This paper makes four contributions:
+\begin{enumerate}
+    \item We provide a task-level, bearing-aware benchmark in which deadline-constrained mission loss is coupled to array-factor link physics, finite energy, and two-team MAPPO.
+    \item We quantify a benchmark-level attacker-count scaling effect: with total jammer activation controlled, doubling attackers reduces defense containment by roughly two-thirds, with replication across three converged S7 seeds and a two-seed valid S6 reference.
+    \item We use a matched co-located-jammer control to decompose the mechanism under the separated S7 radar geometry. Two jammers already reduce containment to $28.4\%$; cross-fire adds a secondary reduction to $24.2\%$.
+    \item We test a minimal opponent-class mixture. The singleton-to-pair disruption ratio falls from $0.502$ to $0.262$ as singleton exposure increases, identifying opponent-class mixing as a practical robustness intervention while documenting its training-budget confound.
+\end{enumerate}
+
+The rest of the paper defines the benchmark and evaluation metric, presents convergence and scaling results, tests the count--geometry decomposition, analyzes opponent-specific adaptation, and evaluates the lightweight mixing intervention. We use ``drop'' for the fraction of eligible missions that are not completed before their deadlines; higher drop therefore indicates greater jammer-side success.

@@ -1,14 +1,6 @@
 % !TeX program = pdflatex
-% ============================================================================
-% FluxPhased — Task-Level Adversarial Co-Evolution of Multifunction Radar
-% Teams and Cooperative Jammers (S1–S7)
+% FluxPhased — Task-level adversarial co-adaptation of radar and jammer teams
 % Target venue: IEEE Transactions on Aerospace and Electronic Systems (TAES)
-%
-% Build: pdflatex main && bibtex main && pdflatex main x2
-% All numbers in this skeleton are FINAL (3-seed converged statistics +
-% mechanism ablation) except Section V-E (R5), which is running
-% (mix 0.25/0.50/0.75 x 2000 iters; ETA ~2026-08-29).
-% ============================================================================
 \documentclass[journal]{IEEEtran}
 
 \usepackage{amsmath,amssymb,amsfonts}
@@ -16,215 +8,27 @@
 \usepackage{booktabs}
 \usepackage{multirow}
 \usepackage{xcolor}
-\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue]{hyperref}
 \usepackage{cite}
+\usepackage[hidelinks]{hyperref}
+\usepackage{url}
+\input{math_commands.tex}
 
-\newcommand{\neutral}{\eta}          % floor-adjusted neutralization
-\newcommand{\drop}{d}                % mission drop ratio
-
-\title{Scaling the Attack Breaks the Defense: Task-Level Self-Play Between
-Cooperative Jammer Teams and Multifunction Radar Nets}
-
-\author{%
-  \IEEEauthorblockN{Anonymous Authors}
-  \IEEEauthorblockA{Affiliation}
-}
+\title{Scaling the Attack Breaks Defense Containment in Task-Level Radar--Jammer Self-Play}
+\author{Anonymous Authors}
 
 \begin{document}
 \maketitle
-
 \begin{abstract}
-% ~200 words. Skeleton of the claim chain:
-% (1) We introduce a GPU-accelerated, physics-grounded benchmark for
-%     task-level EW co-evolution: multifunction radars with mission deadlines
-%     vs cooperative jammers with shared energy budgets, IQ-level link
-%     budgets (array-factor gains, incoherent power summation), and a
-%     pre-training contestability oracle that PREDICTS game balance before
-%     any training.
-% (2) In 1-jammer-vs-2-radar self-play (S6, 3 seeds), defense dominates:
-%     learned radars neutralize 63.7%+-0.7% of the jammer's marginal
-%     disruptive power; this ratio is regime-invariant (snr 12 vs 22 dB).
-% (3) Doubling the attacker (2v2, S7, 3 seeds x 3000-iter convergence
-%     control) collapses neutralization to 23.0%+-1.1% while the game itself
-%     stays a stable, replicable equilibrium (h2h 0.337+-0.014, 3.8x S6).
-% (4) A co-located-geometry ablation decomposes the mechanism: attacker
-%     count is primary (63.7%->28.4%), cross-fire geometry secondary
-%     (28.4%->24.2%).
-% (5) [R5, running] Opponent-class mixing recovers singleton robustness
-%     at cost X in pairwise defense — OR — mixing alone is insufficient.
+\input{sections/0_abstract.tex}
 \end{abstract}
-
-\begin{IEEEkeywords}
-electronic warfare, multifunction radar, multi-agent reinforcement learning,
-self-play, MAPPO, adversarial games, resource management
-\end{IEEEkeywords}
-
-% ============================================================================
-\section{Introduction}
-% Narrative arc (5 paragraphs):
-% P1  EW context: modern MFAR nets face cooperative, adaptive jammers;
-%     task-level outcome (mission drop) — not link-level SINR — is the
-%     operationally meaningful metric.
-% P2  Gap: waveform/power-level game theory (NFSP line) is mature but
-%     1v1 and link-level; task-level scheduling RL is mature but
-%     single-sided (no learning adversary). The intersection — task-level
-%     adversarial CO-EVOLUTION — is unoccupied (novelty audit 2026-08-25).
-% P3  Contributions (numbered):
-%     C1 Benchmark: physics-grounded, GPU-vectorized S1-S7 chain with
-%        pre-training contestability oracle (predictive validity shown twice).
-%     C2 Scaling law: attacker-count collapse of defense neutralization,
-%        3-seed replicated, with convergence-control methodology.
-%     C3 Mechanism decomposition via co-located ablation (count vs geometry).
-%     C4 Adaptation trade-off: pair-specialized defense is exploitable by
-%        the singleton class it never trained against [-> C5 if R5 lands].
-%     C5 [if R5 positive] Opponent-class mixing as the minimal league
-%        restoring cross-class robustness.
-% P4  Protocol contributions: four-view evaluation, floor-adjusted
-%     neutralization metric, convergence control (budget-insensitive claims).
-% P5  Paper roadmap.
-
-% ============================================================================
-\section{Related Work}
-% Three neighborhoods (from the 2026-08-25 audit; 12 refs):
-% A. EW radar-jamming MARL games (waveform/power level): NFSP+EFG (IEEE SPL
-%    2024), NFSP-DDPG frequency-agile (GRSL 2024), curiosity-driven waveform
-%    games (TAES 2025), AlphaZero-style anti-jamming (Sensors 2026).
-%    All: link-level metrics, 1v1, no deadline/mission structure.
-% B. Task-level radar resource management RL (no adversary): MFR scheduling
-%    PPO/A2C (MECO 2026), MuZero scheduling (2024), constrained time-budget
-%    DRL. All: single-sided.
-% C. Self-play robustness/role emergence: role emergence MARL (2020),
-%    Diversity-is-not-all-you-need (co-self-play overfitting), AlphaStar
-%    league; MOBA macro strategy (1812.07887) for macro/micro coordination.
-% Position: we occupy A∩B — task-level metrics × adversarial co-adaptation —
-% and import C's mixing idea as the minimal league.
-
-% ============================================================================
-\section{The FluxPhased Benchmark}
-% III-A Environment: missions as 5-tuples (svc, az, arr, dl, ds), deadline
-%     windows, per-(svc,az) credit; Bernoulli(25)-cell + Cat(25)-beam jammer
-%     actions; beam+service radar heads; ESM observation channels.
-% III-B Physics: per-(jammer,radar) link budgets with generalized UPA
-%     array factors at arbitrary pair bearings; incoherent linear power
-%     summation (M0 gates: idle=-inf, twins=+3.01 dB, single=S4);
-%     sigmoid detection with target gain (scan-vs-stare hinge).
-% III-C The contestability oracle: per-mission best-response detection
-%     profile BEFORE training; gates (>=3/5 azimuths contestable, min>0.02,
-%     max>0.8). Predictive validity: S6 regime selection + S7 ablation
-%     geometry both behaved as predicted. Fig. 1.
-% III-D Evaluation protocol: four views (h2h, jam_vs_sweep, rad_vs_idle,
-%     j1_only) + sweep_vs_idle natural floor; floor-adjusted neutralization
-%     \neutral = 1 - (\drop_h2h - \drop_idle)/(\drop_jvs - \drop_floor).
-%     64 validation seeds x 3 action seeds.
-% III-E MAPPO/CTDE training: parameter-shared actor + per-agent critic +
-%     privileged central critic per team; swap-update; K-flattened rollouts.
-%     18/18 contract/physics test gates.
-
-% ============================================================================
-\section{Experimental Protocol}
-% Seeds 20260801/02/03 (2v2) + 20260729/30/31 (S6 1v2, snr=12) + ablation
-% seed 20260811. 1000 normal-anneal + 2000 frozen-anneal iters (3000 total);
-% convergence control methodology: three-stage continuation isolates
-% "more training" from anneal artifacts; 1000-iter budgets understate h2h by
-% 25-30%. Team budget parity (63 tokens) isolates attacker COUNT from team
-% energy. Table: full hyperparameters.
-
-% ============================================================================
-\section{Results}
-% ---------------------------------------------------------------------------
-\subsection{Task-level self-play converges to replicable equilibria}
-% R1. Fig. 2 = 3000-iter four-view trajectory (3-segment, plateau band).
-% Evidence: S6 3 seeds h2h 0.0888+-0.0053; S7 3 seeds h2h 0.3366+-0.0143;
-% 2000-3000 window dead flat (all views within +-0.005 across quarters);
-% not cycling (continuation control), not undertrained (stage-2 extension).
-
-\subsection{Doubling the attacker collapses defense containment to one-third}
-% R2 (HEADLINE). Fig. 3 = the one-panel money figure: neutralization
-%     63.7%+-0.7% (S6, 3 seeds) -> 23.0%+-1.1% (S7, 3 seeds @ 3000).
-% Table: full three-seed table (h2h 0.3366+-0.0143, jvs 0.5294+-0.0215,
-% rad_idle 0.0194+-0.0008, \neutral 23.0%+-1.1%). Radar competence intact
-% (rad_vs_idle unchanged) => the erosion is purely offensive.
-
-\subsection{Mechanism: attacker count is primary, cross-fire secondary}
-% R3. Co-located ablation (+60,+60 vs +-60 radars, seed 20260811, 2000 iters,
-% identical protocol): h2h 0.2927+-0.0119, \neutral 28.4%.
-% Decomposition: count 63.7->28.4 (primary), geometry 28.4->24.2 (secondary).
-% Falsifies the naive single-beam-suppression-only reading; budget-split
-% persistent two-source pressure is the dominant mechanism.
-% Fig. 4 = three-bar decomposition (S6 / co-located / cross-fire) +
-% pre-registered contestability profiles underneath.
-% Honesty box (footnote): first ablation eval used wrong geometry (retained
-% for audit); corrected rerun on same checkpoint.
-
-\subsection{Pair-specialized defenses are exploitable by the singleton class}
-% R4. j1_only across converged seeds: 0.26/0.24/0.12 (mean 0.21+-0.07) —
-% present in ALL seeds, magnitude seed-dependent (report honestly).
-% Within-seed dynamics (seed 01): j1_only doubles 0.12->0.24 across the
-% continuation while h2h improves — the trade-off GROWS with specialization.
-% Behavior: radar az-sector division of labor (beam 11/13, 52/48), budget
-% exhaustion vs S6 rationing, center-split cross-assignment matrix.
-% Fig. 5 = behavior panel (sector split + cross-assignment JNR matrix).
-
-\subsection{Opponent-class mixing restores cross-class robustness}
-% R5-lite COMPLETE (2026-08-29). Dose-response over mix in {0, .25, .5, .75},
-% 2000 iters each (1000 normal + 1000 frozen anneal), full-protocol eval.
-% Fig. 6 = dose-response: j1/jvs and eta vs mix.
-%
-%   mix     h2h     jvs     j1     j1/jvs   eta%
-%   0.00  0.3282  0.5043  0.2532   0.502   20.2
-%   0.25  0.2470  0.4015  0.1767   0.440   23.5
-%   0.50  0.1962  0.3580  0.0992   0.277   26.1
-%   0.75  0.1939  0.3476  0.0911   0.262   24.6
-%
-% Claims (ratio-metric only; see honesty box):
-% 1. j1/jvs falls monotonically 0.50 -> 0.26 and saturates between 50-75%:
-%    mixing halves the singleton's relative leverage against the
-%    pair-trained defense.
-% 2. eta RISES monotonically then saturates (20.2 -> 26.1 -> 24.6) and the
-%    h2h/jvs ratio falls (0.651 -> 0.55): mixing improves BOTH views -- no
-%    pairwise-vs-singleton trade-off is observed at the ratio level. This
-%    upgrades the R4 'adaptation trade-off' to 'mixing is (ratio-level)
-%    free lunch across opponent classes'.
-% Honesty box: singleton iterations also SKIP the jammer update, so jammer
-% gradient budget scales with (1-mix) and jvs falls 0.50 -> 0.35; absolute
-% drops are NOT comparable across conditions. All claims rest on
-% same-jammer ratio metrics (j1/jvs, h2h/jvs, eta). Lite = 1 seed per
-% condition; gradients aligned (frozen-jammer update accounting) is the
-% designated follow-up.
-
-% ============================================================================
-\section{Discussion}
-% - Design implication: defense procurement should be stress-tested against
-%   attacker COUNT scaling, not just single-adversary optimization.
-% - The contestability oracle as a cheap pre-training gate for game design.
-% - Convergence-control methodology for any budgeted self-play claim.
-% - Connection to league training: our mixing = minimal PFSP variant.
-
-\section{Limitations}
-% Single geometry family (az-grid sites), one SNR regime per stage (S7 at
-% snr=12), 5-az grid, 2 services, simulation-only (no hardware-in-loop),
-% j1_only magnitude is seed-dependent, R5 is 1 seed per condition (lite).
-
-\section{Conclusion}
-% ...
-
-% ============================================================================
-\section*{Reproducibility}
-% 18/18 test gates; manifests (64 train + 64 validation seeds); atomic
-% checkpoint chains; all artifacts on the repository branch
-% g3-bsta/array-face-s1 (tag s7-paper-baseline-20260826).
+\input{sections/1_introduction.tex}
+\input{sections/2_related_work.tex}
+\input{sections/3_method.tex}
+\input{sections/4_protocol.tex}
+\input{sections/5_results.tex}
+\input{sections/6_discussion.tex}
 
 \bibliographystyle{IEEEtran}
-% \bibliography{refs}  % TODO: populate refs.bib from the audit's 12 papers
-\begin{thebibliography}{00}
-% Placeholder entries — replace with refs.bib
-\bibitem{nfsp-efg} Enhanced radar anti-jamming with multi-agent RL, IEEE SPL, 2024.
-\bibitem{nfsp-ddpg} MARL for anti-jamming game of frequency-agile radar, IEEE GRSL, 2024.
-\bibitem{curiosity} Curiosity-driven MARL for dynamic waveform games, IEEE TAES, 2025.
-\bibitem{alphazero-ew} Intelligent jammer-assisted radar anti-jamming evolution, Sensors, 2026.
-\bibitem{moba} Hierarchical macro strategy model for MOBA game AI, arXiv:1812.07887, 2018.
-\bibitem{role-emergence} Role-oriented multi-agent learning, arXiv:2003.08039, 2020.
-% + S4/S5 in-repo technical reports, AlphaStar, MAPPO, PPO, S6/S7 gates.
-\end{thebibliography}
+\bibliography{references}
 
 \end{document}

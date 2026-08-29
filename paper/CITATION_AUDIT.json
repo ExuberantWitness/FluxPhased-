@@ -1,0 +1,20 @@
+{
+  "audit_skill": "citation-audit",
+  "verdict": "WARN",
+  "reason_code": "active_entries_resolve_but_publisher_metadata_review_recommended",
+  "summary": "Six active citations have matching BibTeX entries and identifiable canonical sources; no uncited active entries remain, but publisher-version metadata should be checked before submission.",
+  "details": {
+    "total_entries": 6,
+    "counts": {"KEEP": 6, "FIX": 0, "REPLACE": 0, "REMOVE": 0},
+    "per_entry": [
+      {"key":"schulman2017proximal","verdict":"KEEP","axis_failures":[]},
+      {"key":"yu2022surprising","verdict":"KEEP","axis_failures":[]},
+      {"key":"heinrich2016deep","verdict":"KEEP","axis_failures":[]},
+      {"key":"vinyals2019alphastar","verdict":"KEEP","axis_failures":[]},
+      {"key":"wang2020roma","verdict":"KEEP","axis_failures":[]},
+      {"key":"wu2018moba","verdict":"KEEP","axis_failures":[]}
+    ],
+    "uncited_entries": [],
+    "submission_note": "Publisher/proceedings metadata review recommended for arXiv-only records before submission."
+  }
+}

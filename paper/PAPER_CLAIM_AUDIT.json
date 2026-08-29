@@ -1,0 +1,18 @@
+{
+  "audit_skill": "paper-claim-audit",
+  "verdict": "PASS",
+  "reason_code": "all_numbers_match_with_scope_corrections",
+  "summary": "Reported numerical values and claim scope match the current raw evaluation artifacts after correcting the S6 sample, uncertainty, geometry, and R5 endpoint descriptions.",
+  "paper": "Scaling the Attack Breaks Defense Containment in Task-Level Radar--Jammer Self-Play",
+  "details": {
+    "s6_valid_training_seeds": [20260730, 20260731],
+    "s7_converged_training_seeds": [20260801, 20260802, 20260803],
+    "s7_iterations": 3000,
+    "mechanism_ablation_seed": 20260811,
+    "r5_seeds": [20260821, 20260822, 20260823],
+    "verified_families": ["S6 h2h/jvs/eta", "S7 h2h/jvs/rad-idle/eta", "co-located ablation", "R5 ratio dose-response"],
+    "corrections": ["S6 n=2 valid 12-dB seeds", "S6 eta uncertainty=1.0 percentage points", "Figure 3 error bars across training seeds", "R3 radar-site geometry scope", "R5 h2h/jvs minimum at 50% then slight rise at 75%"],
+    "residual_limitations": ["one ablation seed", "one R5 seed per condition", "R5 skipped jammer update confound", "simulation-only fixed geometry"],
+    "raw_result_root": "E:/DATA/vscode/FluxPhased/experiments/array_face_s6 and experiments/array_face_s7"
+  }
+}
