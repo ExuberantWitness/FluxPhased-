@@ -9,7 +9,7 @@ Every figure is a belief-change step; data sources are all in-repo.
 | 3 | **Money figure**: neutralization 63.7%±0.7 → 23.0%±1.1 (two bars + seed dots) | What did scaling the attack do? | Containment collapse, replicated | 3-seed merged stats (this session) | needs figure |
 | 4 | Mechanism decomposition: S6 / co-located / cross-fire neutralization bars + pre-registered spectra below | Count or geometry? | Count primary (→28.4%), geometry secondary (→24.2%) | ablation `final_eval.json` + sweep profiles | needs figure |
 | 5 | Behavior panel: (a) radar az-sector division (beam 11/13 shares), (b) cross-assignment JNR matrix, (c) budget-exhaustion time series vs S6 rationing | What does the equilibrium look like? | Interpretable structure at equilibrium | `_s7_policy_extract.py` outputs | needs figure |
-| 6 | [R5] Robustness frontier: h2h vs j1_only as mix ∈ {0,.25,.5,.75} varies, reference point starred | Can mixing fix the trade-off? | (pending R5) | R5-lite final evals + seed01@2000 reference | pending |
+| 6 | [R5] Dose-response: j1/jvs (singleton leverage) and eta vs mix in {0,.25,.5,.75}; saturation between 50-75% | Can mixing fix the trade-off? | Mixing halves singleton leverage AND raises eta (ratio-level free lunch) | R5-lite final evals (4 conditions, complete 2026-08-29) | data final, needs figure |
 
 | T# | Table | Content | Status |
 |---|---|---|---|
@@ -17,7 +17,7 @@ Every figure is a belief-change step; data sources are all in-repo.
 | T2 | Three-seed converged statistics | h2h/jvs/j1/rad_idle/floor/η per seed + mean±sd | final |
 | T3 | S6 vs S6-regime (snr 12/22) invariance | η ≈ const across regimes | from S6 REPORT |
 | T4 | Mechanism ablation | cross vs co-located, all views + η | final |
-| T5 | [R5] mixing dose-response | mix → h2h, j1_only, η | pending |
+| T5 | [R5] mixing dose-response | mix → h2h, j1_only, η (ratio-metric claims) | **final** (2026-08-29) |
 
 ## Key numbers quick sheet (final)
 

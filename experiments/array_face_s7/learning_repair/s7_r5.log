@@ -1,0 +1,11 @@
+[2026/08/28 07:55:43] R5-lite starting
+[2026/08/28 07:55:43] mix=0.25 stage-A (max iter -1/999)
+[2026/08/28 10:44:05] mix=0.25 stage-B (max iter 999/1999)
+[2026/08/28 13:47:28] mix=0.25 DONE (2000 iters + eval)
+[2026/08/28 13:47:28] mix=0.5 stage-A (max iter -1/999)
+[2026/08/28 16:34:44] mix=0.5 stage-B (max iter 999/1999)
+[2026/08/28 19:45:21] mix=0.5 DONE (2000 iters + eval)
+[2026/08/28 19:45:21] mix=0.75 stage-A (max iter -1/999)
+[2026/08/28 22:34:41] mix=0.75 stage-B (max iter 999/1999)
+[2026/08/29 01:28:51] mix=0.75 DONE (2000 iters + eval)
+[2026/08/29 01:28:51] ALL R5 DONE

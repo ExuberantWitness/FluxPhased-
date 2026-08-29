@@ -165,17 +165,32 @@ self-play, MAPPO, adversarial games, resource management
 % exhaustion vs S6 rationing, center-split cross-assignment matrix.
 % Fig. 5 = behavior panel (sector split + cross-assignment JNR matrix).
 
-\subsection{[R5 — RUNNING] Opponent-class mixing restores cross-class robustness}
-% R5-lite: mix 0.25/0.50/0.75 singleton exposure, 2000 iters each,
-% league-minimal (jammer trains only on pair iterations; radars see mixed
-% opponent classes). Read-out: robustness frontier (h2h vs j1_only) as mix
-% varies; reference = 0% mix @ 2000 iters (h2h 0.3282, j1 0.2532).
-% Two possible endings:
-%   positive: frontier shifts — j1_only drops materially at modest h2h cost
-%             -> "robust EW policies require opponent-class mixing, not
-%                 longer self-play" becomes a supported claim.
-%   null:     frontier does not move -> mixing alone insufficient, honest
-%             boundary, points to full population methods.
+\subsection{Opponent-class mixing restores cross-class robustness}
+% R5-lite COMPLETE (2026-08-29). Dose-response over mix in {0, .25, .5, .75},
+% 2000 iters each (1000 normal + 1000 frozen anneal), full-protocol eval.
+% Fig. 6 = dose-response: j1/jvs and eta vs mix.
+%
+%   mix     h2h     jvs     j1     j1/jvs   eta%
+%   0.00  0.3282  0.5043  0.2532   0.502   20.2
+%   0.25  0.2470  0.4015  0.1767   0.440   23.5
+%   0.50  0.1962  0.3580  0.0992   0.277   26.1
+%   0.75  0.1939  0.3476  0.0911   0.262   24.6
+%
+% Claims (ratio-metric only; see honesty box):
+% 1. j1/jvs falls monotonically 0.50 -> 0.26 and saturates between 50-75%:
+%    mixing halves the singleton's relative leverage against the
+%    pair-trained defense.
+% 2. eta RISES monotonically then saturates (20.2 -> 26.1 -> 24.6) and the
+%    h2h/jvs ratio falls (0.651 -> 0.55): mixing improves BOTH views -- no
+%    pairwise-vs-singleton trade-off is observed at the ratio level. This
+%    upgrades the R4 'adaptation trade-off' to 'mixing is (ratio-level)
+%    free lunch across opponent classes'.
+% Honesty box: singleton iterations also SKIP the jammer update, so jammer
+% gradient budget scales with (1-mix) and jvs falls 0.50 -> 0.35; absolute
+% drops are NOT comparable across conditions. All claims rest on
+% same-jammer ratio metrics (j1/jvs, h2h/jvs, eta). Lite = 1 seed per
+% condition; gradients aligned (frozen-jammer update accounting) is the
+% designated follow-up.
 
 % ============================================================================
 \section{Discussion}
