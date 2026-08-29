@@ -194,6 +194,22 @@ paths = [
     radar_entropy 恒 0 属预期)。验证行只记 `greedy_vs_jam_drop`——对照基线
     0.0889(自博弈干扰队无法惩罚 greedy)。判读:若显著 > 0.0889 说明惩罚是
     可学的、自博弈未覆盖;若仍 ≈0.089 说明当前链路预算下物理上不可惩罚。
+    解析背景见 `stare_analysis.json`:最坏瞄准下凝视窗口成功率 0.004–0.317,
+    单步 2-cell 集中即 <1e-3——0.911 存活率是策略性的,不是物理保证。
+15. **n=3/4 攻击者标度链 `_run_nscaling_chain.ps1`**(2026-08-29 起,日志
+    `nscaling_chain.log`,排 greedy-counter 之后):n=3 种子 20261011-13
+    (`s9_n3_output_seed*`,`--n-jammers 3 --jammer-az "+60,0,-60"`)、
+    n=4 种子 20261021-23(`s9_n4_output_seed*`,`+60,+20,-20,-60`),两段式
+    2000 iter,预算仍 63 均分。**环境已重构**:`EnvConfig.n_jammers` 配置驱动
+    (默认 2 逐位复现 S7,18/18 老门 + 2 个新 n=3/4 契约门全过),观测维度
+    `obs_dim_jammer/radar(n)`、privileged `priv_dim_*(n)` 动态。预注册 gate
+    剖面 `n_scaling_profiles.json`(n=2 锚定精确复现已发表剖面;n=3/4 均过门)。
+    终评必须带 `--n-jammers n --jammer-az <同训练>`;j1-only 语义为 j1-of-n。
+    种子号与运行中链(0901-03/0911-12/0921)已错开。
+16. **SNR 离体制重评 `_s7_snr_reeval.py`**:已有 checkpoint(交叉火力 seed01、
+    共址 0811)在 9/15 dB 下重评(训练仍在 12 dB),结果写各目录
+    `snr_reeval.json`——这是 off-regime 鲁棒性读数,与 TAES 链中的
+    重训 SNR 扫描(s7_snr{9,15}db_output_*)是两类证据,勿混。
 
 ---
 

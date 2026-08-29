@@ -13,6 +13,9 @@ from env.gpu.array_face_s7.physics import (
 )
 from env.gpu.array_face_s7.observation import (
     build_observation_jammer, build_observation_radar,
+    build_observation_jammer_n, build_observation_radar_n,
+    obs_dim_jammer, obs_dim_radar,
+    priv_dim_jammer, priv_dim_radar,
     OBS_DIM_JAMMER, OBS_DIM_RADAR,
     PRIVILEGED_DIM_JAMMER, PRIVILEGED_DIM_RADAR,
     PROFILE_ARRAY_FACE_S7,
@@ -28,6 +31,9 @@ __all__ = [
     "compute_jnr_db_s7", "compute_p_detect_s7",
     "compute_snr_eff_db_s6", "target_gain_db",
     "build_observation_jammer", "build_observation_radar",
+    "build_observation_jammer_n", "build_observation_radar_n",
+    "obs_dim_jammer", "obs_dim_radar",
+    "priv_dim_jammer", "priv_dim_radar",
     "OBS_DIM_JAMMER", "OBS_DIM_RADAR",
     "PRIVILEGED_DIM_JAMMER", "PRIVILEGED_DIM_RADAR",
     "PROFILE_ARRAY_FACE_S7",

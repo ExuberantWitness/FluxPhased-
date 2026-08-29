@@ -152,10 +152,29 @@ def _baselines() -> dict:
     return {'per_seed': per_seed, 'agg': agg}
 
 
+def _snr_reeval() -> dict:
+    """Off-regime re-evaluation of converged teams at shifted SNR0.
+
+    Policies remain trained at 12 dB; these are robustness readouts, not
+    retrained sensitivity. Returns {} until both snr_reeval.json files exist.
+    """
+    out = {}
+    for name, label in ((S7_SEEDS[0], 'crossfire'),
+                        ('s7_ablation_output_seed20260811', 'colocated')):
+        path = S7_BASE / name / 'snr_reeval.json'
+        if not path.exists():
+            return {}
+        out[label] = json.loads(path.read_text())
+    return out
+
+
 TABLE = build_table()
 BASELINES = _baselines()
 if BASELINES:
     TABLE['baselines'] = BASELINES
+SNR_REEVAL = _snr_reeval()
+if SNR_REEVAL:
+    TABLE['snr_reeval'] = SNR_REEVAL
 
 if __name__ == '__main__':
     target = FIG_DIR / 'RESULTS_TABLE.json'
@@ -173,3 +192,7 @@ if __name__ == '__main__':
     if 'baselines' in TABLE:
         for k, v in TABLE['baselines']['agg'].items():
             print(f'baseline {k}: {v["mean"]:.4f} +/- {v["sd"]:.4f}')
+    if 'snr_reeval' in TABLE:
+        for g, pts in TABLE['snr_reeval'].items():
+            for k, v in pts.items():
+                print(f'snr_reeval {g} {k}: eta {v["eta_pct"]:.1f}%')

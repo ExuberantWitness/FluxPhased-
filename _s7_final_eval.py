@@ -41,6 +41,9 @@ p.add_argument("--radar-az", type=str, default=None,
 p.add_argument("--baseline-snr-db", type=float, default=None,
                help="regime sweep: override baseline SNR (default 12 dB); must "
                     "match the training regime of the checkpoint")
+p.add_argument("--n-jammers", type=int, default=2,
+               help="attacker-count scaling: jammers in the trained game "
+                    "(must match the checkpoint's env)")
 args = p.parse_args()
 SEED = args.seed
 device = args.device
@@ -65,6 +68,7 @@ env_cfg = EnvConfig(
     jammer_az_deg=tuple(float(x) for x in args.jammer_az.split(",")) if args.jammer_az else None,
     radar_az_deg=tuple(float(x) for x in args.radar_az.split(",")) if args.radar_az else None,
     baseline_snr_db=args.baseline_snr_db if args.baseline_snr_db is not None else 12.0,
+    n_jammers=int(args.n_jammers),
     device=device, seed=SEED,
 )
 physics = default_debug_physics_config(P_jam_W=0.1)

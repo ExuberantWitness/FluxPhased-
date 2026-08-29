@@ -182,3 +182,41 @@ def test_s7_az_map_in_obs():
     assert obs_j[0, 0, 45:50].sum() == 0 and obs_j[0, 0, 45 + 5 + 3] == 1.0
     # radar obs: map at [1..10] as [svc0 az 5 | svc1 az 5]
     assert obs_r[0, 0, 1:6].sum() == 0 and obs_r[0, 0, 1 + 5 + 3] == 1.0
+
+
+# ===================== attacker-count scaling (n = 3 / 4) =====================
+
+@pytest.mark.parametrize("n,az_expect,dim_j,dim_r", [
+    (3, (-60.0, 0.0, 60.0), 79, 71),
+    (4, (-60.0, -20.0, 20.0, 60.0), 91, 82),
+])
+def test_s7_n_jammer_contract(n, az_expect, dim_j, dim_r):
+    """n>2: arc placement, per-n obs dims, budget split, step round-trip."""
+    cfg = EnvConfig(n_envs=2, horizon=64, active_budget_steps=63,
+                    n_jammers=n, device="cpu", seed=7)
+    env = ArrayFaceS7VecEnv(cfg, physics=PHYSICS, radar=UPAConfig(), jammer=UPAConfig())
+    assert env.K == n
+    assert cfg.E0_tokens_per == tuple(63 // n + (1 if k < 63 % n else 0) for k in range(n))
+    from env.gpu.array_face_s7.geometry import pair_bearings_for
+    az, _ = pair_bearings_for(az_expect, (20.0, -20.0), torch.device("cpu"))
+    assert torch.allclose(az, env._pair_az, atol=1e-6)
+    obs_j, obs_r = env.reset(seed=7)
+    assert obs_j.shape == (2, n, dim_j) and obs_r.shape == (2, 2, dim_r)
+    E = 2
+    jcell = torch.zeros(E, n, 25); jcell[:, :, 0] = 1.0
+    jbeam = torch.full((E, n), 12, dtype=torch.int64)
+    (oj, orr), _, _, info = env.step(
+        jcell, jbeam,
+        torch.zeros(E, 2, dtype=torch.int64), torch.zeros(E, 2, dtype=torch.int64))
+    assert oj.shape == (E, n, dim_j) and orr.shape == (E, 2, dim_r)
+    assert info["jnr_db"].shape == (E, 2)
+    # all jammers idle -> combined JNR -inf (single-jammer gate generalized)
+    env2 = ArrayFaceS7VecEnv(cfg, physics=PHYSICS, radar=UPAConfig(), jammer=UPAConfig())
+    env2.reset(seed=7)
+    (oj2, _), _, _, info2 = env2.step(
+        torch.zeros(E, n, 25), torch.zeros(E, n, dtype=torch.int64),
+        torch.zeros(E, 2, dtype=torch.int64), torch.zeros(E, 2, dtype=torch.int64))
+    assert torch.isinf(info2["jnr_db"]).all()
+    # privileged views scale with n
+    pj, pr = env2.privileged()
+    assert pj.shape == (E, n * dim_j) and pr.shape == (E, 2 * dim_r)

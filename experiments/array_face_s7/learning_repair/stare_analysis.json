@@ -1,0 +1,118 @@
+{
+ "per_azimuth": [
+  {
+   "mission_az": 0,
+   "jnr_stare_db": 38.86,
+   "p_stare": 0.0007,
+   "p_hedge": 0.0,
+   "win_stare": 0.0041,
+   "win_hedge": 0.0
+  },
+  {
+   "mission_az": 1,
+   "jnr_stare_db": 37.17,
+   "p_stare": 0.0012,
+   "p_hedge": 0.0002,
+   "win_stare": 0.0072,
+   "win_hedge": 0.0013
+  },
+  {
+   "mission_az": 2,
+   "jnr_stare_db": 28.43,
+   "p_stare": 0.0216,
+   "p_hedge": 0.0006,
+   "win_stare": 0.1229,
+   "win_hedge": 0.0037
+  },
+  {
+   "mission_az": 3,
+   "jnr_stare_db": 25.15,
+   "p_stare": 0.0616,
+   "p_hedge": 0.0,
+   "win_stare": 0.3173,
+   "win_hedge": 0.0
+  },
+  {
+   "mission_az": 4,
+   "jnr_stare_db": 38.17,
+   "p_stare": 0.0009,
+   "p_hedge": 0.0001,
+   "win_stare": 0.0052,
+   "win_hedge": 0.0003
+  }
+ ],
+ "critical_scan": [
+  {
+   "P_jam_W": 0.1,
+   "min_win_stare": 0.0041,
+   "stare_dominates": true
+  },
+  {
+   "P_jam_W": 0.2,
+   "min_win_stare": 0.0015,
+   "stare_dominates": true
+  },
+  {
+   "P_jam_W": 0.4,
+   "min_win_stare": 0.0006,
+   "stare_dominates": true
+  },
+  {
+   "P_jam_W": 0.8,
+   "min_win_stare": 0.0002,
+   "stare_dominates": true
+  },
+  {
+   "P_jam_W": 1.6,
+   "min_win_stare": 0.0001,
+   "stare_dominates": true
+  },
+  {
+   "P_jam_W": 3.2,
+   "min_win_stare": 0.0,
+   "stare_dominates": true
+  },
+  {
+   "P_jam_W": 6.4,
+   "min_win_stare": 0.0,
+   "stare_dominates": true
+  },
+  {
+   "P_jam_W": 12.8,
+   "min_win_stare": 0.0,
+   "stare_dominates": true
+  }
+ ],
+ "concentration_scan": [
+  {
+   "cells_per_step": 1,
+   "min_p_stare": 0.0007,
+   "min_win_stare": 0.0041
+  },
+  {
+   "cells_per_step": 2,
+   "min_p_stare": 0.0001,
+   "min_win_stare": 0.0006
+  },
+  {
+   "cells_per_step": 4,
+   "min_p_stare": 0.0,
+   "min_win_stare": 0.0001
+  },
+  {
+   "cells_per_step": 8,
+   "min_p_stare": 0.0,
+   "min_win_stare": 0.0
+  },
+  {
+   "cells_per_step": 16,
+   "min_p_stare": 0.0,
+   "min_win_stare": 0.0
+  },
+  {
+   "cells_per_step": 32,
+   "min_p_stare": 0.0,
+   "min_win_stare": 0.0
+  }
+ ]
+}

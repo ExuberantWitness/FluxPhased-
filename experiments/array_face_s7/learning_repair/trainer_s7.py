@@ -29,6 +29,8 @@ from env.gpu.array_face_s7 import (
     OBS_DIM_JAMMER, OBS_DIM_RADAR,
     PRIVILEGED_DIM_JAMMER, PRIVILEGED_DIM_RADAR,
     N_JAMMERS, N_RADARS,
+    obs_dim_jammer, obs_dim_radar,
+    priv_dim_jammer, priv_dim_radar,
 )
 from experiments.array_face_s2.learning_repair.trainer_v2 import (
     S2PPOConfigV2, S2PPOTrainerV2, PrivilegedValueCritic,
@@ -88,25 +90,32 @@ class S7SelfPlayTrainer(S2PPOTrainerV2):
         frac = Fraction(singleton_mix_frac).limit_denominator(8)
         if frac < 0 or frac > 1:
             raise ValueError(f"singleton_mix_frac must be in [0,1], got {singleton_mix_frac}")
+        if singleton_mix_frac > 0 and env_cfg.n_jammers != 2:
+            raise ValueError("singleton mixing is defined only for the 2-jammer game")
         self.singleton_mix_frac = float(singleton_mix_frac)
         self._mix_num, self._mix_den = frac.numerator, frac.denominator
 
         self.jammer_specs = tuple(jammer_specs)
         self.radar_specs = tuple(radar_specs)
+        # attacker-count scaling: per-n observation dims drive every net
+        self._obs_dim_jam = obs_dim_jammer(env_cfg.n_jammers)
+        self._obs_dim_rad = obs_dim_radar(env_cfg.n_jammers)
+        self._priv_dim_jam = priv_dim_jammer(env_cfg.n_jammers)
+        self._priv_dim_rad = priv_dim_radar(env_cfg.n_jammers)
 
         torch.manual_seed(cfg.seed)
         # jammer team (parameter-shared actor + per-agent critic + central critic)
-        self.jam_actor = MultiHeadActor(OBS_DIM_JAMMER, self.jammer_specs).to(cfg.device)
-        self.jam_critic = ValueCritic(OBS_DIM_JAMMER).to(cfg.device)
-        self.jam_priv_critic = PrivilegedValueCritic(PRIVILEGED_DIM_JAMMER).to(cfg.device)
+        self.jam_actor = MultiHeadActor(self._obs_dim_jam, self.jammer_specs).to(cfg.device)
+        self.jam_critic = ValueCritic(self._obs_dim_jam).to(cfg.device)
+        self.jam_priv_critic = PrivilegedValueCritic(self._priv_dim_jam).to(cfg.device)
         self.jam_actor_opt = torch.optim.Adam(self.jam_actor.parameters(), lr=cfg.actor_lr)
         self.jam_critic_opt = torch.optim.Adam(self.jam_critic.parameters(), lr=cfg.critic_lr)
         self.jam_priv_critic_opt = torch.optim.Adam(
             self.jam_priv_critic.parameters(), lr=cfg.critic_lr)
         # radar team (same structure)
-        self.rad_actor = MultiHeadActor(OBS_DIM_RADAR, self.radar_specs).to(cfg.device)
-        self.rad_critic = ValueCritic(OBS_DIM_RADAR).to(cfg.device)
-        self.rad_priv_critic = PrivilegedValueCritic(PRIVILEGED_DIM_RADAR).to(cfg.device)
+        self.rad_actor = MultiHeadActor(self._obs_dim_rad, self.radar_specs).to(cfg.device)
+        self.rad_critic = ValueCritic(self._obs_dim_rad).to(cfg.device)
+        self.rad_priv_critic = PrivilegedValueCritic(self._priv_dim_rad).to(cfg.device)
         self.rad_actor_opt = torch.optim.Adam(self.rad_actor.parameters(), lr=cfg.actor_lr)
         self.rad_critic_opt = torch.optim.Adam(self.rad_critic.parameters(), lr=cfg.critic_lr)
         self.rad_priv_critic_opt = torch.optim.Adam(
@@ -157,12 +166,14 @@ class S7SelfPlayTrainer(S2PPOTrainerV2):
     def collect_rollout(self, singleton_opponent: bool = False):
         T = self.env_cfg.horizon
         E = self.env_cfg.n_envs
-        K, R = N_JAMMERS, N_RADARS
+        K, R = self.env_cfg.n_jammers, N_RADARS
         Bj, Br = E * K, E * R
         device = self.cfg.device
+        OJ, OR = self._obs_dim_jam, self._obs_dim_rad
+        PJ, PR = self._priv_dim_jam, self._priv_dim_rad
 
         # jammer team buffer [T, Bj] (k-major slots)
-        obsj_buf = torch.zeros(T, Bj, OBS_DIM_JAMMER, device=device)
+        obsj_buf = torch.zeros(T, Bj, OJ, device=device)
         mask_cell_buf = torch.zeros(T, Bj, 25, device=device)
         mask_beam_buf = torch.zeros(T, Bj, 25, device=device)
         act_cell_buf = torch.zeros(T, Bj, 25, device=device)
@@ -170,11 +181,11 @@ class S7SelfPlayTrainer(S2PPOTrainerV2):
         logp_j = torch.zeros(T, Bj, device=device)
         rew_j = torch.zeros(T, Bj, device=device)
         val_j = torch.zeros(T, Bj, device=device)
-        priv_j_buf = torch.zeros(T, Bj, PRIVILEGED_DIM_JAMMER, device=device)
+        priv_j_buf = torch.zeros(T, Bj, PJ, device=device)
         priv_val_j = torch.zeros(T, Bj, device=device)
 
         # radar team buffer [T, Br] (r-major slots)
-        obsr_buf = torch.zeros(T, Br, OBS_DIM_RADAR, device=device)
+        obsr_buf = torch.zeros(T, Br, OR, device=device)
         mask_rbeam_buf = torch.zeros(T, Br, 25, device=device)
         mask_rsvc_buf = torch.zeros(T, Br, 2, device=device)
         act_rbeam_buf = torch.zeros(T, Br, dtype=torch.int64, device=device)
@@ -182,7 +193,7 @@ class S7SelfPlayTrainer(S2PPOTrainerV2):
         logp_r = torch.zeros(T, Br, device=device)
         rew_r = torch.zeros(T, Br, device=device)
         val_r = torch.zeros(T, Br, device=device)
-        priv_r_buf = torch.zeros(T, Br, PRIVILEGED_DIM_RADAR, device=device)
+        priv_r_buf = torch.zeros(T, Br, PR, device=device)
         priv_val_r = torch.zeros(T, Br, device=device)
 
         # Carry the post-step observation forward. Env.step() already builds
@@ -436,7 +447,7 @@ def evaluate_s7(
         env = ArrayFaceS7VecEnv(eval_env_cfg, physics=physics, radar=radar, jammer=jammer)
         env.reset(seed=seed)
         gen = torch.Generator(device=device).manual_seed(action_seed + seed)
-        E, K, R = eval_env_cfg.n_envs, N_JAMMERS, N_RADARS
+        E, K, R = eval_env_cfg.n_envs, eval_env_cfg.n_jammers, N_RADARS
         for t in range(env_cfg.horizon):
             obs_j, obs_r = env._build_observation()
             mask_cell, mask_beam = env._compute_masks()
@@ -452,8 +463,8 @@ def evaluate_s7(
                 jcell = torch.stack(cells, dim=1)   # [E,K,25]
                 jbeam = torch.stack(beams, dim=1)   # [E,K]
                 if mode == "j1_only":
-                    jcell[:, 1] = 0.0               # second jammer forced idle
-                    jbeam[:, 1] = 0
+                    jcell[:, 1:] = 0.0              # all jammers but slot 0 idle
+                    jbeam[:, 1:] = 0                # ("j1-of-n" for n > 2)
             else:  # both jammers idle
                 jcell = torch.zeros(E, K, 25, device=device)
                 jbeam = torch.zeros(E, K, dtype=torch.int64, device=device)

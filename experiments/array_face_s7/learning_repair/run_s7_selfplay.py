@@ -71,6 +71,9 @@ def main():
     parser.add_argument("--baseline-snr-db", type=float, default=None,
                         help="regime sweep: override EnvConfig baseline SNR (default 12 dB); "
                              "run the contestability sweep for the new regime before training")
+    parser.add_argument("--n-jammers", type=int, default=2,
+                        help="attacker-count scaling: number of jammer agents sharing the "
+                             "same 63-token team budget (2 = S7 bit-for-bit)")
     args = parser.parse_args()
     seed = int(args.seed)
     n_iterations = int(args.iterations)
@@ -115,6 +118,7 @@ def main():
         jammer_az_deg=tuple(float(x) for x in args.jammer_az.split(",")) if args.jammer_az else None,
         radar_az_deg=tuple(float(x) for x in args.radar_az.split(",")) if args.radar_az else None,
         baseline_snr_db=args.baseline_snr_db if args.baseline_snr_db is not None else 12.0,
+        n_jammers=int(args.n_jammers),
         device=device, seed=seed,
     )
     physics = default_debug_physics_config(P_jam_W=0.1)  # S6b-validated regime

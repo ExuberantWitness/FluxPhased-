@@ -129,6 +129,16 @@ if 'baselines' in TABLE:
 else:
     failures.append('baselines missing from RESULTS_TABLE: run _s7_baseline_eval.py')
 
+# Off-regime SNR re-evaluation points quoted in the Discussion
+if 'snr_reeval' in TABLE:
+    sr = TABLE['snr_reeval']
+    expect('snr reeval crossfire 9dB', f"{sr['crossfire']['snr_9db']['eta_pct']:.1f}\\%")
+    expect('snr reeval colocated 9dB', f"{sr['colocated']['snr_9db']['eta_pct']:.1f}\\%")
+    expect('snr reeval crossfire 15dB', f"{sr['crossfire']['snr_15db']['eta_pct']:.1f}\\%")
+    expect('snr reeval colocated 15dB', f"{sr['colocated']['snr_15db']['eta_pct']:.1f}\\%")
+else:
+    failures.append('snr_reeval missing from RESULTS_TABLE: run _s7_snr_reeval.py')
+
 # ---------- 3. on-disk RESULTS_TABLE.json freshness ----------
 disk = json.loads((FIG_DIR / 'RESULTS_TABLE.json').read_text())
 if disk != json.loads(json.dumps(TABLE)):

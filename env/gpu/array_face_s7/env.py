@@ -34,6 +34,8 @@ from env.gpu.array_face_s7.physics import (
 )
 from env.gpu.array_face_s7.observation import (
     build_observation_jammer, build_observation_radar,
+    build_observation_jammer_n, build_observation_radar_n,
+    obs_dim_jammer, obs_dim_radar,
     OBS_DIM_JAMMER, OBS_DIM_RADAR, PROFILE_ARRAY_FACE_S7,
 )
 from env.gpu.array_face_s7.action_contract import validate_actions
@@ -58,6 +60,9 @@ class EnvConfig:
     # defaults (jammers ±60°, radars ±20°). el is always 0.
     jammer_az_deg: tuple | None = None
     radar_az_deg: tuple | None = None
+    # attacker-count scaling: number of jammer agents (n=2 reproduces S7
+    # bit-for-bit; n=3/4 split the same team budget across more sites).
+    n_jammers: int = 2
     device: str = "cpu"
     seed: int = 0
 
@@ -67,9 +72,15 @@ class EnvConfig:
             raise ValueError(f"active_budget_steps={self.active_budget_steps} exceeds duty cap {max_budget}")
         if self.active_budget_steps >= self.horizon:
             raise ValueError("always-on jamming is infeasible")
-        # Split the TEAM budget across the two jammers (k=0 gets the odd token).
-        base, extra = divmod(int(self.active_budget_steps), N_JAMMERS)
-        self.E0_tokens_per = tuple(base + (1 if k < extra else 0) for k in range(N_JAMMERS))
+        if self.n_jammers < 1:
+            raise ValueError(f"n_jammers must be >= 1, got {self.n_jammers}")
+        if self.jammer_az_deg is not None and len(self.jammer_az_deg) != self.n_jammers:
+            raise ValueError(
+                f"jammer_az_deg has {len(self.jammer_az_deg)} entries but "
+                f"n_jammers={self.n_jammers}")
+        # Split the TEAM budget across the jammers (low slots get odd tokens).
+        base, extra = divmod(int(self.active_budget_steps), self.n_jammers)
+        self.E0_tokens_per = tuple(base + (1 if k < extra else 0) for k in range(self.n_jammers))
         self.E0_per = tuple(float(t) * float(self.P_jam_W) * float(self.dt)
                             for t in self.E0_tokens_per)
 
@@ -90,7 +101,7 @@ class ArrayFaceS7VecEnv:
         self.device = torch.device(cfg.device)
         self.E = cfg.n_envs
         self.H = cfg.horizon
-        self.K = N_JAMMERS
+        self.K = cfg.n_jammers
         self.R = N_RADARS
         self.n_services = cfg.n_services
         self._pair_az, self._pair_el = self._resolve_pair_bearings()
@@ -115,11 +126,23 @@ class ArrayFaceS7VecEnv:
         self.event_ledger: dict = {}
 
     def _resolve_pair_bearings(self):
-        """Pair bearings from EnvConfig overrides, else the geometry defaults."""
+        """Pair bearings from EnvConfig overrides, else the geometry defaults.
+
+        For n_jammers > 2 without explicit azimuths, jammers are placed
+        evenly over the ±60° arc (n=3: -60/0/+60; n=4: -60/-20/+20/+60),
+        keeping the attacker-count experiment inside the tested geometry
+        family. The n=2 default reproduces S7 bit-for-bit.
+        """
         from env.gpu.array_face_s7.geometry import pair_bearings, pair_bearings_for, \
             JAMMER_AZ_DEG, RADAR_AZ_DEG
-        jaz = tuple(self.cfg.jammer_az_deg) if self.cfg.jammer_az_deg else JAMMER_AZ_DEG
         raz = tuple(self.cfg.radar_az_deg) if self.cfg.radar_az_deg else RADAR_AZ_DEG
+        if self.cfg.jammer_az_deg:
+            jaz = tuple(self.cfg.jammer_az_deg)
+        elif self.K == 2:
+            jaz = JAMMER_AZ_DEG
+        else:
+            n = self.K
+            jaz = tuple(-60.0 + 120.0 * i / (n - 1) for i in range(n))
         if jaz == JAMMER_AZ_DEG and raz == RADAR_AZ_DEG:
             return pair_bearings(str(self.device))
         return pair_bearings_for(jaz, raz, str(self.device))
@@ -209,8 +232,8 @@ class ArrayFaceS7VecEnv:
 
         obs_j_list = []
         for k in range(K):
-            other = 1 - k
-            obs_j_list.append(build_observation_jammer(
+            others = [p for p in range(K) if p != k]
+            obs_j_list.append(build_observation_jammer_n(
                 energy=self.energy[:, k],
                 initial_energy=torch.full((E,), self.cfg.E0_per[k], device=self.device),
                 step_idx=self.step_idx, horizon=self.H,
@@ -222,16 +245,16 @@ class ArrayFaceS7VecEnv:
                 radar_svc=self.prev_radar_svc,
                 jammer_beam_az=j_az[:, k], jammer_beam_el=j_el[:, k],
                 radar_detected_last=self.radar_detected_last,
-                other_beam_az=j_az[:, other], other_beam_el=j_el[:, other],
-                other_energy_ratio=energy_ratio[:, other],
-                other_active=active[:, other],
+                others_beam_az=j_az[:, others], others_beam_el=j_el[:, others],
+                others_energy_ratio=energy_ratio[:, others],
+                others_active=active[:, others],
             ))
-        obs_j = torch.stack(obs_j_list, dim=1)  # [E, K, 67]
+        obs_j = torch.stack(obs_j_list, dim=1)  # [E, K, 55+12*(K-1)]
 
         obs_r_list = []
         for r in range(R):
             other = 1 - r
-            obs_r_list.append(build_observation_radar(
+            obs_r_list.append(build_observation_radar_n(
                 step_idx=self.step_idx, horizon=self.H,
                 pending_az_map=az_map,
                 own_intercept_confidence=self.intercept_confidence[:, r],
@@ -246,7 +269,7 @@ class ArrayFaceS7VecEnv:
                 jammer_beam_az=j_az, jammer_beam_el=j_el,
                 jammer_active=active,
             ))
-        obs_r = torch.stack(obs_r_list, dim=1)  # [E, R, 60]
+        obs_r = torch.stack(obs_r_list, dim=1)  # [E, R, 49+11*(K-1)]
         return obs_j, obs_r
 
     def privileged(self):
@@ -269,7 +292,7 @@ class ArrayFaceS7VecEnv:
         if self._done_flag:
             raise RuntimeError("step() called after episode done; call reset() first")
         E, K, R = self.E, self.K, self.R
-        validate_actions(jammer_cell, jammer_beam, radar_beam, radar_svc, E=E, device=self.device)
+        validate_actions(jammer_cell, jammer_beam, radar_beam, radar_svc, E=E, device=self.device, K=K)
 
         phi_before = self._potential()
 

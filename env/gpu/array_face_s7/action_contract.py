@@ -36,15 +36,17 @@ def validate_actions(
     *,
     E: int,
     device,
+    K: int | None = None,
 ) -> None:
-    if jammer_cell.shape != (E, K_JAMMERS, N_JAM_CELLS) or \
+    K = K or K_JAMMERS  # attacker-count scaling: env passes its own K
+    if jammer_cell.shape != (E, K, N_JAM_CELLS) or \
             jammer_cell.dtype not in (torch.float32, torch.float64):
         raise ContractViolation(
-            f"jammer_cell must be [E={E}, K={K_JAMMERS}, {N_JAM_CELLS}] float, "
+            f"jammer_cell must be [E={E}, K={K}, {N_JAM_CELLS}] float, "
             f"got {tuple(jammer_cell.shape)} {jammer_cell.dtype}")
-    if jammer_beam.shape != (E, K_JAMMERS) or jammer_beam.dtype != torch.int64:
+    if jammer_beam.shape != (E, K) or jammer_beam.dtype != torch.int64:
         raise ContractViolation(
-            f"jammer_beam must be [E={E}, K={K_JAMMERS}] int64, got "
+            f"jammer_beam must be [E={E}, K={K}] int64, got "
             f"{tuple(jammer_beam.shape)} {jammer_beam.dtype}")
     if radar_beam.shape != (E, K_RADARS) or radar_beam.dtype != torch.int64:
         raise ContractViolation(
