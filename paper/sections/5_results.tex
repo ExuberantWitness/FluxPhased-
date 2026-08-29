@@ -6,7 +6,7 @@ The first question is whether mission-level self-play produces a reproducible en
 \includegraphics[width=\columnwidth]{figures/fig2_training_curves.pdf}
 \caption{Three-stage S7 trajectory for seed 20260801. Dashed lines mark the 1000- and 2000-iteration continuation boundaries; the final region is stationary across the four evaluation views.}
 \label{fig:training}
-\end{figure} After the entropy schedule was frozen, the five 200-iteration windows from 2000 to 3000 had h2h means 0.3465, 0.3428, 0.3484, 0.3507, and 0.3463. The corresponding jam-vs-sweep means were 0.5121, 0.4956, 0.5119, 0.5107, and 0.5215. This continuation therefore rules out both an early stopping artifact and a persistent drift. The last 40 validation points at 3000 give h2h $0.3485\pm0.0151$ and jam-vs-sweep $0.5161\pm0.0174$.
+\end{figure} After the entropy schedule was frozen, the five 200-iteration windows from 2000 to 3000 had h2h means 0.3465, 0.3428, 0.3484, 0.3507, and 0.3463. The corresponding jam-vs-sweep means were 0.5121, 0.4956, 0.5118, 0.5107, and 0.5215. This continuation therefore rules out both an early stopping artifact and a persistent drift. The last 40 validation points at 3000 give h2h $0.3485\pm0.0151$ and jam-vs-sweep $0.5161\pm0.0174$.
 
 The same endpoint appears across three converged S7 seeds. Full-protocol evaluation gives h2h drops of 0.3390, 0.3212, and 0.3496, with an across-seed mean of $0.3366\pm0.0143$. The idle-radar drop is $0.0194\pm0.0008$ in S7, compared with $0.0275\pm0.0110$ across the two valid S6 seeds; both values remain low. The convergence result is descriptive: it establishes a stable attractor for this benchmark and training protocol, not a proof of global Nash equilibrium.
 
@@ -37,6 +37,37 @@ $\eta$ & $63.7\%\pm1.0\%$ & $23.0\%\pm1.1\%$ \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\subsection{Scripted baselines anchor both teams and expose co-adaptation}
+Table~\ref{tab:baselines} evaluates the converged teams against four scripted policies under the identical 64-scenario, three-action-seed protocol. Both learned teams dominate their non-learning counterparts: a random legal radar loses $0.5085\pm0.0051$ of missions against the trained jammer pairs versus $0.3366\pm0.0143$ for the trained radar team, and random or stare jammers impose only $0.0922\pm0.0047$ and $0.2374\pm0.0036$ against the trained radars versus $0.3366\pm0.0143$ for the trained jammer pairs. Learning is real on both sides of the link.
+
+\begin{table}[t]
+\caption{Evaluation-only scripted baselines against the converged S7 teams (mission drop; mean $\pm$ sd across three training seeds, three action seeds each).}
+\label{tab:baselines}
+\centering
+\small
+\begin{tabular}{lc}
+\toprule
+Policy & Mission drop \\
+\midrule
+\multicolumn{2}{l}{\emph{Radar side, vs.\ trained jammer pairs}} \\
+Learned radar team (h2h) & $0.3366\pm0.0143$ \\
+Scripted sweep & $0.5294\pm0.0215$ \\
+Random legal radar & $0.5085\pm0.0051$ \\
+Greedy mission-stare radar & $0.0889\pm0.0000$ \\
+\midrule
+\multicolumn{2}{l}{\emph{Jammer side, vs.\ trained radar teams}} \\
+Learned jammer pair (h2h) & $0.3366\pm0.0143$ \\
+Stare jammer pair & $0.2374\pm0.0036$ \\
+Random legal jammer pair & $0.0922\pm0.0047$ \\
+Idle jammers (reference) & $0.0194\pm0.0008$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The greedy mission-stare radar is the informative exception. Pointing both heads at the heaviest pending service--azimuth cell yields a drop of exactly $0.0889$ against every trained jammer pair and every action seed---a factor of 3.8 below the learned h2h drop and below even the natural scheduling floor of $0.1187$ (sweep radars facing idle jammers). Under this link budget, the pointing gain at the exact mission bearing creates a detection margin that none of the three trained jammer teams overcomes: their learned advantage applies to radars that spread attention (sweeps, $0.5294$; the learned equilibrium radar, $0.3366$), not to a well-pointed stare.
+
+This reframes the h2h value and $\eta$: they are equilibrium quantities, not radar performance ceilings. The self-play radar hedges against its co-trained opponent at the cost of mission throughput, and the learned jammer team is exploitable by an out-of-distribution non-learning policy---the radar-side counterpart of the singleton result in Section~V-D. A jammer team co-trained against greedy radars would plausibly restore the penalty; testing that counter-adaptation requires new training runs and is left as future work.
 
 \subsection{Attacker count is primary; cross-fire geometry is secondary}
 The co-located-jammer control tests whether the S7 result requires two spatially separated jammers. It places both jammer sites at $+60^\circ$ while retaining the two radar sites at $\pm20^\circ$, the same physics, budget, two-stage training, and final evaluation. The corrected control yields h2h $0.2927\pm0.0119$, jam-vs-sweep $0.4947\pm0.0026$, and neutralization $28.4\%$.

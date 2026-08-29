@@ -1,0 +1,128 @@
+{
+ "rashid2018qmix": {
+  "title": "QMIX: Monotonic Value Function Factorisation for Deep Multi-Agent Reinforcement Learning",
+  "authors": [
+   "Tabish Rashid",
+   "Mikayel Samvelyan",
+   "Christian Schroeder de Witt",
+   "Gregory Farquhar",
+   "Jakob Foerster",
+   "Shimon Whiteson"
+  ],
+  "year": 2018,
+  "arxiv": "1803.11485"
+ },
+ "lowe2017maddpg": {
+  "title": "Multi-Agent Actor-Critic for Mixed Cooperative-Competitive Environments",
+  "authors": [
+   "Ryan Lowe",
+   "Yi Wu",
+   "Aviv Tamar",
+   "Jean Harb",
+   "Pieter Abbeel",
+   "Igor Mordatch"
+  ],
+  "year": 2017,
+  "arxiv": "1706.02275"
+ },
+ "lanctot2017psro": {
+  "title": "A Unified Game-Theoretic Approach to Multiagent Reinforcement Learning",
+  "authors": [
+   "Marc Lanctot",
+   "Vinicius Zambaldi",
+   "Audrunas Gruslys",
+   "Angeliki Lazaridou",
+   "Karl Tuyls",
+   "Julien Perolat",
+   "David Silver",
+   "Thore Graepel"
+  ],
+  "year": 2017,
+  "arxiv": "1711.00832"
+ },
+ "balduzzi2019mechanics": {
+  "title": "The Mechanics of n-Player Differentiable Games",
+  "authors": [
+   "David Balduzzi",
+   "Sebastien Racaniere",
+   "James Martens",
+   "Jakob Foerster",
+   "Karl Tuyls",
+   "Thore Graepel"
+  ],
+  "year": 2018,
+  "arxiv": "1802.05642"
+ },
+ "dewitt2020ippo": {
+  "title": "Is Independent Learning All You Need in the StarCraft Multi-Agent Challenge?",
+  "authors": [
+   "Christian Schroeder de Witt",
+   "Tarun Gupta",
+   "Denys Makoviichuk",
+   "Viktor Makoviychuk",
+   "Philip H. S. Torr",
+   "Mingfei Sun",
+   "Shimon Whiteson"
+  ],
+  "year": 2020,
+  "arxiv": "2011.09533"
+ },
+ "berner2019dota": {
+  "title": "Dota 2 with Large Scale Deep Reinforcement Learning",
+  "authors": [
+   " OpenAI",
+   " :",
+   "Christopher Berner",
+   "Greg Brockman",
+   "Brooke Chan",
+   "Vicki Cheung",
+   "Przemys\u0142aw D\u0119biak",
+   "Christy Dennison",
+   "David Farhi",
+   "Quirin Fischer",
+   "Shariq Hashme",
+   "Chris Hesse",
+   "Rafal J\u00f3zefowicz",
+   "Scott Gray",
+   "Catherine Olsson",
+   "Jakub Pachocki",
+   "Michael Petrov",
+   "Henrique P. d. O. Pinto",
+   "Jonathan Raiman",
+   "Tim Salimans",
+   "Jeremy Schlatter",
+   "Jonas Schneider",
+   "Szymon Sidor",
+   "Ilya Sutskever",
+   "Jie Tang",
+   "Filip Wolski",
+   "Susan Zhang"
+  ],
+  "year": 2019,
+  "arxiv": "1912.06680"
+ },
+ "foerster2018lola": {
+  "title": "Learning with Opponent-Learning Awareness",
+  "authors": [
+   "Jakob N. Foerster",
+   "Richard Y. Chen",
+   "Maruan Al-Shedivat",
+   "Shimon Whiteson",
+   "Pieter Abbeel",
+   "Igor Mordatch"
+  ],
+  "year": 2017,
+  "arxiv": "1709.04326"
+ },
+ "hernandezleal2017survey": {
+  "title": "A Survey of Learning in Multiagent Environments: Dealing with Non-Stationarity",
+  "authors": [
+   "Pablo Hernandez-Leal",
+   "Michael Kaisers",
+   "Tim Baarslag",
+   "Enrique Munoz de Cote"
+  ],
+  "year": 2017,
+  "arxiv": "1707.09183"
+ }
+}

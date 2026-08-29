@@ -1,0 +1,115 @@
+{
+ "QMIX: Monotonic Value Function Factorisation for Deep Multi-Agent Reinforcement Learning": {
+  "error": "{'error': 'failed'}"
+ },
+ "Multi-Agent Actor-Critic for Mixed Cooperative-Competitive Environments": {
+  "error": "{'error': 'failed'}"
+ },
+ "Counterfactual Multi-Agent Policy Gradients": {
+  "title": "Counterfactual Multi-Agent Policy Gradients",
+  "authors": [
+   "Jakob N. Foerster",
+   "Gregory Farquhar",
+   "Triantafyllos Afouras",
+   "Nantas Nardelli",
+   "Shimon Whiteson"
+  ],
+  "venue": "AAAI Conference on Artificial Intelligence",
+  "year": 2017,
+  "doi": "10.1609/aaai.v32i1.11794",
+  "arxiv": "1705.08926",
+  "citations": 2738
+ },
+ "A Unified Game-Theoretic Approach to Multiagent Reinforcement Learning": {
+  "error": "{'error': 'failed'}"
+ },
+ "The Mechanics of n-Player Differentiable Games": {
+  "error": "{'error': 'failed'}"
+ },
+ "Learning in games: survey": {
+  "error": "{'error': 'failed'}"
+ },
+ "Learning with Opponent-Learning Awareness": {
+  "error": "{'error': 'failed'}"
+ },
+ "Is Independent Learning All You Need in the StarCraft Multi-Agent Challenge?": {
+  "error": "{'error': 'failed'}"
+ },
+ "Dota 2 with Large Scale Deep Reinforcement Learning": {
+  "error": "{'error': 'failed'}"
+ },
+ "Cognitive radar: a way of the future": {
+  "title": "Cognitive radar: a way of the future",
+  "authors": [
+   "S. Haykin"
+  ],
+  "venue": "IEEE Signal Processing Magazine",
+  "year": 2006,
+  "doi": null,
+  "arxiv": null,
+  "citations": 1185
+ },
+ "Cognitive radar framework for target detection and track initiation": {
+  "error": "{'error': 'failed'}"
+ },
+ "Fully adaptive radar for target tracking part I": {
+  "error": "{'error': 'failed'}"
+ },
+ "The Development From Adaptive to Cognitive Radar Resource Management": {
+  "title": "The Development From Adaptive to Cognitive Radar Resource Management",
+  "authors": [
+   "A. Charlish",
+   "Folker Hoffmann",
+   "C. Degen",
+   "Isabel Schlangen"
+  ],
+  "venue": "IEEE Aerospace and Electronic Systems Magazine",
+  "year": 2020,
+  "doi": "10.1109/MAES.2019.2957847",
+  "arxiv": null,
+  "citations": 41
+ },
+ "Cognitive radar for waveform diversity utilization": {
+  "error": "{'error': 'failed'}"
+ },
+ "Spectrum Allocation for Non-Cooperative Radar Coexistence": {
+  "error": "{'error': 'failed'}"
+ },
+ "Adversarial Multi-Player Bandits for Cognitive Radar": {
+  "title": "Adversarial Multi-Player Bandits for Cognitive Radar Networks",
+  "authors": [
+   "William W. Howard",
+   "A. Martone",
+   "R. Buehrer"
+  ],
+  "venue": "International Radar Conference",
+  "year": 2021,
+  "doi": "10.1109/RadarConf2248738.2022.9764226",
+  "arxiv": "2110.12094",
+  "citations": 5
+ },
+ "A Modified Reinforcement Q-Learning Method for Multi-Function Phased Array Radar Beam Scheduling": {
+  "error": "{'error': 'failed'}"
+ },
+ "Adaptive dwell scheduling based on Q-learning for multifunctional radar": {
+  "error": "{'total': 0, 'offset': 0}"
+ },
+ "Improving anti-jamming decision-making strategies for cognitive radar": {
+  "error": "{'error': 'failed'}"
+ },
+ "A Radar Anti-jamming Method under Multi-Jamming Scenarios Based on Complex-Domain Deep Reinforcement Learning": {
+  "error": "{'error': 'failed'}"
+ },
+ "Design of anti-jamming decision-making for cognitive radar": {
+  "error": "{'error': 'failed'}"
+ },
+ "Game theory and reinforcement learning for anti-jamming defense in wireless communications": {
+  "error": "{'error': 'failed'}"
+ },
+ "Two-Dimensional Anti-Jamming Communication Based on Deep Reinforcement Learning": {
+  "error": "{'error': 'failed'}"
+ },
+ "Radar Spectrum Engineering and Management: Technical and Regulatory Issues": {
+  "error": "{'error': 'failed'}"
+ }
+}

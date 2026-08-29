@@ -12,9 +12,10 @@ A larger value means that the jammer team denied more missions. We retain comple
 
 \subsection{Bearing-aware link physics}
 Each agent selects a beam from a $5\times5$ azimuth--elevation grid. A jammer selects a Bernoulli mask over 25 array cells and a categorical beam. For a steering direction $(u_b,v_b)$ and target $(u_t,v_t)$, the normalized planar-array response is separable:
-\begin{equation}
- G_{\mathrm{AF}}(b,t)=10\log_{10}\left(\frac{A_{5}(u_t-u_b)^2}{5^2}\right)+10\log_{10}\left(\frac{A_{5}(v_t-v_b)^2}{5^2}\right),
-\end{equation}
+\begin{align}
+ G_{\mathrm{AF}}(b,t)=\;&10\log_{10}\!\left(\frac{A_{5}(u_t-u_b)^2}{5^2}\right)\nonumber\\
+ &+10\log_{10}\!\left(\frac{A_{5}(v_t-v_b)^2}{5^2}\right),
+\end{align}
 where $A_5$ is the finite-array response evaluated with the same float32 implementation for all experiments. For jammer $k$ and radar $r$, the received JNR includes jammer cell aggregation, transmit and receive array gains at their pair bearing, service-dependent path loss and receiver gain, and polarization loss. Independent jammers are combined as incoherent power:
 \begin{equation}
  \jnr_r=10\log_{10}\sum_k10^{\jnr_{kr}/10}.

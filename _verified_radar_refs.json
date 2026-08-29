@@ -1,0 +1,121 @@
+{
+ "haykin2006cognitive": {
+  "doi": "10.1109/MSP.2006.1593335",
+  "title": "Cognitive radar: a way of the future",
+  "venue": "IEEE Signal Processing Magazine",
+  "year": 2006,
+  "authors": [
+   "Simon Haykin"
+  ],
+  "citations": 98
+ },
+ "xiao2017twodim": {
+  "doi": "10.1109/ICASSP.2017.7952524",
+  "title": "Two-dimensional anti-jamming communication based on deep reinforcement learning",
+  "venue": "IEEE International Conference on Acoustics, Speech, and Signal Processing",
+  "year": 2017,
+  "authors": [
+   "Guoan Han",
+   "Liang Xiao",
+   "H. Poor"
+  ],
+  "citations": 179
+ },
+ "xie2023multijam": {
+  "doi": "10.12000/JR23139",
+  "error": "HTTP Error 404: Not Found"
+ },
+ "wang2024ietrsn": {
+  "doi": "10.1049/rsn2.12497",
+  "title": "Design of anti\u2010jamming decision\u2010making for cognitive radar",
+  "venue": "IET Radar, Sonar &amp; Navigation",
+  "year": 2023,
+  "authors": [
+   "Hu-Shuan Wang",
+   "Baixiao Chen",
+   "Qingzhi Ye"
+  ],
+  "citations": 12
+ },
+ "jsee2025dwell": {
+  "doi": "10.23919/JSEE.2025.000111",
+  "error": "HTTP Error 404: Not Found"
+ },
+ "bell2014far": {
+  "doi": "10.1109/RADAR.2014.6875604",
+  "title": "Fully adaptive radar for target tracking part I: Single target tracking",
+  "venue": "International Radar Conference",
+  "year": 2014,
+  "authors": [
+   "K. Bell",
+   "C. Baker",
+   "G. Smith",
+   "J. Johnson",
+   "M. Rangaswamy"
+  ],
+  "citations": 53
+ },
+ "charlish2020development": {
+  "doi": "10.1109/MAES.2019.2957847",
+  "title": "The Development From Adaptive to Cognitive Radar Resource Management",
+  "venue": "IEEE Aerospace and Electronic Systems Magazine",
+  "year": 2020,
+  "authors": [
+   "A. Charlish",
+   "Folker Hoffmann",
+   "C. Degen",
+   "Isabel Schlangen"
+  ],
+  "citations": 41
+ },
+ "tracy2022bandits": {
+  "doi": "10.1109/RadarConf2248738.2022.9764226",
+  "title": "Adversarial Multi-Player Bandits for Cognitive Radar Networks",
+  "venue": "International Radar Conference",
+  "year": 2021,
+  "authors": [
+   "William W. Howard",
+   "A. Martone",
+   "R. Buehrer"
+  ],
+  "citations": 5
+ },
+ "coma2017foerster": {
+  "doi": "10.1609/aaai.v32i1.11794",
+  "title": "Counterfactual Multi-Agent Policy Gradients",
+  "venue": "AAAI Conference on Artificial Intelligence",
+  "year": 2017,
+  "authors": [
+   "Jakob N. Foerster",
+   "Gregory Farquhar",
+   "Triantafyllos Afouras",
+   "Nantas Nardelli",
+   "Shimon Whiteson"
+  ],
+  "citations": 2738
+ },
+ "jiang2023dsp": {
+  "query": "Improving anti-jamming decision-making strategies for cognitive radar",
+  "error": "HTTP Error 429: "
+ },
+ "jia2024survey": {
+  "query": "Game theory and reinforcement learning for anti-jamming defense in wireless communications",
+  "error": "HTTP Error 429: "
+ },
+ "martone2021waveform": {
+  "query": "Cognitive radar for waveform diversity utilization",
+  "error": "HTTP Error 429: "
+ },
+ "qlearn2023beam": {
+  "query": "A Modified Reinforcement Q-Learning Method for Multi-Function Phased Array Radar",
+  "error": "HTTP Error 429: "
+ },
+ "bell2015jstsp": {
+  "query": "Cognitive radar framework for target detection and tracking",
+  "error": "HTTP Error 429: "
+ },
+ "martone2018spectrum": {
+  "query": "Spectrum Allocation for Non-Cooperative Radar Coexistence",
+  "error": "HTTP Error 429: "
+ }
+}

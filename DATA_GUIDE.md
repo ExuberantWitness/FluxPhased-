@@ -165,6 +165,14 @@ paths = [
 8. **验证种子与训练种子分离**:64 train seeds(`ppo_train.json`)+ 64 validation seeds(`checkpoint_validation.json`),都在 `experiments/array_face_s1/manifests/`。终评用全部 64 验证种子;训练中验证只用前 16。
 9. **性能分支数字勿入论文**:`s7/perf-aggressive` 的提速(1.4–1.5×)经过审计但改变 logits 微末(2.4e-7);论文数字全部出自主分支代码。
 10. **机器休眠频发**:训练链有自愈(watchdog 每 20 分钟 + 原子检查点),墙钟时间含中断;判断完成以链日志 `ALL ... DONE` 标记为准。
+11. **论文数字唯一来源是 `paper/figures/results_table.py`**(2026-08-29 起强制):
+    历史事故:图 4 曾把 S6 中和率 0.637 当百分数标注成 "0.6%"(正文 63.7% 是对的,图错)。
+    规则:所有图(fig3/4/6)从 `results_table` 导入;`RESULTS_TABLE.json` 是导出的权威快照;
+    `_check_paper_integrity.py` 会把正文每个数字与权威表逐一比对,**改数据后必须先跑
+    `python paper/figures/results_table.py` 再改正文,否则门会红**。
+12. **`baseline_eval.json`(各 S7 输出目录)**:评估型脚本基线(random/greedy radar、
+    random/stare jammer,64 验证种子 × 3 动作种子),由 `_s7_baseline_eval.py` 生成,
+    不含训练;与 `final_eval.json` 协议对齐可直接同表比较。
 
 ---
 
@@ -172,10 +180,12 @@ paths = [
 
 | 项 | 状态 | 说明 |
 |---|---|---|
-| R5-lite(4 点剂量-响应) | ✅ 完成(2026-08-29) | 结果与判读见 §1 末;V-E 已写入 paper/main.tex |
-| 论文图 1/3/4/5/6 | 待绘制 | 数据全齐,见 FIGURE_PLAN.md 的数据源列 |
-| refs.bib | 待填充 | 12 篇文献清单在 main.tex 的 Related Work 注释中 |
-| 摘要定稿 | 待写 | claim-chain 骨架已含 R5 正向结论 |
+| R5-lite(4 点剂量-响应) | ✅ 完成 | 结果与判读见 §1 末;已写入论文 |
+| 论文图 1–6 | ✅ 完成 | fig3/4/6 已改为从 `paper/figures/results_table.py` 读取 |
+| 权威结果表 | ✅ 完成 | `paper/figures/RESULTS_TABLE.json`;正文-图-JSON 一致性门 `_check_paper_integrity.py` |
+| 评估型基线 | 🔄 生成中 | `_s7_baseline_eval.py` → 各目录 `baseline_eval.json` |
+| references.bib 扩充 | 🔄 进行中 | Semantic Scholar 核验后写入,禁止未核验条目 |
+| SNR/功率敏感性再训练 | ⬜ 未开始 | 评估型 off-regime 检查可先行,严格敏感性需重训 |
 
 ## 6. 复现入口(速查)
 

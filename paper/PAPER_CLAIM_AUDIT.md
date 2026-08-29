@@ -2,11 +2,12 @@
 
 **Paper:** *Scaling the Attack Breaks Defense Containment in Task-Level Radar--Jammer Self-Play*
 **Audit scope:** current `paper/main.tex` and `paper/sections/*.tex` against raw S6/S7/R5 `final_eval.json` files.
-**Status:** corrected after independent zero-context review.
+**Status:** corrected after independent zero-context review; 2026-08-29 consistency-gate pass.
+**Numeric enforcement:** `_check_paper_integrity.py` re-derives every quoted number from `paper/figures/results_table.py` and fails the build on any text--data mismatch.
 
 ## Verdict
 
-**PASS for reported numeric values and stated scope.** The manuscript now uses the valid two-seed 12-dB S6 baseline, three converged S7 seeds at 3000 iterations, the corrected co-located-jammer evaluation, and the R5 ratio metrics with their gradient-budget limitation.
+**PASS for reported numeric values and stated scope.** The manuscript now uses the valid two-seed 12-dB S6 baseline, three converged S7 seeds at 3000 iterations, the corrected co-located-jammer evaluation, and the R5 ratio metrics with their gradient-budget limitation. The 2026-08-29 Figure 4 unit bug (S6 bar rendered at 0.637 height on a 0--75 axis and labeled "0.6%") was traced to a missing percent conversion in the figure script and fixed at the single-source results module; the text value 63.7% was always correct.
 
 ## Verified claims
 
@@ -22,6 +23,8 @@
 
 ## Corrections applied
 
+- 2026-08-29: fixed the Figure 4 S6 neutralization bar (fraction 0.637 was plotted and labeled "0.6%"; now 63.7% from the authoritative module). Figures 3/4/6 now import `results_table.py`; unit conversions exist only there.
+- 2026-08-29: corrected a continuation-window transcription error (third 2000--3000 window jvs mean 0.5119 -> 0.5118, re-derived from `val_metrics.jsonl`).
 - Changed S6 sample description from three seeds to two valid 12-dB seeds.
 - Replaced stale S6 rad-idle value 0.0110 with valid aggregate 0.0275 +/- 0.0110.
 - Replaced S6 eta uncertainty 0.7 percentage points with the valid two-seed estimate rounded to 1.0 percentage point.
