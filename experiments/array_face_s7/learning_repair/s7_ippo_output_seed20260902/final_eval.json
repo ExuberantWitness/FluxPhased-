@@ -1,0 +1,2 @@
+{"skipped": true,
+ "reason": "IPPO single-seed control deemed sufficient after seed-20260901 results (eta 23.3% vs MAPPO 20.2%); replication seeds removed from the queue by author decision 2026-08-30 to free ~20h GPU for the n-scaling runs."}

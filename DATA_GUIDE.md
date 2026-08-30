@@ -176,7 +176,7 @@ paths = [
     EDF 是 oracle 启发式(特权读取 deadline,观测中无该信息)。
 13. **TAES 训练链 `_run_taes_chain.ps1`**(2026-08-29 起,日志 `taes_chain.log`,
     完成标记 `ALL TAES RUNS DONE`):按优先级补齐审稿人要求——
-    IPPO 算法对照 ×3 种子(`s7_ippo_output_seed2026090{1,2,3}`,2000 iter 两段式,
+    IPPO 算法对照(`s7_ippo_output_seed20260901`,2000 iter 两段式,
     trainer `trainer_s7_ippo.py`,driver `_run_s7_ippo.py`,终评 `_s7_ippo_final_eval.py`)、
     S6 第三个有效种子(`s6_selfplay_output_seed20260732`,1000 iter)、
     共址消融种子 2/3(`s7_ablation_output_seed2026081{2,3}`,2000 iter,终评必须带
@@ -187,6 +187,9 @@ paths = [
     输出目录由脚本创建(2026-08-29 曾因目录缺失静默烧完重试,已修复)。
     IPPO checkpoint 是 per-agent state dict(`algo: ippo` 标记),与 MAPPO 的
     `selfplay_latest.pt` 不兼容,评估必须用 `_s7_ippo_final_eval.py`。
+    **IPPO 种子 20260902/03 已砍单**(作者决定 2026-08-30:单种子对照已足够,
+    释放 ~20h GPU 给 n=3/4;两目录里的 `final_eval.json` 是 skip 标记
+    (`"skipped": true`),不是数据,results_table 不读这两个目录,勿引用)。
 14. **greedy 反适应后继链 `_run_greedy_counter_chain.ps1`**(2026-08-29 起,
     日志 `greedycounter_chain.log`,等 `ALL TAES RUNS DONE` 后串行启动):
     种子 20260921,`s7_greedycounter_output_seed20260921`。干扰队学习、雷达侧
