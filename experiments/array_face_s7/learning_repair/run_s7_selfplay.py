@@ -82,7 +82,7 @@ def main():
     device = "cuda"
     train_seeds = load_seeds("ppo_train")
     validation_seeds = load_seeds("checkpoint_validation")
-    print(f"S7 self-play (2 jammers vs 2 radars)  seed={seed}  iters={n_iterations}")
+    print(f"S7 self-play ({args.n_jammers} jammers vs 2 radars)  seed={seed}  iters={n_iterations}")
 
     out_dir = Path(args.out_dir) if args.out_dir else HERE / f"s7_selfplay_output_seed{seed}"
 

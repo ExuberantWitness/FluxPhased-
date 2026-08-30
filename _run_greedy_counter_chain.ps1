@@ -23,7 +23,11 @@ function Get-MaxIter([string]$path) {
 }
 
 # wait for the main TAES chain (single GPU, serial runs)
-while (-not (Select-String -Path "$base\taes_chain.log" -Pattern "ALL TAES RUNS DONE" -Quiet)) {
+while ($true) {
+  if ((Test-Path "$base\taes_chain.log") -and
+      (Select-String -Path "$base\taes_chain.log" -Pattern "ALL TAES RUNS DONE" -Quiet)) {
+    break
+  }
   Start-Sleep -Seconds 600
 }
 Log "TAES chain done; starting greedy-stare counter-adaptation"

@@ -92,19 +92,19 @@ stored = trainer.load_selfplay(out_dir / "selfplay_latest.pt")
 print(f"checkpoint loaded (stored session iter={stored})", flush=True)
 
 def sweep_vs_idle(seed_subset):
-    """Fully-scripted reference: sweep radars vs both jammers idle (floor)."""
+    """Fully-scripted reference: sweep radars vs all jammers idle (floor)."""
     drops = []
     floor_cfg = replace(env_cfg, n_envs=1)
     for sd in seed_subset:
         env = ArrayFaceS7VecEnv(floor_cfg, physics=physics, radar=UPAConfig(), jammer=UPAConfig())
         env.reset(seed=sd)
-        E = floor_cfg.n_envs
+        E, K = floor_cfg.n_envs, floor_cfg.n_jammers
         for t in range(env_cfg.horizon):
             b = t % 25
             rb_ = torch.full((E, N_RADARS), b, dtype=torch.int64, device=device)
             rs_ = torch.full((E, N_RADARS), t % 2, dtype=torch.int64, device=device)
-            jcell = torch.zeros(E, N_JAMMERS, 25, device=device)
-            jbeam = torch.zeros(E, N_JAMMERS, dtype=torch.int64, device=device)
+            jcell = torch.zeros(E, K, 25, device=device)
+            jbeam = torch.zeros(E, K, dtype=torch.int64, device=device)
             env.step(jcell, jbeam, rb_, rs_)
         drops.append(float(env.drop_ratio()[0]))
     return sum(drops) / len(drops)

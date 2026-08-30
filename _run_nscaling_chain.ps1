@@ -27,8 +27,13 @@ function Get-MaxIter([string]$path) {
 }
 
 # serialize behind the greedy-counter chain (which itself queues behind the
-# TAES chain)
-while (-not (Select-String -Path "$base\greedycounter_chain.log" -Pattern "ALL GREEDYCOUNTER DONE" -Quiet)) {
+# TAES chain). Test-Path guard: bare Select-String on a missing log returns
+# an error result that skips the wait entirely (the 2026-08-30 incident).
+while ($true) {
+  if ((Test-Path "$base\greedycounter_chain.log") -and
+      (Select-String -Path "$base\greedycounter_chain.log" -Pattern "ALL GREEDYCOUNTER DONE" -Quiet)) {
+    break
+  }
   Start-Sleep -Seconds 600
 }
 Log "greedy-counter chain done; starting attacker-count scaling"
