@@ -45,21 +45,23 @@ def expect(desc: str, s: str):
 s6, s7 = TABLE['s6']['agg'], TABLE['s7']['agg']
 col, xf = TABLE['colocated'], TABLE['crossfire_seed01']
 per7 = [v for v in TABLE['s7']['per_seed'].values()]
+s6_3 = TABLE.get('s6_three_seed', {}).get('agg', s6)
+col_3 = TABLE.get('colocated_seeds', {}).get('agg')
 
 def pm(v, sd, nd=4, pct=False):
     if pct:
         return f'{v:.1f}\\%\\pm{sd:.1f}\\%'
     return f'{v:.4f}\\pm{sd:.4f}'
 
-# Main S6/S7 comparison
-expect('S6 h2h', pm(s6['h2h'], s6['h2h_sd']))
-expect('S6 jvs', pm(s6['jvs'], s6['jvs_sd']))
-expect('S6 eta', pm(s6['eta_pct'], s6['eta_pct_sd'], pct=True))
+# Main S6/S7 comparison (S6 = three valid 12-dB seeds)
+expect('S6 h2h', pm(s6_3['h2h'], s6_3['h2h_sd']))
+expect('S6 jvs', pm(s6_3['jvs'], s6_3['jvs_sd']))
+expect('S6 eta', pm(s6_3['eta_pct'], s6_3['eta_pct_sd'], pct=True))
 expect('S7 h2h', pm(s7['h2h'], s7['h2h_sd']))
 expect('S7 jvs', pm(s7['jvs'], s7['jvs_sd']))
 expect('S7 eta', pm(s7['eta_pct'], s7['eta_pct_sd'], pct=True))
 expect('S7 rad-idle', pm(s7['rad_idle'], s7['rad_idle_sd']))
-expect('S6 rad-idle', pm(s6['rad_idle'], s6['rad_idle_sd']))
+expect('S6 rad-idle', pm(s6_3['rad_idle'], s6_3['rad_idle_sd']))
 
 # Per-seed values quoted in prose
 expect('S7 per-seed h2h list',
@@ -68,16 +70,38 @@ expect('S7 per-seed j1 list',
        ', '.join(f'{v["j1_only"]:.4f}' for v in per7[:-1]) + f', and {per7[-1]["j1_only"]:.4f}')
 expect('S7 j1 mean', pm(s7['j1_only'], s7['j1_only_sd']))
 
-# Co-located control vs cross-fire reference
-expect('colocated h2h', pm(col['h2h'], col['h2h_sd']))
-expect('colocated jvs', pm(col['jvs'], col['jvs_sd']))
-expect('colocated eta', f'{col["eta_pct"]:.1f}\\%')
+# Co-located control vs cross-fire reference (co-located = three seeds)
+if col_3 is not None:
+    expect('colocated h2h', pm(col_3['h2h'], col_3['h2h_sd']))
+    expect('colocated jvs', pm(col_3['jvs'], col_3['jvs_sd']))
+    expect('colocated eta', pm(col_3['eta_pct'], col_3['eta_pct_sd'], pct=True))
+else:
+    expect('colocated h2h', pm(col['h2h'], col['h2h_sd']))
+    expect('colocated jvs', pm(col['jvs'], col['jvs_sd']))
+    expect('colocated eta', f'{col["eta_pct"]:.1f}\\%')
 expect('crossfire eta', f'{xf["eta_pct"]:.1f}\\%')
 
-# Derived scaling claims
-expect('jvs relative increase', f'{TABLE["derived"]["jvs_relative_increase_pct"]:.0f}\\%')
-removed = TABLE['derived']['containment_removed_fraction']
-assert 0.6 < removed < 0.7, f'containment-removed fraction {removed} no longer ~two-thirds'
+# jvs-relative-increase re-derived from the three-seed S6 aggregate
+jvs_rel = 100.0 * (s7['jvs'] - s6_3['jvs']) / s6_3['jvs']
+expect('jvs relative increase', f'{jvs_rel:.0f}\\%')
+removed = 100.0 * (s6_3['eta_pct'] - s7['eta_pct']) / s6_3['eta_pct']
+assert 0.6 < removed / 100.0 < 0.7, f'containment-removed fraction {removed} no longer ~two-thirds'
+
+# Greedy counter-adaptation endpoint quoted in abstract/discussion
+if 'greedy_counter' in TABLE:
+    gc = TABLE['greedy_counter']
+    expect('greedy counter final drop', f"{gc['final_greedy_vs_jam']:.3f}")
+
+# n=3 scaling aggregate (n=4 pending)
+if 'nscale' in TABLE:
+    n3 = TABLE['nscale']['agg']
+    expect('n3 eta', pm(n3['eta_pct'], n3['eta_pct_sd'], pct=True))
+
+# Retrained SNR regimes quoted in Discussion
+if 'snr_retrain' in TABLE:
+    sr = TABLE['snr_retrain']
+    expect('snr retrain 9dB', f"{sr['snr_9db']['eta_pct']:.1f}\\%")
+    expect('snr retrain 15dB', f"{sr['snr_15db']['eta_pct']:.1f}\\%")
 
 # R5 dose response: every table row in full; prose quotes only these values
 def nz(v, nd):
@@ -145,7 +169,9 @@ if disk != json.loads(json.dumps(TABLE)):
     failures.append('RESULTS_TABLE.json is stale: rerun paper/figures/results_table.py')
 
 # ---------- 4. stale claim strings ----------
-for token in ['63.7%\\pm0.7%', 'three-seed S6', 'pre-registered', 'remains unchanged']:
+# ('three-seed S6' was stale when the valid S6 set was two seeds; the S6
+# baseline is now genuinely three-seed, so only the other stale tokens apply.)
+for token in ['63.7%\\pm0.7%', 'pre-registered', 'remains unchanged']:
     if token in text:
         failures.append(f'STALE claim string present: {token}')
 

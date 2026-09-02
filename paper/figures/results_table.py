@@ -92,6 +92,11 @@ def _continuation(dir_path) -> dict:
 def build_table() -> dict:
     s6_views = {s: eval_view(S6_BASE / f's6_selfplay_output_seed{s}/final_eval.json')
                 for s in S6_SEEDS}
+    # The primary S6 aggregate is the three valid 12-dB seeds (20260730/31/32);
+    # the two-seed subset is retained under s6_two_seed for provenance.
+    s6_3 = S6_SEEDS + [20260732]
+    s6_views_3 = dict(s6_views)
+    s6_views_3[20260732] = eval_view(S6_BASE / 's6_selfplay_output_seed20260732/final_eval.json')
     s7_views = {name: eval_view(S7_BASE / name / 'final_eval.json') for name in S7_SEEDS}
     colocated = eval_view(S7_BASE / 's7_ablation_output_seed20260811/final_eval.json')
     r5_conditions = [
@@ -107,10 +112,11 @@ def build_table() -> dict:
                    'j1_over_jvs': v['j1_only'] / v['jvs'], 'eta_pct': v['eta_pct'],
                    'h2h_over_jvs': v['h2h'] / v['jvs']})
 
-    s6_agg = _agg(list(s6_views.values()))
+    s6_agg = _agg(list(s6_views_3.values()))
     s7_agg = _agg(list(s7_views.values()))
     return {
-        's6': {'seeds': S6_SEEDS, 'per_seed': s6_views, 'agg': s6_agg},
+        's6': {'seeds': s6_3, 'per_seed': s6_views_3, 'agg': s6_agg},
+        's6_two_seed': {'seeds': S6_SEEDS, 'per_seed': s6_views, 'agg': _agg(list(s6_views.values()))},
         's7': {'runs': S7_SEEDS, 'per_seed': s7_views, 'agg': s7_agg},
         'colocated': colocated,
         'crossfire_seed01': s7_views[S7_SEEDS[0]],
@@ -168,6 +174,76 @@ def _snr_reeval() -> dict:
     return out
 
 
+def _nscale() -> dict:
+    """Attacker-count scaling: n=3 converged seeds (n=2 references come from
+    the cross-fire/co-located runs). Returns {} until all three n=3 files
+    exist with final evals."""
+    per = {}
+    for sd in (20261011, 20261012, 20261013):
+        p = S7_BASE / f's9_n3_output_seed{sd}' / 'final_eval.json'
+        if not p.exists():
+            return {}
+        per[sd] = eval_view(p)
+    return {'per_seed': per, 'agg': _agg(list(per.values()))}
+
+
+def _snr_retrain() -> dict:
+    """Retrained SNR regimes (9/15 dB, 2000-iter protocol)."""
+    out = {}
+    for snr, sd in ((9, 20260911), (15, 20260912)):
+        p = S7_BASE / f's7_snr{snr}db_output_seed{sd}' / 'final_eval.json'
+        if p.exists():
+            v = eval_view(p)
+            out[f'snr_{snr}db'] = v
+    return out
+
+
+def _greedy_counter() -> dict:
+    """Final greedy_vs_jam_drop of the counter-adaptation run (last val row)."""
+    p = S7_BASE / 's7_greedycounter_output_seed20260921' / 'val_metrics.jsonl'
+    if not p.exists():
+        return {}
+    import re
+    rows = []
+    for m in re.finditer(r'\{[^{}]*\}', p.read_text()):
+        try:
+            r = json.loads(m.group(0))
+            if 'greedy_vs_jam_drop' in r:
+                rows.append(r)
+        except Exception:
+            pass
+    if not rows:
+        return {}
+    last = rows[-1]
+    return {'final_iter': last['iter'], 'final_greedy_vs_jam': last['greedy_vs_jam_drop'],
+            'baseline_selfplay': 0.0889}
+
+
+def _colocated_seeds() -> dict:
+    """Co-located mechanism control across its three training seeds."""
+    per = {}
+    for name, sd in (('s7_ablation_output_seed20260811', 20260811),
+                     ('s7_ablation_output_seed20260812', 20260812),
+                     ('s7_ablation_output_seed20260813', 20260813)):
+        p = S7_BASE / name / 'final_eval.json'
+        if not p.exists():
+            return {}
+        per[sd] = eval_view(p)
+    return {'per_seed': per, 'agg': _agg(list(per.values()))}
+
+
+def _s6_three_seed() -> dict:
+    """S6 baseline with the recovered third valid 12-dB seed."""
+    seeds = [20260730, 20260731, 20260732]
+    per = {}
+    for sd in seeds:
+        p = S6_BASE / f's6_selfplay_output_seed{sd}' / 'final_eval.json'
+        if not p.exists():
+            return {}
+        per[sd] = eval_view(p)
+    return {'per_seed': per, 'agg': _agg(list(per.values()))}
+
+
 TABLE = build_table()
 BASELINES = _baselines()
 if BASELINES:
@@ -175,6 +251,13 @@ if BASELINES:
 SNR_REEVAL = _snr_reeval()
 if SNR_REEVAL:
     TABLE['snr_reeval'] = SNR_REEVAL
+for name, fn in (('nscale', _nscale), ('snr_retrain', _snr_retrain),
+                 ('greedy_counter', _greedy_counter),
+                 ('colocated_seeds', _colocated_seeds),
+                 ('s6_three_seed', _s6_three_seed)):
+    v = fn()
+    if v:
+        TABLE[name] = v
 
 if __name__ == '__main__':
     target = FIG_DIR / 'RESULTS_TABLE.json'
