@@ -131,10 +131,9 @@ def main():
                 jbeam = torch.stack(beams, dim=1)
                 rb_ = torch.zeros(E, R, dtype=torch.int64, device=device)
                 rs_ = torch.zeros(E, R, dtype=torch.int64, device=device)
-                for r in range(R):
-                    pm = obs_r[0, r, 1:11].reshape(2, 5)
-                    sv = int(pm.sum(dim=1).argmax()); az = int(pm[sv].argmax())
-                    rb_[0, r] = az + 10; rs_[0, r] = sv
+                greedy_beam, greedy_svc = trainer._greedy_radar_actions(obs_r)
+                rb_[:, :] = greedy_beam
+                rs_[:, :] = greedy_svc
                 env.step(jcell, jbeam, rb_, rs_)
             drops.append(float(env.drop_ratio()[0]))
         return sum(drops) / len(drops)

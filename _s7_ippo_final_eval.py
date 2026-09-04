@@ -22,6 +22,7 @@ from experiments.array_face_s2.learning_repair.trainer_v2 import S2PPOConfigV2
 from experiments.array_face_s7.learning_repair.trainer_s7_ippo import (
     S7IPPOTrainer, evaluate_s7_ippo,
 )
+from paper.figures.final_eval_schema import build_metadata, wrap_final_eval
 
 p = argparse.ArgumentParser()
 p.add_argument("--out-dir", type=str, required=True)
@@ -111,5 +112,14 @@ print(f"sweep_vs_idle natural floor drop = {results['sweep_vs_idle_floor']['drop
       flush=True)
 
 out_path = out_dir / "final_eval.json"
-out_path.write_text(json.dumps(results, indent=2))
+metadata = build_metadata(
+    train_seed=args.seed, algorithm="ippo", checkpoint_iteration=stored,
+    n_jammers=env_cfg.n_jammers, n_radars=2,
+    jammer_az_deg=env_cfg.jammer_az_deg, radar_az_deg=env_cfg.radar_az_deg,
+    baseline_snr_db=env_cfg.baseline_snr_db, P_jam_W=env_cfg.P_jam_W,
+    active_budget_steps=env_cfg.active_budget_steps, horizon=env_cfg.horizon,
+    validation_manifest=manifest_dir / 'checkpoint_validation.json',
+    action_seeds=[4242, 777, 31337], n_action_reps=1, device=device,
+)
+out_path.write_text(json.dumps(wrap_final_eval(results, metadata), indent=2))
 print(f"wrote {out_path}", flush=True)

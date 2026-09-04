@@ -163,6 +163,23 @@ class S7SelfPlayTrainer(S2PPOTrainerV2):
         self._snapshot_actor_state()
 
     # ---------- rollout ----------
+    @staticmethod
+    def _greedy_radar_actions(obs_r: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Select one hottest pending (service, azimuth) cell per lane/head.
+
+        ``obs_r`` is [E, R, D]. The pending map occupies [1:11] as
+        [service, azimuth]. Keeping the E axis throughout is essential:
+        training uses E=16 lanes and each lane has a different arrival queue.
+        """
+        E, R = obs_r.shape[:2]
+        pending = obs_r[:, :, 1:11].reshape(E, R, 2, 5)
+        svc_idx = pending.sum(dim=-1).argmax(dim=-1)  # [E, R]
+        selected = pending.gather(
+            2, svc_idx.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, 1, 5)
+        ).squeeze(2)
+        az_idx = selected.argmax(dim=-1)  # [E, R]
+        return az_idx + 10, svc_idx
+
     def collect_rollout(self, singleton_opponent: bool = False):
         T = self.env_cfg.horizon
         E = self.env_cfg.n_envs
@@ -241,13 +258,9 @@ class S7SelfPlayTrainer(S2PPOTrainerV2):
                     # evaluation-only greedy baseline
                     masks_r = {"beam": self.env._radar_mask_beam,
                                "svc": self.env._radar_mask_svc}
-                    pm = obs_rk[0, 1:11].reshape(2, 5)
-                    svc_idx = int(pm.sum(dim=1).argmax())
-                    az_idx = int(pm[svc_idx].argmax())
-                    actions_r = {"beam": torch.full((E,), az_idx + 10,
-                                                    dtype=torch.int64, device=device),
-                                 "svc": torch.full((E,), svc_idx,
-                                                   dtype=torch.int64, device=device)}
+                    greedy_beam, greedy_svc = self._greedy_radar_actions(obs_r)
+                    actions_r = {"beam": greedy_beam[:, r],
+                                 "svc": greedy_svc[:, r]}
                     lp_rk = torch.zeros(E, device=device)
                     vr = torch.zeros(E, device=device)
                 else:

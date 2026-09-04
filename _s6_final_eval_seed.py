@@ -15,6 +15,7 @@ from env.gpu.array_face_s6.geometry import N_RADARS
 from experiments.array_face_s2.learning_repair.actor_heads import HeadSpec
 from experiments.array_face_s2.learning_repair.trainer_v2 import S2PPOConfigV2
 from experiments.array_face_s6.learning_repair.trainer_s6 import S6SelfPlayTrainer, evaluate_s6
+from paper.figures.final_eval_schema import build_metadata, wrap_final_eval
 
 p = argparse.ArgumentParser()
 p.add_argument("--seed", type=int, required=True)
@@ -103,6 +104,16 @@ results["sweep_vs_idle_floor"] = {"drop": floor_drop, "elapsed_s": round(time.ti
 print(f"sweep_vs_idle natural floor drop = {floor_drop:.4f}", flush=True)
 
 out_path = out_dir / "final_eval.json"
+metadata = build_metadata(
+    train_seed=SEED, algorithm="mappo", checkpoint_iteration=stored,
+    n_jammers=1, n_radars=N_RADARS,
+    jammer_az_deg=None, radar_az_deg=None,
+    baseline_snr_db=env_cfg.baseline_snr_db, P_jam_W=env_cfg.P_jam_W,
+    active_budget_steps=env_cfg.active_budget_steps, horizon=env_cfg.horizon,
+    validation_manifest=manifest_dir / 'checkpoint_validation.json',
+    action_seeds=[4242, 777, 31337], n_action_reps=1, device=device,
+    env_profile="array_face_s6_v1",
+)
 with open(out_path, "w") as f:
-    json.dump(results, f, indent=2)
+    json.dump(wrap_final_eval(results, metadata), f, indent=2)
 print(f"wrote {out_path}")

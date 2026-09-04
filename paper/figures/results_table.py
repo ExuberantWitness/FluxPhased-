@@ -18,22 +18,59 @@ from __future__ import annotations
 import json
 import statistics
 from pathlib import Path
+import sys
 
 FIG_DIR = Path(__file__).resolve().parent
 ROOT = FIG_DIR.parents[1]
+if str(FIG_DIR) not in sys.path:
+    sys.path.insert(0, str(FIG_DIR))
+from final_eval_schema import load_final_eval, FinalEvalSchemaError
 S6_BASE = ROOT / 'experiments/array_face_s6/learning_repair'
 S7_BASE = ROOT / 'experiments/array_face_s7/learning_repair'
 ACTION_SEEDS = [4242, 777, 31337]
 
-S6_SEEDS = [20260730, 20260731]  # valid 12-dB regime; 20260729 is 22-dB and excluded
+S6_SEEDS = [20260730, 20260731, 20260732]  # valid 12-dB regime; 20260729 is 22-dB and excluded
 S7_SEEDS = ['s7_continue2_output_seed20260801',
             's7_seed02_cont_output_seed20260802',
             's7_seed03_cont_output_seed20260803']
 
+# Canonical n-scale comparison: all policies terminate at the same 2000-step
+# endpoint, use three training seeds, and use the same resolved geometry.
+N2_STRICT = {
+    20260801: S7_BASE / 's7_continue_output_seed20260801/final_eval_v2.json',
+    20260802: S7_BASE / 's7_strict_n2_output_seed20260802/final_eval.json',
+    20260803: S7_BASE / 's7_strict_n2_output_seed20260803/final_eval.json',
+}
+N3_STRICT = {sd: S7_BASE / f's9_n3_output_seed{sd}/final_eval_v2.json'
+             for sd in (20261011, 20261012, 20261013)}
+N4_STRICT = {
+    20261021: S7_BASE / 's9_n4_output_seed20261021/final_eval_v2.json',
+    20261022: S7_BASE / 's9_strict_n4_output_seed20261022/final_eval_v2.json',
+    20261023: S7_BASE / 's9_strict_n4_output_seed20261023/final_eval_v2.json',
+}
 
-def eval_view(path) -> dict:
-    """Per-file evaluation summary: mean over action seeds, plus floor."""
-    d = json.loads(Path(path).read_text())
+
+def _expected(*, n_jammers, jammer_az_deg, radar_az_deg,
+              baseline_snr_db=12.0, checkpoint_iteration=1999,
+              algorithm='mappo') -> dict:
+    return {
+        'algorithm': algorithm, 'n_jammers': n_jammers, 'n_radars': 2,
+        'jammer_az_deg': list(jammer_az_deg), 'radar_az_deg': list(radar_az_deg),
+        'baseline_snr_db': baseline_snr_db, 'P_jam_W': 0.1,
+        'active_budget_steps': 63, 'horizon': 64, 'validation_seed_count': 64,
+        'action_seeds': ACTION_SEEDS, 'n_action_reps': 1,
+        'checkpoint_iteration': checkpoint_iteration,
+    }
+
+
+def eval_view(path, *, expected=None, terminal=False) -> dict:
+    """Per-file summary from schema-v2 canonical evidence only."""
+    d = load_final_eval(path, expected=expected, require_terminal=terminal)
+    return _eval_view_data(d)
+
+
+def _eval_view_data(d: dict) -> dict:
+    """Compute the summary after schema validation has already happened."""
     h = [d[f'aseed_{a}']['h2h_drop'] for a in ACTION_SEEDS]
     j = [d[f'aseed_{a}']['jam_vs_sweep_drop'] for a in ACTION_SEEDS]
     ri = [1 - d[f'aseed_{a}']['rad_vs_idle_success'] for a in ACTION_SEEDS]
@@ -50,6 +87,17 @@ def eval_view(path) -> dict:
         out['j1_only'] = statistics.mean(j1)
         out['j1_only_sd'] = statistics.stdev(j1)
     return out
+
+
+def legacy_eval_view(path) -> dict:
+    """Read a legacy result only for explicitly non-canonical context data.
+
+    Main headline and n-scale results must use ``eval_view``. This helper is
+    retained for R5 and baseline files until those evaluators are also upgraded
+    to schema v2; it is intentionally not used by the strict n-scale allowlist.
+    """
+    d = json.loads(Path(path).read_text())
+    return _eval_view_data(d)
 
 
 def _agg(views: list[dict]) -> dict:
@@ -90,15 +138,15 @@ def _continuation(dir_path) -> dict:
 
 
 def build_table() -> dict:
-    s6_views = {s: eval_view(S6_BASE / f's6_selfplay_output_seed{s}/final_eval.json')
+    # Historical sections retain their explicitly labelled legacy inputs until
+    # all evaluator outputs have been regenerated as schema-v2 artifacts.
+    s6_views = {s: legacy_eval_view(S6_BASE / f's6_selfplay_output_seed{s}/final_eval.json')
                 for s in S6_SEEDS}
-    # The primary S6 aggregate is the three valid 12-dB seeds (20260730/31/32);
-    # the two-seed subset is retained under s6_two_seed for provenance.
-    s6_3 = S6_SEEDS + [20260732]
+    s6_3 = S6_SEEDS
     s6_views_3 = dict(s6_views)
-    s6_views_3[20260732] = eval_view(S6_BASE / 's6_selfplay_output_seed20260732/final_eval.json')
-    s7_views = {name: eval_view(S7_BASE / name / 'final_eval.json') for name in S7_SEEDS}
-    colocated = eval_view(S7_BASE / 's7_ablation_output_seed20260811/final_eval.json')
+    s7_views = {name: legacy_eval_view(S7_BASE / name / 'final_eval.json')
+                for name in S7_SEEDS}
+    colocated = legacy_eval_view(S7_BASE / 's7_ablation_output_seed20260811/final_eval.json')
     r5_conditions = [
         ('s7_continue_output_seed20260801', 0.0),
         ('s7_r5_mix0p25_output_seed20260821', 0.25),
@@ -107,7 +155,7 @@ def build_table() -> dict:
     ]
     r5 = []
     for name, q in r5_conditions:
-        v = eval_view(S7_BASE / name / 'final_eval.json')
+        v = legacy_eval_view(S7_BASE / name / 'final_eval.json')
         r5.append({'q': q, 'h2h': v['h2h'], 'jvs': v['jvs'], 'j1_only': v['j1_only'],
                    'j1_over_jvs': v['j1_only'] / v['jvs'], 'eta_pct': v['eta_pct'],
                    'h2h_over_jvs': v['h2h'] / v['jvs']})
@@ -116,7 +164,8 @@ def build_table() -> dict:
     s7_agg = _agg(list(s7_views.values()))
     return {
         's6': {'seeds': s6_3, 'per_seed': s6_views_3, 'agg': s6_agg},
-        's6_two_seed': {'seeds': S6_SEEDS, 'per_seed': s6_views, 'agg': _agg(list(s6_views.values()))},
+        's6_two_seed': {'seeds': S6_SEEDS[:2], 'per_seed': {k: s6_views[k] for k in S6_SEEDS[:2]},
+                        'agg': _agg([s6_views[k] for k in S6_SEEDS[:2]])},
         's7': {'runs': S7_SEEDS, 'per_seed': s7_views, 'agg': s7_agg},
         'colocated': colocated,
         'crossfire_seed01': s7_views[S7_SEEDS[0]],
@@ -174,26 +223,31 @@ def _snr_reeval() -> dict:
     return out
 
 
-def _nscale() -> dict:
-    """Attacker-count scaling: n=3 and n=4 converged seeds (n=2 references
-    come from the cross-fire/co-located runs). Returns {} until all final
-    evals exist."""
-    out = {}
-    for n, seeds in ((3, (20261011, 20261012, 20261013)),
-                     (4, (20261021, 20261022, 20261023))):
-        per = {}
-        for sd in seeds:
-            p = S7_BASE / f's9_n{n}_output_seed{sd}' / 'final_eval.json'
-            if not p.exists():
-                per = None
-                break
-            per[sd] = eval_view(p)
-        if per is None:
-            continue
-        out[f'n{n}'] = {'per_seed': per, 'agg': _agg(list(per.values()))}
-    if not out:
+def _strict_group(mapping, *, n_jammers, jammer_az_deg, checkpoint_iteration=1999):
+    """Load an allowlisted, matched n-scale group; fail closed on any gap."""
+    per = {}
+    expected = _expected(
+        n_jammers=n_jammers, jammer_az_deg=jammer_az_deg,
+        radar_az_deg=(20.0, -20.0), checkpoint_iteration=checkpoint_iteration,
+    )
+    for seed, path in mapping.items():
+        per[seed] = eval_view(path, expected=expected, terminal=True)
+    return {'per_seed': per, 'agg': _agg(list(per.values()))}
+
+
+def _strict_nscale() -> dict:
+    """Load the matched 2000-iteration n=2/3/4 curve, or return empty until
+    every allowlisted canonical artifact has been produced."""
+    mappings = (
+        ('n2', N2_STRICT, 2, (60.0, -60.0)),
+        ('n3', N3_STRICT, 3, (60.0, 0.0, -60.0)),
+        ('n4', N4_STRICT, 4, (60.0, 20.0, -20.0, -60.0)),
+    )
+    if any(not path.exists() for _, mapping, _, _ in mappings for path in mapping.values()):
         return {}
-    out['agg'] = out.get('n3', {}).get('agg')
+    out = {}
+    for name, mapping, n, jaz in mappings:
+        out[name] = _strict_group(mapping, n_jammers=n, jammer_az_deg=jaz)
     return out
 
 
@@ -261,7 +315,7 @@ if BASELINES:
 SNR_REEVAL = _snr_reeval()
 if SNR_REEVAL:
     TABLE['snr_reeval'] = SNR_REEVAL
-for name, fn in (('nscale', _nscale), ('snr_retrain', _snr_retrain),
+for name, fn in (('nscale', _strict_nscale), ('snr_retrain', _snr_retrain),
                  ('greedy_counter', _greedy_counter),
                  ('colocated_seeds', _colocated_seeds),
                  ('s6_three_seed', _s6_three_seed)):

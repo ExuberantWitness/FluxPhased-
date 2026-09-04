@@ -28,6 +28,7 @@ from experiments.array_face_s2.learning_repair.trainer_v2 import S2PPOConfigV2
 from experiments.array_face_s7.learning_repair.trainer_s7 import (
     S7SelfPlayTrainer, evaluate_s7,
 )
+from paper.figures.final_eval_schema import build_metadata, wrap_final_eval
 
 p = argparse.ArgumentParser()
 p.add_argument("--seed", type=int, required=True)
@@ -44,6 +45,8 @@ p.add_argument("--baseline-snr-db", type=float, default=None,
 p.add_argument("--n-jammers", type=int, default=2,
                help="attacker-count scaling: jammers in the trained game "
                     "(must match the checkpoint's env)")
+p.add_argument("--output-name", type=str, default="final_eval.json",
+               help="output filename inside --out-dir (default: final_eval.json)")
 args = p.parse_args()
 SEED = args.seed
 device = args.device
@@ -133,7 +136,18 @@ floor_drop = sweep_vs_idle(val_seeds)
 results["sweep_vs_idle_floor"] = {"drop": floor_drop, "elapsed_s": round(time.time() - t0, 1)}
 print(f"sweep_vs_idle natural floor drop = {floor_drop:.4f}", flush=True)
 
-out_path = out_dir / "final_eval.json"
+out_path = out_dir / args.output_name
+metadata = build_metadata(
+    train_seed=SEED, algorithm="mappo", checkpoint_iteration=stored,
+    n_jammers=env_cfg.n_jammers, n_radars=N_RADARS,
+    jammer_az_deg=env_cfg.jammer_az_deg,
+    radar_az_deg=env_cfg.radar_az_deg,
+    baseline_snr_db=env_cfg.baseline_snr_db, P_jam_W=env_cfg.P_jam_W,
+    active_budget_steps=env_cfg.active_budget_steps, horizon=env_cfg.horizon,
+    validation_manifest=manifest_dir / 'checkpoint_validation.json',
+    action_seeds=[4242, 777, 31337], n_action_reps=1, device=device,
+    code_rev=None,
+)
 with open(out_path, "w") as f:
-    json.dump(results, f, indent=2)
+    json.dump(wrap_final_eval(results, metadata), f, indent=2)
 print(f"wrote {out_path}")
