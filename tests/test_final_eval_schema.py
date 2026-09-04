@@ -44,6 +44,7 @@ def _valid():
         validation_manifest=None,
         code_rev="test",
     )
+    meta["validation_seed_count"] = 64
     return wrap_final_eval(_legacy_views(), meta)
 
 

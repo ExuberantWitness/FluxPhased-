@@ -146,7 +146,7 @@ metadata = build_metadata(
     active_budget_steps=env_cfg.active_budget_steps, horizon=env_cfg.horizon,
     validation_manifest=manifest_dir / 'checkpoint_validation.json',
     action_seeds=[4242, 777, 31337], n_action_reps=1, device=device,
-    code_rev=None,
+    code_rev=None, checkpoint_path=out_dir / "selfplay_latest.pt",
 )
 with open(out_path, "w") as f:
     json.dump(wrap_final_eval(results, metadata), f, indent=2)

@@ -34,13 +34,18 @@ def sha256_file(path: str | Path) -> str:
 
 
 def code_revision(repo: str | Path | None = None) -> str:
-    """Return the current git revision, or ``unknown`` outside a checkout."""
+    """Return HEAD, marking a dirty working tree explicitly."""
     try:
         cwd = str(repo or Path(__file__).resolve().parents[2])
-        return subprocess.check_output(
+        head = subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=cwd, text=True,
             stderr=subprocess.DEVNULL,
         ).strip()
+        dirty = subprocess.run(
+            ["git", "diff", "--quiet"], cwd=cwd,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        ).returncode != 0
+        return f"{head}-dirty" if dirty else head
     except Exception:
         return "unknown"
 
@@ -57,7 +62,7 @@ def build_metadata(*, train_seed: int, algorithm: str, checkpoint_iteration: int
                    validation_manifest: str | Path | None = None,
                    action_seeds=ACTION_SEEDS, n_action_reps: int = 1,
                    code_rev: str | None = None, env_profile: str = "array_face_s7_v1",
-                   device: str | None = None) -> dict[str, Any]:
+                   device: str | None = None, checkpoint_path: str | Path | None = None) -> dict[str, Any]:
     """Build metadata from resolved runtime values, never raw CLI strings."""
     if jammer_az_deg is None:
         if env_profile == "array_face_s6_v1":
@@ -96,6 +101,10 @@ def build_metadata(*, train_seed: int, algorithm: str, checkpoint_iteration: int
             metadata["validation_seed_count"] = 0
     if device is not None:
         metadata["device"] = str(device)
+    if checkpoint_path is not None:
+        cp = Path(checkpoint_path)
+        metadata["checkpoint_path"] = cp.name
+        metadata["checkpoint_sha256"] = sha256_file(cp) if cp.exists() else "missing"
     return metadata
 
 

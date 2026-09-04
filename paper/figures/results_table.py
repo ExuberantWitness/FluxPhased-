@@ -37,9 +37,9 @@ S7_SEEDS = ['s7_continue2_output_seed20260801',
 # Canonical n-scale comparison: all policies terminate at the same 2000-step
 # endpoint, use three training seeds, and use the same resolved geometry.
 N2_STRICT = {
-    20260801: S7_BASE / 's7_continue_output_seed20260801/final_eval_v2.json',
-    20260802: S7_BASE / 's7_strict_n2_output_seed20260802/final_eval.json',
-    20260803: S7_BASE / 's7_strict_n2_output_seed20260803/final_eval.json',
+    20260801: S7_BASE / 's7_strict_n2_output_seed20260801/final_eval_v2.json',
+    20260802: S7_BASE / 's7_strict_n2_output_seed20260802/final_eval_v2.json',
+    20260803: S7_BASE / 's7_strict_n2_output_seed20260803/final_eval_v2.json',
 }
 N3_STRICT = {sd: S7_BASE / f's9_n3_output_seed{sd}/final_eval_v2.json'
              for sd in (20261011, 20261012, 20261013)}
