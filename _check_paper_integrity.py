@@ -92,10 +92,16 @@ if 'greedy_counter' in TABLE:
     gc = TABLE['greedy_counter']
     expect('greedy counter final drop', f"{gc['final_greedy_vs_jam']:.3f}")
 
-# n=3 scaling aggregate (n=4 pending)
+# n=3/n=4 scaling aggregates
 if 'nscale' in TABLE:
-    n3 = TABLE['nscale']['agg']
-    expect('n3 eta', pm(n3['eta_pct'], n3['eta_pct_sd'], pct=True))
+    if 'n3' in TABLE['nscale']:
+        n3 = TABLE['nscale']['n3']['agg']
+        expect('n3 eta', pm(n3['eta_pct'], n3['eta_pct_sd'], pct=True))
+    if 'n4' in TABLE['nscale']:
+        n4 = TABLE['nscale']['n4']['agg']
+        expect('n4 eta', pm(n4['eta_pct'], n4['eta_pct_sd'], pct=True))
+        expect('n4 h2h prose', f"{n4['h2h']:.3f}")
+        expect('n4 jvs prose', f"{n4['jvs']:.3f}")
 
 # Retrained SNR regimes quoted in Discussion
 if 'snr_retrain' in TABLE:

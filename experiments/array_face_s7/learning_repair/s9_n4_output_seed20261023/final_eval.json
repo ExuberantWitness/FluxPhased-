@@ -1,0 +1,30 @@
+{
+  "aseed_4242": {
+    "h2h_drop": 0.19568519422318786,
+    "h2h_success": 0.8043148098513484,
+    "jam_vs_sweep_drop": 0.3124788065906614,
+    "rad_vs_idle_success": 0.9836760191246867,
+    "j1_only_drop": 0.0461175826494582,
+    "elapsed_s": 2031.3
+  },
+  "aseed_777": {
+    "h2h_drop": 0.19810052425600588,
+    "h2h_success": 0.8018994834274054,
+    "jam_vs_sweep_drop": 0.3188437004573643,
+    "rad_vs_idle_success": 0.9821935221552849,
+    "j1_only_drop": 0.052114873891696334,
+    "elapsed_s": 1784.1
+  },
+  "aseed_31337": {
+    "h2h_drop": 0.1863434289698489,
+    "h2h_success": 0.8136565778404474,
+    "jam_vs_sweep_drop": 0.31995910848490894,
+    "rad_vs_idle_success": 0.9783038012683392,
+    "j1_only_drop": 0.04348637693328783,
+    "elapsed_s": 1838.2
+  },
+  "sweep_vs_idle_floor": {
+    "drop": 0.10821622482035309,
+    "elapsed_s": 356.1
+  }
+}

@@ -175,16 +175,26 @@ def _snr_reeval() -> dict:
 
 
 def _nscale() -> dict:
-    """Attacker-count scaling: n=3 converged seeds (n=2 references come from
-    the cross-fire/co-located runs). Returns {} until all three n=3 files
-    exist with final evals."""
-    per = {}
-    for sd in (20261011, 20261012, 20261013):
-        p = S7_BASE / f's9_n3_output_seed{sd}' / 'final_eval.json'
-        if not p.exists():
-            return {}
-        per[sd] = eval_view(p)
-    return {'per_seed': per, 'agg': _agg(list(per.values()))}
+    """Attacker-count scaling: n=3 and n=4 converged seeds (n=2 references
+    come from the cross-fire/co-located runs). Returns {} until all final
+    evals exist."""
+    out = {}
+    for n, seeds in ((3, (20261011, 20261012, 20261013)),
+                     (4, (20261021, 20261022, 20261023))):
+        per = {}
+        for sd in seeds:
+            p = S7_BASE / f's9_n{n}_output_seed{sd}' / 'final_eval.json'
+            if not p.exists():
+                per = None
+                break
+            per[sd] = eval_view(p)
+        if per is None:
+            continue
+        out[f'n{n}'] = {'per_seed': per, 'agg': _agg(list(per.values()))}
+    if not out:
+        return {}
+    out['agg'] = out.get('n3', {}).get('agg')
+    return out
 
 
 def _snr_retrain() -> dict:
