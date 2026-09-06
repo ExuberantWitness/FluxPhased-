@@ -1,0 +1,20 @@
+E:\DATA\vscode\FluxPhased\.\experiments\array_face_s7\learning_repair\trainer_s7.py:357: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  ckpt = torch.load(path, map_location=self.cfg.device)
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA GeForce RTX 2060
+[gpu] VRAM: 6.4 GB
+loaded s7_continue2_output_seed20260801 (stored iter=2999)
+s7_continue2_output_seed20260801 aseed=4242: edf=0.2965 (254s)
+s7_continue2_output_seed20260801 aseed=777: edf=0.3076 (285s)
+s7_continue2_output_seed20260801 aseed=31337: edf=0.2951 (295s)
+updated experiments\array_face_s7\learning_repair\s7_continue2_output_seed20260801\baseline_eval.json
+loaded s7_seed02_cont_output_seed20260802 (stored iter=2999)
+s7_seed02_cont_output_seed20260802 aseed=4242: edf=0.2914 (296s)
+s7_seed02_cont_output_seed20260802 aseed=777: edf=0.2901 (305s)
+s7_seed02_cont_output_seed20260802 aseed=31337: edf=0.2945 (305s)
+updated experiments\array_face_s7\learning_repair\s7_seed02_cont_output_seed20260802\baseline_eval.json
+loaded s7_seed03_cont_output_seed20260803 (stored iter=2999)
+s7_seed03_cont_output_seed20260803 aseed=4242: edf=0.2975 (309s)
+s7_seed03_cont_output_seed20260803 aseed=777: edf=0.2981 (321s)
+s7_seed03_cont_output_seed20260803 aseed=31337: edf=0.2936 (311s)
+updated experiments\array_face_s7\learning_repair\s7_seed03_cont_output_seed20260803\baseline_eval.json

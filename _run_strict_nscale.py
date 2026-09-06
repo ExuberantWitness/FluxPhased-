@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-PY = sys.executable
+PY = r"C:\Users\zhang\.conda\envs\fluxphased\python.exe"
 BASE = ROOT / "experiments/array_face_s7/learning_repair"
 
 
@@ -54,13 +54,18 @@ def continue_s7(*, src: Path, dst: Path, seed: int, n: int, jammer_az: str,
          str(dst / "selfplay_latest.pt")], cwd=ROOT, text=True).strip()
     stored = int(probe)
     if stored < target - 1:
-        run([
+        train_cmd = [
             PY, "-u", "experiments/array_face_s7/learning_repair/run_s7_selfplay.py",
             "--seed", str(seed), "--resume", "--iterations", str(target),
-            "--anneal-done", "--val-every", "50", "--n-jammers", str(n),
+            "--anneal-done", "--val-every", "50", "--skip-validation",
             "--jammer-az", jammer_az, "--out-dir", str(dst),
-        ], dst / "strict_train.log")
-    # Evaluate into a new filename with schema-v2 metadata.
+        ]
+        if n != 2:
+            train_cmd.extend(["--n-jammers", str(n)])
+        run(train_cmd, dst / "strict_train.log")
+    # Evaluate into a new filename with schema-v2 metadata only once.
+    if (dst / "final_eval_v2.json").exists():
+        return
     run([
         PY, "-u", "_s7_final_eval.py", "--seed", str(seed),
         "--n-jammers", str(n), "--jammer-az", jammer_az,

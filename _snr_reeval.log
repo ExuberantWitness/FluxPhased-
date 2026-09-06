@@ -1,0 +1,11 @@
+E:\DATA\vscode\FluxPhased\.\experiments\array_face_s7\learning_repair\trainer_s7.py:385: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  ckpt = torch.load(path, map_location=self.cfg.device)
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA GeForce RTX 2060
+[gpu] VRAM: 6.4 GB
+crossfire snr_9db: {'h2h': 0.4037718176841736, 'jvs': 0.6198345990851521, 'rad_idle': 0.034704345278441906, 'floor': 0.22051590075716376, 'eta_pct': 7.575709840015876, 'elapsed_s': 583.9}
+crossfire snr_15db: {'h2h': 0.2722808653488755, 'jvs': 0.4370751112001017, 'rad_idle': 0.010774691589176655, 'floor': 0.07398069911869243, 'eta_pct': 27.978463711232582, 'elapsed_s': 579.8}
+updated experiments\array_face_s7\learning_repair\s7_continue2_output_seed20260801\snr_reeval.json
+colocated snr_9db: {'h2h': 0.35762468725442886, 'jvs': 0.5910152774304152, 'rad_idle': 0.03167551476508379, 'floor': 0.22051590075716376, 'eta_pct': 12.024366838056999, 'elapsed_s': 709.8}
+colocated snr_15db: {'h2h': 0.21316943952115253, 'jvs': 0.40632854506839067, 'rad_idle': 0.011989887803792953, 'floor': 0.07398069911869243, 'eta_pct': 39.46717146835107, 'elapsed_s': 742.5}
+updated experiments\array_face_s7\learning_repair\s7_ablation_output_seed20260811\snr_reeval.json

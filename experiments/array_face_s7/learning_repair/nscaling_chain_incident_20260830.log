@@ -1,0 +1,6 @@
+[2026/08/29 15:35:27] greedy-counter chain done; starting attacker-count scaling
+[2026/08/29 15:35:27] N3-20261011 stage-A attempt 1 (have=-1)
+[2026/08/29 22:10:28] N3-20261011 stage-B attempt 2 (have=999)
+[2026/08/30 03:57:00] N3-20261011 training complete at iter 1999
+[2026/08/30 05:11:11] N3-20261011 final eval done
+[2026/08/30 05:11:11] N3-20261012 stage-A attempt 1 (have=-1)

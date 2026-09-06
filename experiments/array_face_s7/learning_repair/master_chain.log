@@ -1,0 +1,79 @@
+[2026/08/30 15:25:46] === MASTER chain start (single-flight OK) ===
+[2026/08/30 16:14:15] S6-20260732 eval recovery done
+[2026/08/30 16:14:15] N3-20261012 stage-A attempt 1 (have=649)
+[2026/08/30 19:46:51] === MASTER chain start (single-flight OK) ===
+[2026/08/30 19:46:51] N3-20261012 stage-B attempt 1 (have=999)
+[2026/08/31 00:50:46] N3-20261012 training complete at iter 1999
+[2026/08/31 01:55:38] N3-20261012 final eval done
+[2026/08/31 01:55:38] N3-20261013 stage-A attempt 1 (have=-1)
+[2026/08/31 06:26:39] N3-20261013 stage-B attempt 2 (have=999)
+[2026/08/31 11:12:17] N3-20261013 training complete at iter 1999
+[2026/08/31 12:21:57] N3-20261013 final eval done
+[2026/08/31 12:21:57] COLOC-20260812 stage-A attempt 1 (have=5)
+[2026/08/31 16:10:44] COLOC-20260812 stage-B attempt 2 (have=999)
+[2026/08/31 19:48:04] === MASTER chain start (single-flight OK) ===
+[2026/08/31 19:48:04] COLOC-20260812 stage-B attempt 1 (have=1820)
+[2026/08/31 21:12:14] COLOC-20260812 training complete at iter 1999
+[2026/08/31 22:19:25] COLOC-20260812 final eval done
+[2026/08/31 22:19:25] COLOC-20260813 stage-A attempt 1 (have=-1)
+[2026/09/01 01:59:16] COLOC-20260813 stage-B attempt 2 (have=999)
+[2026/09/01 05:39:12] COLOC-20260813 training complete at iter 1999
+[2026/09/01 06:29:11] COLOC-20260813 final eval done
+[2026/09/01 06:29:11] SNR9-20260911 stage-A attempt 1 (have=-1)
+[2026/09/01 10:12:28] SNR9-20260911 stage-B attempt 2 (have=999)
+[2026/09/01 13:57:00] SNR9-20260911 training complete at iter 1999
+[2026/09/01 14:51:07] SNR9-20260911 final eval done
+[2026/09/01 14:51:07] SNR15-20260912 stage-A attempt 1 (have=-1)
+[2026/09/01 17:54:37] SNR15-20260912 stage-A attempt 2 (have=982)
+[2026/09/01 17:54:37] SNR15-20260912 stage-A attempt 3 (have=982)
+[2026/09/01 17:54:38] SNR15-20260912 stage-A attempt 4 (have=982)
+[2026/09/02 10:08:58] === MASTER chain start (single-flight OK) ===
+[2026/09/02 10:08:59] SNR15-20260912 stage-A attempt 1 (have=982)
+[2026/09/02 10:53:10] SNR15-20260912 stage-B attempt 2 (have=999)
+[2026/09/02 15:05:38] SNR15-20260912 training complete at iter 1999
+[2026/09/02 15:57:49] SNR15-20260912 final eval done
+[2026/09/02 15:57:49] GREEDY stage-A attempt 1 (have=-1)
+[2026/09/02 18:03:59] GREEDY stage-B attempt 2 (have=999)
+[2026/09/02 20:06:11] GREEDYCOUNTER training complete
+[2026/09/02 20:06:11] N4-20261021 stage-A attempt 1 (have=-1)
+[2026/09/02 22:07:09] N4-20261021 stage-A attempt 2 (have=399)
+[2026/09/02 22:07:09] N4-20261021 stage-A attempt 3 (have=399)
+[2026/09/02 23:30:00] === MASTER chain start (single-flight OK) ===
+[2026/09/02 23:30:00] N4-20261021 stage-A attempt 1 (have=399)
+[2026/09/02 23:58:27] === MASTER chain start (single-flight OK) ===
+[2026/09/02 23:58:27] N4-20261021 stage-A attempt 1 (have=399)
+[2026/09/03 03:33:16] N4-20261021 stage-B attempt 2 (have=999)
+[2026/09/03 09:38:34] === MASTER chain start (single-flight OK) ===
+[2026/09/03 09:38:34] N4-20261021 stage-B attempt 1 (have=1971)
+[2026/09/03 09:48:03] === MASTER chain start (single-flight OK) ===
+[2026/09/03 09:48:03] N4-20261021 stage-B attempt 1 (have=1969)
+[2026/09/03 10:53:22] N4-20261021 training complete at iter 1999
+[2026/09/03 12:27:58] N4-20261021 final eval done
+[2026/09/03 12:27:58] N4-20261022 stage-A attempt 1 (have=-1)
+[2026/09/03 16:23:03] === MASTER chain start (single-flight OK) ===
+[2026/09/03 16:23:03] N4-20261022 stage-A attempt 1 (have=710)
+[2026/09/03 18:37:18] N4-20261022 stage-B attempt 2 (have=999)
+[2026/09/03 20:07:19] N4-20261022 stage-B attempt 3 (have=1299)
+[2026/09/03 21:30:59] === MASTER chain start (single-flight OK) ===
+[2026/09/03 21:30:59] N4-20261022 stage-B attempt 1 (have=1299)
+[2026/09/04 01:38:03] N4-20261022 training complete at iter 1999
+[2026/09/04 01:38:08] REFUSED to start: python processes already running (PIDs 15736). Start me when the GPU is idle.
+[2026/09/04 02:56:16] N4-20261022 final eval done
+[2026/09/04 02:56:16] N4-20261023 stage-A attempt 1 (have=-1)
+[2026/09/04 08:19:26] === MASTER chain start (single-flight OK) ===
+[2026/09/04 08:19:26] N4-20261023 stage-B attempt 1 (have=999)
+[2026/09/04 11:33:03] === MASTER chain start (single-flight OK) ===
+[2026/09/04 11:33:03] N4-20261023 stage-B attempt 1 (have=1484)
+[2026/09/04 14:43:03] N4-20261023 training complete at iter 1999
+[2026/09/04 14:43:08] REFUSED to start: python processes already running (PIDs 18316). Start me when the GPU is idle.
+[2026/09/04 15:48:03] N4-20261023 final eval attempt 1 failed; retrying
+[2026/09/04 15:48:09] === MASTER chain start (single-flight OK) ===
+[2026/09/04 15:48:09] N4-20261023 training complete at iter 1999
+[2026/09/04 15:48:33] N4-20261023 final eval attempt 2 failed; retrying
+[2026/09/04 15:49:03] N4-20261023 final eval attempt 3 failed; retrying
+[2026/09/04 15:49:33] N4-20261023 final eval attempt 4 failed; retrying
+[2026/09/04 15:50:03] N4-20261023 final eval attempt 5 failed; retrying
+[2026/09/04 15:50:33] N4-20261023 FINAL EVAL STILL MISSING after retries
+[2026/09/04 15:50:33] ALL MASTER RUNS DONE
+[2026/09/04 17:28:26] N4-20261023 final eval done
+[2026/09/04 17:28:26] ALL MASTER RUNS DONE

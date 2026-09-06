@@ -74,6 +74,9 @@ def main():
     parser.add_argument("--n-jammers", type=int, default=2,
                         help="attacker-count scaling: number of jammer agents sharing the "
                              "same 63-token team budget (2 = S7 bit-for-bit)")
+    parser.add_argument("--skip-validation", action="store_true",
+                        help="supplement runs: skip all in-loop validation; terminal checkpoint "
+                             "is evaluated once by the canonical final evaluator")
     args = parser.parse_args()
     seed = int(args.seed)
     n_iterations = int(args.iterations)
@@ -159,7 +162,7 @@ def main():
         m = trainer.train_iteration()
         train_log.write(json.dumps(m) + "\n")
         train_log.flush()
-        if (it + 1) % val_every == 0 or it == n_iterations - 1:
+        if not args.skip_validation and ((it + 1) % val_every == 0 or it == n_iterations - 1):
             is_final = (it == n_iterations - 1)
             views = evaluate_s7(
                 trainer.jam_actor, trainer.rad_actor,

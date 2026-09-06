@@ -1,0 +1,53 @@
+$ C:\Users\zhang\.conda\envs\fluxphased\python.exe -u experiments/array_face_s7/learning_repair/run_s7_selfplay.py --seed 20260802 --resume --iterations 2000 --anneal-done --val-every 50 --n-jammers 2 --jammer-az +60,-60 --out-dir E:\DATA\vscode\FluxPhased\experiments\array_face_s7\learning_repair\s7_strict_n2_output_seed20260802
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA GeForce RTX 2060
+[gpu] VRAM: 6.4 GB
+S7 self-play (2 jammers vs 2 radars)  seed=20260802  iters=2000
+E:\DATA\vscode\FluxPhased\experiments\array_face_s7\learning_repair\run_s7_selfplay.py:92: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  done_iter = int(torch.load(probe, map_location="cpu")["iteration"]) + 1
+  [anneal-done] anneal window ends at iter 1000 (= resume 1000); coefficients at coef_min throughout the continuation
+  out_dir=E:\DATA\vscode\FluxPhased\experiments\array_face_s7\learning_repair\s7_strict_n2_output_seed20260802
+E:\DATA\vscode\FluxPhased\experiments\array_face_s7\learning_repair\trainer_s7.py:409: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  ckpt = torch.load(path, map_location=self.cfg.device)
+  RESUMED from iter 999
+  iter 1049  h2h_drop=0.2376  jam_vs_sweep=0.3272  rad_vs_idle_succ=0.9969  j1_only=0.1474  j_ent=2.64 r_ent=2.44  elapsed=598s
+  [checkpoint] iter 1049
+  iter 1099  h2h_drop=0.2452  jam_vs_sweep=0.3467  rad_vs_idle_succ=0.9688  j1_only=0.1219  j_ent=2.59 r_ent=2.45  elapsed=1200s
+  [checkpoint] iter 1099
+  iter 1149  h2h_drop=0.2154  jam_vs_sweep=0.3436  rad_vs_idle_succ=0.9860  j1_only=0.1551  j_ent=2.35 r_ent=2.41  elapsed=1800s
+  [checkpoint] iter 1149
+  iter 1199  h2h_drop=0.2423  jam_vs_sweep=0.3437  rad_vs_idle_succ=0.9929  j1_only=0.1333  j_ent=2.26 r_ent=2.35  elapsed=2407s
+  [checkpoint] iter 1199
+  iter 1249  h2h_drop=0.2635  jam_vs_sweep=0.3731  rad_vs_idle_succ=0.9880  j1_only=0.1127  j_ent=2.08 r_ent=2.27  elapsed=3054s
+  [checkpoint] iter 1249
+  iter 1299  h2h_drop=0.2864  jam_vs_sweep=0.3848  rad_vs_idle_succ=0.9911  j1_only=0.1483  j_ent=1.91 r_ent=2.35  elapsed=3659s
+  [checkpoint] iter 1299
+  iter 1349  h2h_drop=0.2814  jam_vs_sweep=0.4024  rad_vs_idle_succ=0.9845  j1_only=0.1582  j_ent=1.99 r_ent=2.34  elapsed=4267s
+  [checkpoint] iter 1349
+  iter 1399  h2h_drop=0.3004  jam_vs_sweep=0.4139  rad_vs_idle_succ=0.9903  j1_only=0.1995  j_ent=1.86 r_ent=2.11  elapsed=4876s
+  [checkpoint] iter 1399
+  iter 1449  h2h_drop=0.3126  jam_vs_sweep=0.4393  rad_vs_idle_succ=0.9897  j1_only=0.1673  j_ent=1.71 r_ent=2.28  elapsed=5490s
+  [checkpoint] iter 1449
+  iter 1499  h2h_drop=0.3252  jam_vs_sweep=0.4095  rad_vs_idle_succ=0.9858  j1_only=0.1839  j_ent=1.67 r_ent=2.37  elapsed=6104s
+  [checkpoint] iter 1499
+  iter 1549  h2h_drop=0.3252  jam_vs_sweep=0.4449  rad_vs_idle_succ=0.9969  j1_only=0.2053  j_ent=1.57 r_ent=2.34  elapsed=6721s
+  [checkpoint] iter 1549
+  iter 1599  h2h_drop=0.3242  jam_vs_sweep=0.4780  rad_vs_idle_succ=0.9930  j1_only=0.2022  j_ent=1.65 r_ent=2.26  elapsed=7338s
+  [checkpoint] iter 1599
+  iter 1649  h2h_drop=0.3466  jam_vs_sweep=0.4520  rad_vs_idle_succ=0.9747  j1_only=0.2590  j_ent=1.63 r_ent=2.18  elapsed=7953s
+  [checkpoint] iter 1649
+  iter 1699  h2h_drop=0.3131  jam_vs_sweep=0.4870  rad_vs_idle_succ=0.9793  j1_only=0.2325  j_ent=1.78 r_ent=2.00  elapsed=8573s
+  [checkpoint] iter 1699
+  iter 1749  h2h_drop=0.3127  jam_vs_sweep=0.4858  rad_vs_idle_succ=0.9913  j1_only=0.2105  j_ent=1.72 r_ent=1.96  elapsed=9190s
+  [checkpoint] iter 1749
+  iter 1799  h2h_drop=0.3523  jam_vs_sweep=0.4825  rad_vs_idle_succ=0.9734  j1_only=0.2215  j_ent=1.47 r_ent=1.92  elapsed=9804s
+  [checkpoint] iter 1799
+  iter 1849  h2h_drop=0.3266  jam_vs_sweep=0.4928  rad_vs_idle_succ=0.9876  j1_only=0.2239  j_ent=1.49 r_ent=2.01  elapsed=10423s
+  [checkpoint] iter 1849
+  iter 1899  h2h_drop=0.3353  jam_vs_sweep=0.4920  rad_vs_idle_succ=0.9876  j1_only=0.2004  j_ent=1.62 r_ent=2.09  elapsed=11042s
+  [checkpoint] iter 1899
+  iter 1949  h2h_drop=0.3505  jam_vs_sweep=0.5070  rad_vs_idle_succ=0.9814  j1_only=0.1864  j_ent=1.66 r_ent=1.97  elapsed=11662s
+  [checkpoint] iter 1949
+  iter 1999  h2h_drop=0.3534  jam_vs_sweep=0.4910  rad_vs_idle_succ=0.9774  j1_only=0.2512  j_ent=1.34 r_ent=2.02  elapsed=14066s
+  [checkpoint] iter 1999
+done; wrote metrics to E:\DATA\vscode\FluxPhased\experiments\array_face_s7\learning_repair\s7_strict_n2_output_seed20260802

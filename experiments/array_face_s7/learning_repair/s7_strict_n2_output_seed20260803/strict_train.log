@@ -1,0 +1,73 @@
+$ C:\Users\zhang\.conda\envs\fluxphased\python.exe -u experiments/array_face_s7/learning_repair/run_s7_selfplay.py --seed 20260803 --resume --iterations 2000 --anneal-done --val-every 50 --n-jammers 2 --jammer-az +60,-60 --out-dir E:\DATA\vscode\FluxPhased\experiments\array_face_s7\learning_repair\s7_strict_n2_output_seed20260803
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA GeForce RTX 2060
+[gpu] VRAM: 6.4 GB
+S7 self-play (2 jammers vs 2 radars)  seed=20260803  iters=2000
+E:\DATA\vscode\FluxPhased\experiments\array_face_s7\learning_repair\run_s7_selfplay.py:92: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  done_iter = int(torch.load(probe, map_location="cpu")["iteration"]) + 1
+  [anneal-done] anneal window ends at iter 1000 (= resume 1000); coefficients at coef_min throughout the continuation
+  out_dir=E:\DATA\vscode\FluxPhased\experiments\array_face_s7\learning_repair\s7_strict_n2_output_seed20260803
+E:\DATA\vscode\FluxPhased\experiments\array_face_s7\learning_repair\trainer_s7.py:409: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  ckpt = torch.load(path, map_location=self.cfg.device)
+  RESUMED from iter 999
+  iter 1049  h2h_drop=0.2133  jam_vs_sweep=0.3763  rad_vs_idle_succ=0.9924  j1_only=0.0584  j_ent=2.94 r_ent=2.00  elapsed=621s
+  [checkpoint] iter 1049
+  iter 1099  h2h_drop=0.2537  jam_vs_sweep=0.3729  rad_vs_idle_succ=0.9883  j1_only=0.0741  j_ent=2.48 r_ent=2.27  elapsed=1243s
+  [checkpoint] iter 1099
+  iter 1149  h2h_drop=0.2507  jam_vs_sweep=0.3958  rad_vs_idle_succ=0.9975  j1_only=0.0686  j_ent=2.17 r_ent=2.48  elapsed=1866s
+  [checkpoint] iter 1149
+  iter 1199  h2h_drop=0.2506  jam_vs_sweep=0.3722  rad_vs_idle_succ=0.9930  j1_only=0.0656  j_ent=1.88 r_ent=2.46  elapsed=2491s
+  [checkpoint] iter 1199
+  iter 1249  h2h_drop=0.2669  jam_vs_sweep=0.3893  rad_vs_idle_succ=0.9896  j1_only=0.0599  j_ent=1.75 r_ent=2.23  elapsed=3116s
+  [checkpoint] iter 1249
+  iter 1299  h2h_drop=0.2936  jam_vs_sweep=0.4274  rad_vs_idle_succ=0.9870  j1_only=0.0972  j_ent=1.92 r_ent=2.15  elapsed=3741s
+  [checkpoint] iter 1299
+$ C:\Users\zhang\.conda\envs\fluxphased\python.exe -u experiments/array_face_s7/learning_repair/run_s7_selfplay.py --seed 20260803 --resume --iterations 2000 --anneal-done --val-every 50 --skip-validation --n-jammers 2 --jammer-az +60,-60 --out-dir E:\DATA\vscode\FluxPhased\experiments\array_face_s7\learning_repair\s7_strict_n2_output_seed20260803
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA GeForce RTX 2060
+[gpu] VRAM: 6.4 GB
+usage: run_s7_selfplay.py [-h] --seed SEED [--resume]
+                          [--iterations ITERATIONS] [--out-dir OUT_DIR]
+                          [--anneal-done] [--jammer-az JAMMER_AZ]
+                          [--radar-az RADAR_AZ] [--val-every VAL_EVERY]
+                          [--singleton-mix SINGLETON_MIX]
+                          [--baseline-snr-db BASELINE_SNR_DB]
+                          [--skip-validation]
+run_s7_selfplay.py: error: unrecognized arguments: --n-jammers 2
+$ C:\Users\zhang\.conda\envs\fluxphased\python.exe -u experiments/array_face_s7/learning_repair/run_s7_selfplay.py --seed 20260803 --resume --iterations 2000 --anneal-done --val-every 50 --skip-validation --jammer-az +60,-60 --out-dir E:\DATA\vscode\FluxPhased\experiments\array_face_s7\learning_repair\s7_strict_n2_output_seed20260803
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA GeForce RTX 2060
+[gpu] VRAM: 6.4 GB
+Traceback (most recent call last):
+  File "E:\DATA\vscode\FluxPhased\experiments\array_face_s7\learning_repair\run_s7_selfplay.py", line 198, in <module>
+    main()
+  File "E:\DATA\vscode\FluxPhased\experiments\array_face_s7\learning_repair\run_s7_selfplay.py", line 85, in main
+    print(f"S7 self-play ({args.n_jammers} jammers vs 2 radars)  seed={seed}  iters={n_iterations}")
+AttributeError: 'Namespace' object has no attribute 'n_jammers'
+$ C:\Users\zhang\.conda\envs\fluxphased\python.exe -u experiments/array_face_s7/learning_repair/run_s7_selfplay.py --seed 20260803 --resume --iterations 2000 --anneal-done --val-every 50 --skip-validation --jammer-az +60,-60 --out-dir E:\DATA\vscode\FluxPhased\experiments\array_face_s7\learning_repair\s7_strict_n2_output_seed20260803
+[gpu] Using device: cuda
+[gpu] GPU: NVIDIA GeForce RTX 2060
+[gpu] VRAM: 6.4 GB
+S7 self-play (2 jammers vs 2 radars)  seed=20260803  iters=2000
+E:\DATA\vscode\FluxPhased\experiments\array_face_s7\learning_repair\run_s7_selfplay.py:95: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  done_iter = int(torch.load(probe, map_location="cpu")["iteration"]) + 1
+  [anneal-done] anneal window ends at iter 1300 (= resume 1300); coefficients at coef_min throughout the continuation
+  out_dir=E:\DATA\vscode\FluxPhased\experiments\array_face_s7\learning_repair\s7_strict_n2_output_seed20260803
+E:\DATA\vscode\FluxPhased\experiments\array_face_s7\learning_repair\trainer_s7.py:409: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  ckpt = torch.load(path, map_location=self.cfg.device)
+  RESUMED from iter 1299
+  [checkpoint] iter 1349
+  [checkpoint] iter 1399
+  [checkpoint] iter 1449
+  [checkpoint] iter 1499
+  [checkpoint] iter 1549
+  [checkpoint] iter 1599
+  [checkpoint] iter 1649
+  [checkpoint] iter 1699
+  [checkpoint] iter 1749
+  [checkpoint] iter 1799
+  [checkpoint] iter 1849
+  [checkpoint] iter 1899
+  [checkpoint] iter 1949
+  [checkpoint] iter 1999
+done; wrote metrics to E:\DATA\vscode\FluxPhased\experiments\array_face_s7\learning_repair\s7_strict_n2_output_seed20260803
